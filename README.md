@@ -10,6 +10,7 @@ Live: https://bluecranesprojects.github.io/blue-cranes-online/
 |---|---|
 | `timesheet/` | Daily Time Sheet – vehicle check, jobs, schedule, PDF, WhatsApp |
 | `forklift/` | Forklift Inspection / Load Test report and load test certificate |
+| `equipment/` | Equipment list per job (serial nr, description, manufacturer, SWL) and customer inventory |
 
 ## Adding a new tool
 
@@ -41,7 +42,7 @@ Live: https://bluecranesprojects.github.io/blue-cranes-online/
 ## Data in Firebase
 
 Everything for a person is under `users/{uid}/items/`:
-`profile`, `settings`, `sheet-YYYY-MM-DD`, `sched-<id>` (time sheet), `fl-<doc no>` (forklift reports).
+`profile`, `settings`, `sheet-YYYY-MM-DD`, `sched-<id>` (time sheet), `fl-<doc no>` (forklift reports), `eq-<date>_<job>` (equipment lists).
 
 ## Firebase settings that must stay in place
 

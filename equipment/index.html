@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Equipment List</title>
+<meta name="theme-color" content="#0B3575">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Blue Cranes">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" type="image/png" href="../icons/favicon-32.png">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="../vendor/jspdf.umd.min.js" defer></script>
+<script src="../shared/firebase-config.js"></script>
+<script type="module" src="../shared/cloud.js"></script>
+<script src="../shared/app.js"></script>
+<style>
+  :root{--ink:#2B2C30;--ground:#EEF2F7;--card:#fff;--line:#D9E0EA;--field:#AEB8C7;--navy:#21457F;--navyDeep:#0B3575;--yellow:#FBD220;--yellowDark:#F5B826;--muted:#566070;--label:#343A44;--ok:#15703D;--bad:#A12A1F}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--ground);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-text-size-adjust:100%}
+  .app{max-width:560px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+  header{position:sticky;top:0;z-index:5;background:var(--navyDeep);color:#fff;border-bottom:4px solid var(--yellow);padding:calc(12px + env(safe-area-inset-top)) 12px 12px;display:flex;align-items:center;gap:10px}
+  header .ib{width:44px;height:44px;border:0;border-radius:10px;background:rgba(255,255,255,.12);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;text-decoration:none}
+  .sub{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#C9D5EA}
+  h1,h2{font-family:Montserrat,sans-serif;font-weight:900;margin:0;text-transform:uppercase}
+  h1{font-size:20px;line-height:1.15} h2{font-size:15px;color:var(--navyDeep)}
+  main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .field{display:flex;flex-direction:column;gap:5px;min-width:0}
+  .field label{font-size:12.5px;font-weight:600;color:var(--label)}
+  .field input{height:48px;border-radius:10px;border:1.5px solid var(--field);background:#fff;padding:0 12px;font-size:16px;font-family:inherit;color:var(--ink);width:100%;min-width:0}
+  .field input[readonly]{background:#EEF2F7;border-style:dashed;color:var(--label)}
+  .hint{font-size:12px;color:var(--muted)} .warn{font-size:12.5px;color:var(--bad);font-weight:600}
+  .btn{height:50px;border-radius:12px;border:0;font-weight:700;font-size:15px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;width:100%;padding:0 12px;text-decoration:none}
+  .primary{background:var(--yellow);color:var(--navyDeep);box-shadow:inset 0 -3px 0 rgba(0,0,0,.12)}
+  .secondary{background:#fff;color:var(--navyDeep);border:2px solid var(--navy)}
+  .navy{background:var(--navyDeep);color:#fff}
+  .small{height:40px;font-size:13px;width:auto;border-width:1.5px}
+  button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--yellowDark);outline-offset:2px}
+  .item{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;background:#FBFCFE}
+  .item .top{display:flex;align-items:center;gap:10px}
+  .num{width:30px;height:30px;border-radius:8px;background:var(--navy);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;justify-content:center;z-index:5}
+  .bar .btn{max-width:270px}
+  .row{display:flex;gap:8px;align-items:center}
+  .cust{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;width:100%;text-align:left;font-family:inherit;color:var(--ink);cursor:pointer}
+  table.inv{width:100%;border-collapse:collapse;font-size:13px}
+  table.inv th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 4px;border-bottom:1.5px solid var(--line)}
+  table.inv td{padding:8px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+  .pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:#E3EAF5;color:var(--navyDeep);white-space:nowrap}
+  .empty{text-align:center;color:var(--muted);padding:30px 10px;font-size:14px}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+  .modal{background:#fff;border-radius:16px 16px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));width:100%;max-width:560px;display:flex;flex-direction:column;gap:12px}
+  .toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--navyDeep);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:600;z-index:30;max-width:90%}
+  input[type=search]{height:46px;border-radius:10px;border:1.5px solid var(--field);padding:0 12px;font-size:16px;font-family:inherit;width:100%}
+</style>
+</head>
+<body>
+<div class="app" id="app"><main><div class="empty">Loading…</div></main></div>
+<datalist id="descList"></datalist><datalist id="makeList"></datalist>
+<script>
+(function(){
+  'use strict';
+  const LKEY = 'bco-equipment';          // all equipment lists, kept on the phone too
+  const app = document.getElementById('app');
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  const niceDate = k => { if (!k) return ''; const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d).toLocaleDateString('en-ZA', { day:'numeric', month:'short', year:'numeric' }); };
+  const norm = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 2600); }
+  function modal(html){ const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`; document.body.appendChild(bg); return bg; }
+  function confirmBox(msg, yes, onYes){ const m = modal(`<div style="font-size:16px;font-weight:600">${esc(msg)}</div><button class="btn primary" id="mYes" style="background:var(--bad);color:#fff">${esc(yes)}</button><button class="btn secondary" id="mNo">Cancel</button>`); m.querySelector('#mYes').onclick = () => { m.remove(); onYes(); }; m.querySelector('#mNo').onclick = () => m.remove(); }
+  const ICON = {
+    back:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
+    list:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
+    plus:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+    pdf:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>'
+  };
+
+  // ---------- data ----------
+  const S = { lists:{}, view:'list', cur:null, active:null, profile:null, cust:null, q:'' };
+  function lsLoad(){ try { S.lists = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ S.lists = {}; } }
+  function lsSave(){ try { localStorage.setItem(LKEY, JSON.stringify(S.lists)); } catch(e){} }
+  const cloudOK = () => !!(window.Cloud && Cloud.user && Cloud.user());
+  const docId = id => 'eq-' + String(id).replace(/\//g, '_');
+  let saveT;
+  function saveList(l, now){
+    l.savedAt = Date.now(); S.lists[l.id] = l; lsSave();
+    clearTimeout(saveT); const push = () => { if (cloudOK()) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); };
+    if (now) push(); else saveT = setTimeout(push, 1200);
+  }
+  async function syncCloud(){
+    if (!cloudOK()) return;
+    try {
+      const remote = await Cloud.listKind('equipment'); const seen = {};
+      remote.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; seen[r.id] = 1; const l = S.lists[r.id]; if (!l || (r.savedAt || 0) > (l.savedAt || 0)) S.lists[r.id] = r; });
+      Object.values(S.lists).forEach(l => { if (!seen[l.id]) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); });
+      if (S.cur && S.lists[S.cur.id] && S.lists[S.cur.id] !== S.cur){ S.cur = S.lists[S.cur.id]; lsSave(); render(); return; }
+      lsSave(); if (S.view !== 'list') render(); else refreshSuggestions();
+    } catch(e){ console.error('Equipment sync failed', e); }
+  }
+  function activeJob(){
+    try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || a.date !== today()) return null;
+      const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const j = ts && ts.sheets && ts.sheets[a.date] && ts.sheets[a.date].jobs && ts.sheets[a.date].jobs[a.idx];
+      if (ts && (!j || j.done || (j.card || '') !== (a.card || ''))) return null; return a; } catch(e){ return null; }
+  }
+  const listIdFor = a => (a.date + '_' + (a.card || a.customer || 'job')).replace(/[^\w\-]+/g, '_');
+
+  // inventory: every item ever listed for a customer, newest record per serial nr wins
+  function inventory(){
+    const by = {};
+    Object.values(S.lists).filter(l => (l.rows || []).some(r => r.serial || r.desc)).sort((a,b) => (a.date + a.savedAt).localeCompare(b.date + b.savedAt)).forEach(l => {
+      const ck = norm(l.customer) || '(NO CUSTOMER)'; const c = by[ck] = by[ck] || { name: l.customer || 'No customer', items:{}, lists:0, last:'' };
+      c.name = l.customer || c.name; c.lists++; if (l.date > c.last) c.last = l.date;
+      (l.rows || []).forEach(r => { if (!r.serial && !r.desc) return; const k = norm(r.serial) || ('#' + l.id + r.desc);
+        c.items[k] = Object.assign({}, r, { location: l.location || '', job: l.job || '', date: l.date }); });
+    });
+    return by;
+  }
+  function refreshSuggestions(){
+    const d = new Set(['Chain block','Lever hoist','Electric chain hoist','Wire rope hoist','Beam trolley','Beam clamp','Shackle','Web sling','Round sling','Chain sling','Wire rope sling','Spreader beam','Lifting clamp','Eye bolt','Gantry crane','Overhead crane','Jib crane','Pallet jack','Engine crane']);
+    const m = new Set(['Yale','Kito','Toyota','Blue Cranes','Crosby','Columbus McKinnon','Demag','Stahl','Konecranes','Elephant','Vital']);
+    Object.values(S.lists).forEach(l => (l.rows || []).forEach(r => { if (r.desc) d.add(r.desc); if (r.make) m.add(r.make); }));
+    document.getElementById('descList').innerHTML = [...d].sort().map(x => `<option value="${esc(x)}">`).join('');
+    document.getElementById('makeList').innerHTML = [...m].sort().map(x => `<option value="${esc(x)}">`).join('');
+  }
+
+  // ---------- views ----------
+  function head(sub, title, left, right){ return `<header>${left || ''}<div style="flex:1;min-width:0"><div class="sub">${esc(sub)}</div><h1>${esc(title)}</h1></div>${right || ''}</header>`; }
+  const backBtn = (href, label) => `<a class="ib" href="${href}" aria-label="${esc(label)}">${ICON.back}</a>`;
+
+  function vList(){
+    const l = S.cur; const inv = inventory()[norm(l.customer)]; const known = inv ? inv.items : {};
+    const dupes = {}; (l.rows || []).forEach(r => { const k = norm(r.serial); if (k) dupes[k] = (dupes[k] || 0) + 1; });
+    return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), 'Equipment list', backBtn('../timesheet/', 'Back to the time sheet'),
+        `<button class="ib" id="toInv" aria-label="Customer inventory">${ICON.list}</button>`) + `<main>
+      <section class="card">
+        <div class="field"><label for="fCust">Customer</label><input id="fCust" value="${esc(l.customer)}" readonly></div>
+        <div class="grid2">
+          <div class="field"><label for="fJob">Job nr</label><input id="fJob" value="${esc(l.job)}" readonly></div>
+          <div class="field"><label for="fDate">Date</label><input id="fDate" value="${esc(niceDate(l.date))}" readonly></div>
+        </div>
+        <div class="field"><label for="fLoc">Location</label><input id="fLoc" value="${esc(l.location)}" placeholder="e.g. Workshop, Cellar 2, Yard"></div>
+      </section>
+      <div class="row" style="justify-content:space-between;padding:2px"><h2>Equipment</h2><span class="hint">${(l.rows||[]).length} ${(l.rows||[]).length === 1 ? 'item' : 'items'}</span></div>
+      ${(l.rows || []).map((r, i) => { const k = norm(r.serial); const seen = k && known[k] && known[k].job !== l.job;
+        return `<div class="item" data-i="${i}">
+          <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters"></div>
+            <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
+          ${dupes[k] > 1 ? '<span class="warn">This serial nr is on the list more than once.</span>' : ''}
+          ${seen ? `<span class="hint" style="color:var(--ok)">Already in ${esc(l.customer)}'s inventory (job ${esc(known[k].job)}, ${esc(niceDate(known[k].date))}).</span>` : ''}
+          <div class="field"><label for="d${i}">Description</label><input id="d${i}" data-f="desc" value="${esc(r.desc)}" list="descList" placeholder="e.g. Chain block"></div>
+          <div class="grid2">
+            <div class="field"><label for="m${i}">Manufacturer</label><input id="m${i}" data-f="make" value="${esc(r.make)}" list="makeList"></div>
+            <div class="field"><label for="w${i}">SWL</label><input id="w${i}" data-f="swl" value="${esc(r.swl)}" placeholder="e.g. 2 t, 500 kg"></div>
+          </div></div>`; }).join('') || '<div class="empty">No equipment yet. Tap <b>Add item</b> for each piece of equipment.</div>'}
+      <div class="row">
+        <button class="btn primary" id="add">${ICON.plus} Add item</button>
+        ${(l.rows || []).length ? `<button class="btn secondary" id="copy" style="width:auto;padding:0 14px">Copy last</button>` : ''}
+      </div>
+      <span class="hint">“Copy last” adds a new item with the same description, manufacturer and SWL – just enter the serial nr.</span>
+    </main>
+    <div class="bar"><button class="btn navy" id="pdf">${ICON.pdf} Save PDF</button></div>`;
+  }
+
+  function vInventory(){
+    const inv = inventory(); const q = S.q.trim().toLowerCase();
+    const keys = Object.keys(inv).filter(k => !q || inv[k].name.toLowerCase().includes(q) || Object.values(inv[k].items).some(r => String(r.serial).toLowerCase().includes(q)))
+      .sort((a,b) => inv[b].last.localeCompare(inv[a].last));
+    const back = S.cur ? `<button class="ib" id="toList" aria-label="Back to the equipment list">${ICON.back}</button>` : backBtn('../timesheet/', 'Back to the time sheet');
+    return head('Blue Cranes', 'Inventory', back) + `<main>
+      <input type="search" id="q" placeholder="Search customer or serial nr…" value="${esc(S.q)}">
+      ${keys.length ? keys.map(k => { const c = inv[k]; const n = Object.keys(c.items).length;
+        return `<button class="cust" data-cust="${esc(k)}"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:15px">${esc(c.name)}</div>
+          <div class="hint">${n} ${n === 1 ? 'item' : 'items'} · last listed ${esc(niceDate(c.last))}</div></div><span class="pill">${n}</span></button>`; }).join('')
+        : `<div class="empty">${q ? 'Nothing matches “' + esc(S.q) + '”.' : 'No equipment listed yet.<br>Equipment lists made on jobs build up each customer\'s inventory here.'}</div>`}
+    </main>`;
+  }
+  function vCustomer(){
+    const c = inventory()[S.cust]; if (!c) { S.view = 'inventory'; return vInventory(); }
+    const items = Object.values(c.items).sort((a,b) => String(a.desc).localeCompare(String(b.desc)) || String(a.serial).localeCompare(String(b.serial), undefined, { numeric:true }));
+    const lists = Object.values(S.lists).filter(l => norm(l.customer) === S.cust && (l.rows || []).some(r => r.serial || r.desc)).sort((a,b) => b.date.localeCompare(a.date));
+    return head('Inventory', c.name, `<button class="ib" id="toInv" aria-label="Back to inventory">${ICON.back}</button>`) + `<main>
+      <section class="card" style="gap:6px;padding:10px 12px">
+        <table class="inv"><thead><tr><th>Serial nr</th><th>Description</th><th>Make</th><th>SWL</th></tr></thead><tbody>
+          ${items.map(r => `<tr><td style="font-weight:700">${esc(r.serial) || '–'}</td><td>${esc(r.desc)}${r.location ? `<div class="hint">${esc(r.location)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(r.swl)}</td></tr>`).join('')}
+        </tbody></table>
+      </section>
+      <h2 style="padding:2px">Equipment lists</h2>
+      ${lists.map(l => `<div class="cust" style="cursor:default"><div style="flex:1;min-width:0"><div style="font-weight:700">Job ${esc(l.job || '–')}</div>
+          <div class="hint">${esc(niceDate(l.date))}${l.location ? ' · ' + esc(l.location) : ''} · ${(l.rows||[]).length} items${l.tech ? ' · ' + esc(l.tech) : ''}</div></div>
+          <button class="btn secondary small" data-listpdf="${esc(l.id)}">PDF</button></div>`).join('')}
+    </main>
+    <div class="bar"><button class="btn navy" id="invPdf">${ICON.pdf} Inventory PDF</button></div>`;
+  }
+  function vGate(){
+    return head('Blue Cranes', 'Equipment list', backBtn('../timesheet/', 'Back to the time sheet')) + `<main>
+      <section class="card"><h2>No job started</h2>
+        <span style="font-size:14px;line-height:1.5">Equipment lists open from the job you are busy with. On the time sheet, tap <b>Start job</b>, then <b>Equipment list</b>.</span>
+        <a class="btn primary" href="../timesheet/">Go to time sheet</a>
+        <button class="btn secondary" id="toInv">View customer inventory</button></section></main>`;
+  }
+
+  function render(){
+    app.innerHTML = S.view === 'inventory' ? vInventory() : S.view === 'customer' ? vCustomer() : S.view === 'gate' ? vGate() : vList();
+    window.scrollTo(0, 0); wire();
+  }
+  function wire(){
+    const $ = id => document.getElementById(id);
+    const ti = $('toInv'); if (ti) ti.onclick = () => { S.view = 'inventory'; render(); };
+    const tl = $('toList'); if (tl) tl.onclick = () => { S.view = 'list'; render(); };
+    app.querySelectorAll('[data-cust]').forEach(b => b.onclick = () => { S.cust = b.dataset.cust; S.view = 'customer'; render(); });
+    const q = $('q'); if (q){ q.oninput = () => { S.q = q.value; const pos = q.selectionStart; render(); const n = $('q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch(e){} }; }
+    app.querySelectorAll('[data-listpdf]').forEach(b => b.onclick = () => listPdf(S.lists[b.dataset.listpdf], b));
+    const ip = $('invPdf'); if (ip) ip.onclick = () => inventoryPdf(S.cust, ip);
+    if (S.view !== 'list') return;
+    const l = S.cur;
+    $('fLoc').oninput = e => { l.location = e.target.value; saveList(l); };
+    app.querySelectorAll('.item input[data-f]').forEach(inp => {
+      inp.oninput = () => { const i = Number(inp.closest('.item').dataset.i); let v = inp.value; if (inp.dataset.f === 'serial') v = v.toUpperCase(); l.rows[i][inp.dataset.f] = v; saveList(l); };
+      if (inp.dataset.f === 'serial') inp.onchange = () => { inp.value = inp.value.toUpperCase(); render(); const n = document.getElementById('d' + inp.closest('.item').dataset.i); if (n && !n.value) n.focus(); };
+    });
+    const addRow = r => { l.rows = l.rows || []; l.rows.push(r); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
+    $('add').onclick = () => addRow({ serial:'', desc:'', make:'', swl:'' });
+    const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ serial:'', desc:p.desc, make:p.make, swl:p.swl }); };
+    app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = Number(b.dataset.del); const r = l.rows[i];
+      const go = () => { l.rows.splice(i, 1); saveList(l); render(); };
+      if (r.serial || r.desc) confirmBox('Remove item ' + (i + 1) + (r.serial ? ' (' + r.serial + ')' : '') + ' from this list?', 'Remove', go); else go(); });
+    $('pdf').onclick = () => { saveList(l, true); listPdf(l, $('pdf')); };
+  }
+
+  // ---------- PDFs (layout of the paper sheet) ----------
+  let logoData = null;
+  async function logo(){ if (logoData) return logoData; try { const b = await (await fetch('../icons/logo.png')).blob(); logoData = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); } catch(e){} return logoData; }
+  function safe(s){ return String(s || '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_'); }
+  async function table(doc, title, top, rows, cols, foot){
+    const L = 15, R = 195, img = await logo();
+    const pageHead = (first) => {
+      if (img) try { doc.addImage(img, 'PNG', L, 10, 20, 20); } catch(e){}
+      doc.setTextColor(11, 53, 117); doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.text('Blue Cranes', 105, 20, { align:'center' });
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(title, 105, 26, { align:'center' }); doc.setTextColor(0, 0, 0);
+      doc.setDrawColor(251, 210, 32); doc.setLineWidth(0.9); doc.line(75, 22.5, 135, 22.5); doc.setDrawColor(0, 0, 0);
+      let y = 38; top.forEach(line => { line.forEach(([lab, val, x, x2, ls]) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(lab, x, y);
+        doc.setLineWidth(0.3); doc.line(ls, y + 1, x2, y + 1); doc.setFont('helvetica', 'normal'); doc.text(doc.splitTextToSize(String(val || ''), x2 - ls - 2)[0] || '', ls + 2, y - 0.6); }); y += 9; });
+      return y + 2;
+    };
+    const rowH = 8; let y = pageHead(true); const maxY = 282;
+    const headRow = () => { doc.setLineWidth(0.5); doc.setFillColor(230, 234, 242); doc.rect(L, y, R - L, rowH, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+      let x = L; cols.forEach(c => { doc.text(c.t, x + c.w / 2, y + 5.4, { align:'center' }); x += c.w; if (x < R) doc.line(x, y, x, y + rowH); }); y += rowH; };
+    headRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    const minRows = Math.max(rows.length, Math.floor((maxY - y) / rowH));
+    for (let i = 0; i < minRows; i++){
+      if (y + rowH > maxY){ doc.addPage(); y = pageHead(false); headRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); }
+      doc.setLineWidth(0.3); doc.rect(L, y, R - L, rowH); const r = rows[i];
+      let x = L; cols.forEach(c => { if (r){ const t = doc.splitTextToSize(String(r[c.k] || ''), c.w - 3); doc.text(t[0] || '', x + 1.5, y + 5.4); } x += c.w; if (x < R) doc.line(x, y, x, y + rowH); });
+      y += rowH; if (!r && i >= rows.length && y + rowH > maxY) break;
+    }
+    if (foot){ doc.setFontSize(8.5); doc.setTextColor(90, 96, 112); doc.text(foot, L, 290); doc.setTextColor(0, 0, 0); }
+  }
+  async function ensurePdf(){ for (let i = 0; i < 50 && !(window.jspdf && window.jspdf.jsPDF); i++) await new Promise(r => setTimeout(r, 100)); if (!(window.jspdf && window.jspdf.jsPDF)) throw new Error('PDF maker not loaded'); }
+  async function listPdf(l, btn){
+    if (!l) return; const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
+    try {
+      await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
+      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl);
+      await table(doc, 'Equipment list', [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Location:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
+        rows, [{ t:'Serial nr', k:'serial', w:45 }, { t:'Description', k:'desc', w:65 }, { t:'Manufacturer', k:'make', w:40 }, { t:'SWL', k:'swl', w:30 }],
+        (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items');
+      const how = await BC.saveFile(doc.output('blob'), `Equipment_list_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`, 'application/pdf', 'Equipment list');
+      if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded');
+    } catch(e){ console.error(e); toast('Could not make the PDF'); }
+    finally { if (btn){ btn.disabled = false; btn.innerHTML = old; } }
+  }
+  async function inventoryPdf(ck, btn){
+    const c = inventory()[ck]; if (!c) return; const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Making PDF…';
+    try {
+      await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
+      const rows = Object.values(c.items).sort((a,b) => String(a.desc).localeCompare(String(b.desc)) || String(a.serial).localeCompare(String(b.serial), undefined, { numeric:true }))
+        .map(r => Object.assign({}, r, { seen: niceDate(r.date) + (r.job ? ' (' + r.job + ')' : '') }));
+      await table(doc, 'Equipment inventory', [[['Customer:', c.name, 15, 140, 42], ['Date:', niceDate(today()), 145, 195, 160]]],
+        rows, [{ t:'Serial nr', k:'serial', w:36 }, { t:'Description', k:'desc', w:50 }, { t:'Manufacturer', k:'make', w:32 }, { t:'SWL', k:'swl', w:22 }, { t:'Last listed', k:'seen', w:40 }],
+        rows.length + ' items');
+      const how = await BC.saveFile(doc.output('blob'), `Inventory_${safe(c.name)}_${today()}.pdf`, 'application/pdf', 'Inventory ' + c.name);
+      if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded');
+    } catch(e){ console.error(e); toast('Could not make the PDF'); }
+    finally { btn.disabled = false; btn.innerHTML = old; }
+  }
+
+  // ---------- start ----------
+  (async function start(){
+    lsLoad(); S.profile = BC.cachedProfile();
+    if (!S.profile && window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey){ BC.goHome(); return; }
+    refreshSuggestions();
+    S.active = activeJob();
+    const wantInv = /[?&]inventory=1/.test(location.search);
+    if (S.active){
+      const id = listIdFor(S.active);
+      S.cur = S.lists[id] || { id, date:S.active.date, job:S.active.card || '', customer:S.active.customer || '', location:'', rows:[], tech:(S.profile && S.profile.name) || '' };
+      if (!S.cur.rows.length && !S.lists[id]){ S.cur.rows.push({ serial:'', desc:'', make:'', swl:'' }); }
+      S.lists[id] = S.cur; lsSave();
+    }
+    S.view = wantInv ? 'inventory' : S.active ? 'list' : 'gate';
+    render();
+    const w = await BC.requireUser(); if (w.profile && w.profile.name && S.cur && !S.cur.tech){ S.cur.tech = w.profile.name; }
+    if (window.Cloud) Cloud.onError = () => toast('Cloud save failed – kept on this phone');
+    syncCloud();
+  })();
+})();
+</script>
+</body>
+</html>
