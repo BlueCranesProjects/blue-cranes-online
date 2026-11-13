@@ -821,6 +821,7 @@ const WANT_REPORTS=/[?&]reports=1/.test(location.search);
 if(!ACTIVE){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else showGate();}
 $("repClose").onclick=()=>{$("repPanel").classList.remove("show");if(!ACTIVE){if(WANT_REPORTS)location.href="../timesheet/";else showGate();}};
 if(ACTIVE&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
+{const wt=new URLSearchParams(location.search).get("type");if(ACTIVE&&(wt==="INSPECTION"||wt==="LOAD TEST")&&state.type!==wt){state.type=wt;applyState();save();}}
 BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");syncReports();});
 </script>
 </body>

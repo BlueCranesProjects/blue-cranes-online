@@ -255,7 +255,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (C)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (D)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -434,7 +434,7 @@
         <button type="button" data-done="${i}" aria-pressed="${!!j.done}" aria-label="${j.done ? 'Completed – tap to undo' : 'Mark job ' + (i+1) + ' completed'}"
           style="width:64px;flex-shrink:0;border-radius:12px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;${j.done ? 'background:var(--A);color:#fff;border:2px solid var(--A)' : 'background:#fff;color:var(--navyDeep);border:2px dashed var(--field)'}">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>${j.done ? 'Done' : 'Finish'}</button>
-        </div>${j.done ? '' : `<button class="btn" data-fl="${i}" style="height:46px;font-size:14px;background:var(--navyDeep);color:#fff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Forklift inspection / load test</button>`}</div>`).join('')
+        </div>${j.done ? '' : reportButtons(`data-fl="${i}"`)}</div>`).join('')
         : `<div class="empty">No jobs yet. Tap <b>Add job</b> when you arrive at your first job.</div>`}
       <div class="grid2" style="gap:10px">
         <div class="stat"><span class="k">Job card time</span><span class="big">${fmtH(jobHours(sh))} h</span></div>
@@ -539,8 +539,8 @@
     const due = schedFor(key).filter(x => !x.addedTo); if (!due.length) return '';
     return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0"><h2>JOB SCHEDULE</h2><span class="hint">${due.length} to do</span></div>
       ${due.map(x => `<div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-left:5px solid var(--yellow)">
-        <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(schedLabel(x))}</span>
-        <span class="hint">${x.time ? esc(x.time) : 'Any time'}${x.contact ? ' · ' + esc(x.contact) : ''}${x.notes ? ' · ' + esc(x.notes) : ''}</span></span>
+        <button type="button" data-schedopen="${esc(x.id)}" style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;border:0;background:none;padding:4px 0;text-align:left;font-family:inherit;color:inherit;cursor:pointer"><span style="font-size:15px;font-weight:600">${esc(schedLabel(x))}</span>
+        <span class="hint">${x.time ? esc(x.time) : 'Any time'}${x.contact ? ' · ' + esc(x.contact) : ''}${x.notes ? ' · ' + esc(x.notes) : ''}</span></button>
         <button class="btn primary" style="width:auto;height:44px;font-size:14px" data-schedto="${esc(x.id)}">${ICON.plus} Start job</button></div>`).join('')}`;
   }
   function viewSchedule(){
@@ -570,10 +570,33 @@
       <button class="btn primary" data-schedadd="${thisWeek ? tk : ws}">${ICON.plus} Schedule a job</button>
       ${storeLine()}</main>` + tabs('schedule');
   }
+  // the report "tabs" a tech gets once a job is started
+  function reportButtons(attr){
+    const st = 'flex:1;height:48px;font-size:14px;background:var(--navyDeep);color:#fff';
+    return `<div style="display:flex;gap:8px"><button class="btn" ${attr} data-type="INSPECTION" style="${st}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Forklift inspection</button>
+      <button class="btn" ${attr} data-type="LOAD TEST" style="${st}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Load test</button></div>`;
+  }
+  function sheetReady(k){ const sh = state.sheets[k]; return !!(sh && sh.status !== 'submitted' && checkDone(sh) && sh.firstOdo !== '' && sh.firstOdo != null && sh.tech); }
+  function sheetJobFor(id){ const x = state.schedule[id]; if (!x || !x.addedTo) return null; const sh = state.sheets[x.addedTo]; if (!sh) return null;
+    const i = (sh.jobs || []).findIndex(j => j.sched === id); return i < 0 ? null : { k:x.addedTo, i, j:sh.jobs[i] }; }
+  function openReport(k, i, type){
+    const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || j.done) return;
+    try { localStorage.setItem('bco-active-job', JSON.stringify({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() })); } catch(e){}
+    location.href = '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
+  }
+  function schedActions(x){
+    const tk = todayKey(); const sj = sheetJobFor(x.id);
+    const box = inner => `<section class="card" style="display:flex;flex-direction:column;gap:10px;border-left:5px solid var(--yellow)">${inner}</section>`;
+    if (sj && sj.j.done) return box('<div style="display:flex;align-items:center;gap:8px"><span class="pill ok">✓ Completed</span><span class="hint">This job is finished.</span></div>');
+    if (sj) return box(`<div style="display:flex;align-items:center;gap:8px"><span class="pill prog">Busy</span><span class="hint">Started ${esc(niceDate(sj.k))} · odometer ${fmtKm(sj.j.odo)} km</span></div>${reportButtons(`data-flk="${sj.k}" data-fli="${sj.i}"`)}`);
+    if (x.date !== tk) return box(`<span class="hint">You can start this job on ${esc(niceDate(x.date))}.</span>`);
+    return box(`<button class="btn primary" type="button" data-schedstart="${esc(x.id)}">${ICON.plus} Start job</button>
+      <span class="hint">${sheetReady(tk) ? 'Records your arrival odometer. Forklift inspection and load test open once the job is started.' : 'Do the vehicle inspection and start today\'s sheet first.'}</span>`);
+  }
   function viewSchedJob(){
     const editing = !!(state.schedId && state.schedule[state.schedId]);
     const x = editing ? state.schedule[state.schedId] : { date: state.schedDate || todayKey(), time:'', card:'', customer:'', notes:'' };
-    return headerBack(editing ? 'EDIT JOB' : 'SCHEDULE JOB', 'schedule') + `<main>
+    return headerBack(editing ? 'JOB' : 'SCHEDULE JOB', state._schedBack || 'schedule') + `<main>${editing ? schedActions(x) : ''}
       <form id="schedForm" style="display:flex;flex-direction:column;gap:18px">
         <div class="grid2" style="gap:10px">
           <div class="field"><label for="sDate">Date</label><input id="sDate" type="date" value="${esc(x.date)}" required></div>
@@ -760,7 +783,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 13 Nov (C)</span>
+        <span class="hint">App version 13 Nov (D)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -940,11 +963,14 @@
       } catch(e){ err.textContent = authMessage(e); btn.disabled = false; btn.textContent = old; }
     };
 
-    app.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => {
-      const k = curKey(); const sh = state.sheets[k]; const i = Number(b.dataset.fl); const j = sh && sh.jobs[i]; if (!j || j.done) return;
-      try { localStorage.setItem('bco-active-job', JSON.stringify({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() })); } catch(e){}
-      location.href = '../forklift/';
+    app.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => openReport(curKey(), Number(b.dataset.fl), b.dataset.type));
+    app.querySelectorAll('[data-flk]').forEach(b => b.onclick = () => openReport(b.dataset.flk, Number(b.dataset.fli), b.dataset.type));
+    app.querySelectorAll('[data-schedstart]').forEach(b => b.onclick = () => {
+      const tk = todayKey();
+      if (!sheetReady(tk)){ toast('Do the vehicle inspection and start the sheet first'); state.activeDate = null; go('today', { schedId:null }); return; }
+      state.activeDate = null; go('job', { jobIdx:null, prefill:b.dataset.schedstart, schedId:null });
     });
+    app.querySelectorAll('[data-schedopen]').forEach(b => b.onclick = () => { state._schedBack = 'today'; go('schedjob', { schedId:b.dataset.schedopen }); });
     app.querySelectorAll('[data-done]').forEach(b => b.onclick = () => {
       const k = curKey(); const sh = state.sheets[k]; const j = sh && sh.jobs[Number(b.dataset.done)]; if (!j) return;
       j.done = !j.done; if (j.done) j.doneAt = new Date().toISOString(); else delete j.doneAt;
@@ -965,7 +991,7 @@
       go('schedule', { schedWeek: n === 0 ? null : addDays(cur, n) });
     });
     app.querySelectorAll('[data-schedadd]').forEach(b => b.onclick = () => go('schedjob', { schedId:null, schedDate:b.dataset.schedadd }));
-    app.querySelectorAll('[data-schedit]').forEach(b => b.onclick = () => go('schedjob', { schedId:b.dataset.schedit }));
+    app.querySelectorAll('[data-schedit]').forEach(b => b.onclick = () => { state._schedBack = 'schedule'; go('schedjob', { schedId:b.dataset.schedit }); });
 
     const schf = document.getElementById('schedForm');
     if (schf){
