@@ -451,8 +451,8 @@ function nextSameJob(){
 }
 function jobsMap(){try{return JSON.parse(load(JOBKEY)||"{}")}catch(e){return{}}}
 // next free suffix for a job; afterCurrent=true also counts the doc no on screen as used
-function nextDoc(job,afterCurrent){const m=jobsMap();let n=m[job]||0;if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===job)n=Math.max(n,cur.n);}return job+"."+(n+1);}
-function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec((d||"").trim());return m?{job:m[1],n:+m[2]}:null;}
+function nextDoc(job,afterCurrent){const m=jobsMap();let n=m[job]||0;if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===job)n=Math.max(n,cur.n);}return "F"+job+"."+(n+1);}
+function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec((d||"").trim().replace(/^F(?=.+\.\d+$)/,""));return m?{job:m[1],n:+m[2]}:null;}
 function recordDoc(){const d=parseDoc(state.f.docno);if(!d)return;const m=jobsMap();m[d.job]=Math.max(m[d.job]||0,d.n);store(JOBKEY,JSON.stringify(m));}
 $("jobno").addEventListener("input",()=>{const j=$("jobno").value.trim();$("docno").value=j?nextDoc(j):"";save();});
 
