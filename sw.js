@@ -1,6 +1,6 @@
 // Offline support: keeps the app files on the phone so it opens without signal.
 // Bump VERSION whenever you change any app file, so phones pick up the update.
-const VERSION = 'dts-2026-11-13a';
+const VERSION = 'dts-2026-11-13b';
 const SHELL = [
   './', './index.html', './cloud.js', './firebase-config.js', './manifest.webmanifest',
   './vendor/jspdf.umd.min.js',

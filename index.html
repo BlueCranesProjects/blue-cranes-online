@@ -257,7 +257,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 12 Nov</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -425,12 +425,18 @@
           <button class="btn secondary" style="width:auto;height:36px;font-size:13px;border-width:1.5px" id="svcEdit">${sheetService(sh) == null ? 'Set' : 'Update'}</button></div>
       </section>
       ${schedSection(key)}
-      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0"><h2>JOBS TODAY</h2><span class="hint">${jobs.length} ${jobs.length===1?'job':'jobs'}</span></div>
-      ${jobs.length ? jobs.map((j,i)=>`<button class="job" data-editjob="${i}" aria-label="Edit job ${i+1}">
-          <span class="num-badge">${i+1}</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0"><h2>JOBS TODAY</h2><span class="hint">${jobs.length} ${jobs.length===1?'job':'jobs'}${jobs.length ? ' · ' + jobs.filter(x=>x.done).length + ' completed' : ''}</span></div>
+      ${jobs.length ? jobs.map((j,i)=>`<div style="display:flex;gap:8px;align-items:stretch">
+        <button class="job" data-editjob="${i}" aria-label="Edit job ${i+1}" style="flex:1;min-width:0;${j.done ? 'border-color:#9CC9AD;background:#F3FAF5' : ''}">
+          <span class="num-badge" style="${j.done ? 'background:var(--A)' : ''}">${i+1}</span>
           <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(j.card||'')}${j.card&&(j.customer||j.desc)?' · ':''}${esc(j.customer||j.desc||'')}</span>
-          <span class="hint">${j.contact ? 'Contact: ' + esc(j.contact) + ' · ' : ''}Odometer ${fmtKm(j.odo)} km</span></span>
-          <span class="big" style="font-size:22px">${fmtH(Number(j.hrs)||0)}<span style="font-size:14px;color:var(--muted)"> h</span></span></button>`).join('')
+          <span class="hint">${j.contact ? 'Contact: ' + esc(j.contact) + ' · ' : ''}Odometer ${fmtKm(j.odo)} km</span>
+          ${j.done ? '<span class="pill ok" style="align-self:flex-start">Completed</span>' : ''}</span>
+          <span class="big" style="font-size:22px">${fmtH(Number(j.hrs)||0)}<span style="font-size:14px;color:var(--muted)"> h</span></span></button>
+        <button type="button" data-done="${i}" aria-pressed="${!!j.done}" aria-label="${j.done ? 'Completed – tap to undo' : 'Mark job ' + (i+1) + ' completed'}"
+          style="width:64px;flex-shrink:0;border-radius:12px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;${j.done ? 'background:var(--A);color:#fff;border:2px solid var(--A)' : 'background:#fff;color:var(--navyDeep);border:2px dashed var(--field)'}">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>${j.done ? 'Done' : 'Finish'}</button>
+        </div>`).join('')
         : `<div class="empty">No jobs yet. Tap <b>Add job</b> when you arrive at your first job.</div>`}
       <div class="grid2" style="gap:10px">
         <div class="stat"><span class="k">Job card time</span><span class="big">${fmtH(jobHours(sh))} h</span></div>
@@ -450,7 +456,7 @@
     const ro = locked ? 'readonly aria-readonly="true" style="background:#EEF2F7;color:var(--label);border-style:dashed"' : '';
     const prevIdx = editing ? state.jobIdx - 1 : sh.jobs.length - 1;
     const prevOdo = prevIdx >= 0 ? Number(sh.jobs[prevIdx].odo) : Number(sh.firstOdo);
-    state._hrs = Number(j.hrs) || 0;
+    state._hrs = Number(j.hrs) || 0; state._done = !!j.done;
     const n = editing ? state.jobIdx + 1 : sh.jobs.length + 1;
     return headerBack((editing?'EDIT JOB ':'ADD JOB ') + n, 'today') + `<main>
       <form id="jobForm" style="display:flex;flex-direction:column;gap:18px">
@@ -466,6 +472,11 @@
             <div class="val" id="hrsVal" aria-live="polite">${fmtH(state._hrs)} h</div>
             <button type="button" id="plus" aria-label="More time">+</button></div>
           <span class="hint">Steps of 0.5 h</span></div>
+        <div class="field"><span class="lab" id="doneLab">Job status</span>
+          <div class="seg" role="group" aria-labelledby="doneLab" style="width:100%">
+            <button type="button" id="stOpen" aria-pressed="${!j.done}" style="flex:1;width:auto;height:48px;font-size:15px;${!j.done ? 'background:var(--yellow);border-color:var(--yellowDark);color:var(--navyDeep)' : ''}">Not finished</button>
+            <button type="button" id="stDone" aria-pressed="${!!j.done}" style="flex:1;width:auto;height:48px;font-size:15px;${j.done ? 'background:var(--A);border-color:var(--A);color:#fff' : ''}">✓ Completed</button>
+          </div></div>
         <div class="field"><label for="notes">Notes (optional)</label><textarea id="notes" rows="3">${esc(j.notes)}</textarea></div>
         <div id="jobErr" class="warn" role="alert"></div>
         <button class="btn primary" type="button" data-submit>${editing?'Save changes':'Save job'}</button>
@@ -514,6 +525,13 @@
   }
 
   // ---------- schedule ----------
+  // a scheduled job shows "Completed" once its time-sheet job is ticked off
+  function syncSchedDone(job){
+    const x = job && job.sched && state.schedule[job.sched]; if (!x) return;
+    if (!!x.done === !!job.done) return;
+    if (job.done) x.done = true; else delete x.done;
+    saveSched(job.sched);
+  }
   function schedLabel(x){ return [x.card, x.customer].filter(Boolean).join(' · ') || 'Job'; }
   function schedNote(key){
     const n = schedFor(key).filter(x => !x.addedTo).length; if (!n) return '';
@@ -548,7 +566,7 @@
               <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(schedLabel(x))}</span>
               ${x.contact ? `<span class="hint" style="color:var(--label)">Contact: ${esc(x.contact)}</span>` : ''}
               ${x.notes ? `<span class="hint">${esc(x.notes)}</span>` : ''}</span>
-              ${x.addedTo ? '<span class="pill ok">On sheet</span>' : ''}</button>`).join('')
+              ${x.done ? '<span class="pill ok">✓ Completed</span>' : x.addedTo ? '<span class="pill warn">On sheet</span>' : ''}</button>`).join('')
             : '<span class="hint">Nothing planned</span>'}
         </section>`; }).join('')}
       <button class="btn primary" data-schedadd="${thisWeek ? tk : ws}">${ICON.plus} Schedule a job</button>
@@ -729,7 +747,7 @@
       </div>
       <div class="card" style="display:flex;flex-direction:column;gap:8px">
         <div class="hint">Odometer ${fmtKm(s.firstOdo)} → ${fmtKm(last)} km${s.clockIn?` · ${esc(s.clockIn)}–${esc(s.clockOut||'')}`:''}</div>
-        ${(s.jobs||[]).map((j,i)=>`<div style="display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:8px"><span class="num-badge" style="width:26px;height:26px;font-size:12px">${i+1}</span><span style="flex:1;font-size:14px">${esc([j.card,j.customer||j.desc].filter(Boolean).join(' · '))}<br><span class="hint">${j.contact?'Contact: '+esc(j.contact)+' · ':''}odo ${fmtKm(j.odo)} km${j.notes?' · '+esc(j.notes):''}</span></span><b>${fmtH(Number(j.hrs)||0)} h</b></div>`).join('') || '<div class="hint">No jobs</div>'}
+        ${(s.jobs||[]).map((j,i)=>`<div style="display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:8px"><span class="num-badge" style="width:26px;height:26px;font-size:12px">${i+1}</span><span style="flex:1;font-size:14px">${esc([j.card,j.customer||j.desc].filter(Boolean).join(' · '))}<br><span class="hint">${j.done?'<b style="color:var(--A)">✓ Completed</b> · ':'Not finished · '}${j.contact?'Contact: '+esc(j.contact)+' · ':''}odo ${fmtKm(j.odo)} km${j.notes?' · '+esc(j.notes):''}</span></span><b>${fmtH(Number(j.hrs)||0)} h</b></div>`).join('') || '<div class="hint">No jobs</div>'}
       </div>
       <div class="card" style="display:flex;flex-direction:column;gap:6px">
         <div class="k">Vehicle condition</div>
@@ -747,7 +765,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 12 Nov</span>
+        <span class="hint">App version 13 Nov</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -829,7 +847,11 @@
         doc.setLineWidth(0.3); doc.line(L, ry, R, ry); doc.line(L, ry + band, R, ry + band);
         doc.setFont('helvetica','normal'); doc.setFontSize(9);
         doc.text('JOB:', c1 + 2, ry + band - 1.6);
-        if (j && j.card){ doc.setFont('helvetica','bold'); doc.text(cut(j.card, c2 - c1 - 14), c1 + 11, ry + band - 1.6); doc.setFont('helvetica','normal'); } doc.text('HRS:', c2 + 2, ry + band - 1.6); doc.text('ODOMETER', (c3 + R) / 2, ry + band - 1.6, { align:'center' });
+        if (j && j.card){ doc.setFont('helvetica','bold'); doc.text(cut(j.card, c2 - c1 - 40), c1 + 11, ry + band - 1.6); doc.setFont('helvetica','normal'); }
+        if (j){ doc.setFont('helvetica','bold'); doc.setFontSize(8);
+          if (j.done){ doc.setTextColor(21, 112, 61); doc.text('COMPLETED', c2 - 2, ry + band - 1.6, { align:'right' }); }
+          else { doc.setTextColor(138, 90, 0); doc.text('NOT FINISHED', c2 - 2, ry + band - 1.6, { align:'right' }); }
+          doc.setTextColor(0, 0, 0); doc.setFont('helvetica','normal'); doc.setFontSize(9); } doc.text('HRS:', c2 + 2, ry + band - 1.6); doc.text('ODOMETER', (c3 + R) / 2, ry + band - 1.6, { align:'center' });
         if (j){
           const vy = ry + band + (rowH - band) / 2 + 1.5;
           doc.setFont('helvetica','bold'); doc.setFontSize(rowH < 12 ? 9 : 10.5);
@@ -924,6 +946,20 @@
       } catch(e){ err.textContent = authMessage(e); btn.disabled = false; btn.textContent = old; }
     };
 
+    app.querySelectorAll('[data-done]').forEach(b => b.onclick = () => {
+      const k = curKey(); const sh = state.sheets[k]; const j = sh && sh.jobs[Number(b.dataset.done)]; if (!j) return;
+      j.done = !j.done; if (j.done) j.doneAt = new Date().toISOString(); else delete j.doneAt;
+      syncSchedDone(j); saveSheet(k); toast(j.done ? 'Job ' + (Number(b.dataset.done) + 1) + ' completed' : 'Marked as not finished'); render();
+    });
+    const stO = document.getElementById('stOpen'), stD = document.getElementById('stDone');
+    if (stO && stD){
+      const paint = () => {
+        stO.setAttribute('aria-pressed', String(!state._done)); stD.setAttribute('aria-pressed', String(!!state._done));
+        stO.style.cssText = 'flex:1;width:auto;height:48px;font-size:15px;' + (!state._done ? 'background:var(--yellow);border-color:var(--yellowDark);color:var(--navyDeep)' : '');
+        stD.style.cssText = 'flex:1;width:auto;height:48px;font-size:15px;' + (state._done ? 'background:var(--A);border-color:var(--A);color:#fff' : '');
+      };
+      stO.onclick = () => { state._done = false; paint(); }; stD.onclick = () => { state._done = true; paint(); };
+    }
     app.querySelectorAll('[data-schedto]').forEach(b => b.onclick = () => go('job', { jobIdx:null, prefill:b.dataset.schedto }));
     app.querySelectorAll('[data-week]').forEach(b => b.onclick = () => {
       const n = Number(b.dataset.week); const cur = state.schedWeek || weekStart(todayKey());
@@ -941,7 +977,7 @@
         const d = state.schedule[id].date; delete state.schedule[id]; deleteSchedRemote(id); toast('Removed from schedule'); back(d);
       });
       const und = document.getElementById('sUndone');
-      if (und) und.onclick = () => { const x = state.schedule[id]; delete x.addedTo; saveSched(id); toast('Marked as not done'); render(); };
+      if (und) und.onclick = () => { const x = state.schedule[id]; delete x.addedTo; delete x.done; saveSched(id); toast('Marked as not done'); render(); };
       schf.onsubmit = () => {
         const err = document.getElementById('schedErr');
         const date = schf.sDate.value, time = schf.sTime.value, card = schf.sCard.value.trim(), customer = schf.sCust.value.trim(), contact = schf.sContact.value.trim(), notes = schf.sNotes.value.trim();
@@ -1071,7 +1107,7 @@
       const del = document.getElementById('delJob');
       if (del) del.onclick = () => confirmBox('Delete job ' + (state.jobIdx+1) + '?', 'Delete job', () => {
         const k = curKey(); const gone = state.sheets[k].jobs.splice(state.jobIdx,1)[0];
-        if (gone && gone.sched && state.schedule[gone.sched]){ delete state.schedule[gone.sched].addedTo; saveSched(gone.sched); }
+        if (gone && gone.sched && state.schedule[gone.sched]){ delete state.schedule[gone.sched].addedTo; delete state.schedule[gone.sched].done; saveSched(gone.sched); }
         saveSheet(k); go('today', { jobIdx:null });
       });
       jf.onsubmit = e => {
@@ -1081,15 +1117,19 @@
         if (!jf.card.value.trim() && !jf.customer.value.trim()){ err.textContent = 'Add a job card no. or a customer.'; return; }
         if (isNaN(odo)){ err.textContent = 'Enter the odometer reading as a number.'; return; }
         if (odo < Number(sh.firstOdo)){ err.textContent = 'That reading is lower than this morning\'s first reading (' + fmtKm(sh.firstOdo) + ' km). Check the number.'; return; }
-        const job = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), odo, hrs: state._hrs, notes: jf.notes.value.trim() };
+        const job = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), odo, hrs: state._hrs, notes: jf.notes.value.trim(), done: !!state._done };
         if (state.jobIdx != null){ const was = sh.jobs[state.jobIdx];
           if (was && was.sched){ Object.assign(job, { sched: was.sched, card: was.card || '', customer: was.customer || '', contact: was.contact || '' }); }
+          if (was && was.done && job.done) job.doneAt = was.doneAt;
           sh.jobs[state.jobIdx] = job; }
         else {
           const sid = state.prefill && state.schedule[state.prefill] ? state.prefill : null;
           if (sid){ const src = state.schedule[sid]; Object.assign(job, { sched: sid, card: src.card || '', customer: src.customer || '', contact: src.contact || '' }); src.addedTo = k; saveSched(sid); }
           sh.jobs.push(job);
         }
+        if (job.done && !job.doneAt) job.doneAt = new Date().toISOString();
+        if (!job.done) delete job.doneAt;
+        syncSchedDone(job);
         saveSheet(k); toast('Job saved'); go('today', { jobIdx:null, prefill:null });
       };
     }
