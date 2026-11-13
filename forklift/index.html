@@ -451,8 +451,10 @@ function nextSameJob(){
 }
 function jobsMap(){try{return JSON.parse(load(JOBKEY)||"{}")}catch(e){return{}}}
 // next free suffix for a job; afterCurrent=true also counts the doc no on screen as used
-function nextDoc(job,afterCurrent){const m=jobsMap();let n=m[job]||0;if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===job)n=Math.max(n,cur.n);}return "F"+job+"."+(n+1);}
-function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec((d||"").trim().replace(/^F(?=.+\.\d+$)/,""));return m?{job:m[1],n:+m[2]}:null;}
+// job card C124926 -> report F124926.1, certificate C124926/1 (the job card's own C is left off)
+function jobCore(j){return String(j||"").trim().replace(/^C(?=\d)/i,"");}
+function nextDoc(job,afterCurrent){const core=jobCore(job),m=jobsMap();let n=Math.max(m[core]||0,m[job]||0);if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===core)n=Math.max(n,cur.n);}return "F"+core+"."+(n+1);}
+function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec((d||"").trim().replace(/^F(?=.+\.\d+$)/,""));return m?{job:jobCore(m[1]),n:+m[2]}:null;}
 function recordDoc(){const d=parseDoc(state.f.docno);if(!d)return;const m=jobsMap();m[d.job]=Math.max(m[d.job]||0,d.n);store(JOBKEY,JSON.stringify(m));}
 $("jobno").addEventListener("input",()=>{const j=$("jobno").value.trim();$("docno").value=j?nextDoc(j):"";save();});
 
@@ -711,16 +713,20 @@ function toEquipment(st){
 }
 // ---- one-time: old report numbers (7001.1) get the F prefix (F7001.1), also on equipment lists ----
 const NOF=/^(?!F)(.+\.\d+)$/i;
+function fixNo(no){const t=String(no||"").trim();if(!/\.\d+$/.test(t))return t;if(/^F/i.test(t))return "F"+jobCore(t.slice(1));return "F"+jobCore(t);}
+function fixCert(c){return String(c||"").replace(/^CC(?=\d)/i,"C");}
+const needsFix=no=>{const t=String(no||"").trim();return !!t&&fixNo(t)!==t;};
 async function fixEquipmentNos(){let eq={};try{eq=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){return 0;}let n=0;
   if(cloudOK()){try{(await window.Cloud.listKind("equipment")).forEach(d=>{const r=d.data;if(!r||!r.id)return;delete r.kind;const l=eq[r.id];if(!l||(r.savedAt||0)>(l.savedAt||0))eq[r.id]=r;});}catch(e){}}
-  Object.values(eq).forEach(l=>{let c=false;(l.rows||[]).forEach(x=>{if(x.report&&x.report.no&&NOF.test(String(x.report.no).trim())){x.report.no="F"+String(x.report.no).trim();c=true;}
-    if(x.reason&&/^See report (?!F)/.test(x.reason)){x.reason=x.reason.replace(/^See report /,"See report F");c=true;}});
+  Object.values(eq).forEach(l=>{let c=false;(l.rows||[]).forEach(x=>{if(x.report&&x.report.no&&needsFix(x.report.no)){x.report.no=fixNo(x.report.no);c=true;}
+    if(x.report&&x.report.cert&&fixCert(x.report.cert)!==x.report.cert){x.report.cert=fixCert(x.report.cert);c=true;}
+    if(x.reason){const nr=x.reason.replace(/^See report (\S+)/,(m,no)=>"See report "+fixNo(no));if(nr!==x.reason){x.reason=nr;c=true;}}});
     if(c){n++;l.savedAt=Date.now();if(cloudOK())window.Cloud.putItem("eq-"+String(l.id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));}});
   store("bco-equipment",JSON.stringify(eq));return n;}
 async function renumberOld(){let n=0;
-  try{const all=await RDB.all();for(const r of all){const d=String((r.state&&r.state.f&&r.state.f.docno)||"").trim();if(d&&NOF.test(d)){r.state.f.docno="F"+d;r.savedAt=Date.now();await RDB.put(r);n++;}}}catch(e){console.error(e);}
-  const cur=String(state.f.docno||"").trim();if(cur&&NOF.test(cur)){state.f.docno="F"+cur;applyState();save();}
-  await fixEquipmentNos();if(n){updRepCount();if($("repPanel").classList.contains("show"))showReports();toast(n+" old report"+(n>1?"s":"")+" renumbered with F");}}
+  try{const all=await RDB.all();for(const r of all){const d=String((r.state&&r.state.f&&r.state.f.docno)||"").trim();if(d&&needsFix(d)){r.state.f.docno=fixNo(d);r.savedAt=Date.now();await RDB.put(r);n++;}}}catch(e){console.error(e);}
+  const cur=String(state.f.docno||"").trim();if(cur&&needsFix(cur)){state.f.docno=fixNo(cur);applyState();save();}
+  await fixEquipmentNos();if(n){updRepCount();if($("repPanel").classList.contains("show"))showReports();toast(n+" report number"+(n>1?"s":"")+" updated");}}
 async function saveReport(st){if(!st._rid)st._rid=st.f.docno||("r"+Date.now());const snap=JSON.parse(JSON.stringify(st));
   await RDB.put({id:st._rid,savedAt:Date.now(),date:st.f.date||today(),job:(st.f.jobno||"").trim(),state:snap});save();updRepCount();}
 async function updRepCount(){const a=await RDB.all();$("repCount").textContent=a.length;$("repCount").style.display=a.length?"":"none";}
@@ -831,7 +837,7 @@ $("repClose").onclick=()=>$("repPanel").classList.remove("show");
 document.querySelectorAll("#repScope button").forEach(b=>b.onclick=()=>{repScope=b.dataset.sc;showReports();});
 // init
 (function(){const y=new Date().getFullYear(),sel=$("prevLoad");sel.innerHTML='<option value="">Select year…</option>'+Array.from({length:21},(_,k)=>`<option>${y-k}</option>`).join("");})();
-function syncDoc(){const j=$("jobno").value.trim(),d=parseDoc($("docno").value);if(!j){$("docno").value="";}else if(!d||d.job!==j){$("docno").value=nextDoc(j);}}
+function syncDoc(){const j=$("jobno").value.trim(),d=parseDoc($("docno").value);if(!j){$("docno").value="";}else if(!d||d.job!==jobCore(j)){$("docno").value=nextDoc(j);}}
 $("logoImg").src=LOGO;
 build();
 if(!("sigUt" in state.sig))state.sig.sigUt=null;["sigEng","sigCust","sigUt"].forEach(setupPad);
