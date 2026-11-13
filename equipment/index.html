@@ -31,6 +31,7 @@
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .field{display:flex;flex-direction:column;gap:5px;min-width:0}
   .field label{font-size:12.5px;font-weight:600;color:var(--label)}
+  .field select{height:48px;border-radius:10px;border:1.5px solid var(--field);background:#fff;padding:0 10px;font-size:16px;font-family:inherit;color:var(--ink);width:100%;min-width:0;font-weight:600}
   .field input{height:48px;border-radius:10px;border:1.5px solid var(--field);background:#fff;padding:0 12px;font-size:16px;font-family:inherit;color:var(--ink);width:100%;min-width:0}
   .field input[readonly]{background:#EEF2F7;border-style:dashed;color:var(--label)}
   .hint{font-size:12px;color:var(--muted)} .warn{font-size:12.5px;color:var(--bad);font-weight:600}
@@ -67,7 +68,7 @@
 </head>
 <body>
 <div class="app" id="app"><main><div class="empty">Loading…</div></main></div>
-<datalist id="descList"></datalist><datalist id="makeList"></datalist>
+<datalist id="descList"></datalist>
 <script>
 (function(){
   'use strict';
@@ -92,6 +93,13 @@
   const S = { lists:{}, view:'list', cur:null, active:null, profile:null, cust:null, q:'' };
   function lsLoad(){ try { S.lists = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ S.lists = {}; } }
   function lsSave(){ try { localStorage.setItem(LKEY, JSON.stringify(S.lists)); } catch(e){} }
+  let MAKES = (() => { try { return JSON.parse(localStorage.getItem('bco-eq-makes') || '[]'); } catch(e){ return []; } })();
+  function saveMakes(){ try { localStorage.setItem('bco-eq-makes', JSON.stringify(MAKES)); } catch(e){} if (cloudOK()) Cloud.putItem('eq-makes', { kind:'eqmakes', list:MAKES }); }
+  function makesList(){
+    const set = new Set(['Blue Cranes', ...MAKES]); Object.values(S.lists).forEach(l => (l.rows || []).forEach(r => { if (r.make) set.add(String(r.make).trim()); }));
+    set.delete('Unknown'); set.delete(''); return ['Unknown', ...[...set].sort((a, b) => a.localeCompare(b))];
+  }
+  function addMake(v){ v = String(v || '').trim(); if (!v) return ''; const hit = makesList().find(x => x.toLowerCase() === v.toLowerCase()); if (hit) return hit; MAKES.push(v); saveMakes(); return v; }
   const PH = {};
   function photoGet(pid){
     if (PH[pid]) return Promise.resolve(PH[pid]);
@@ -117,6 +125,7 @@
   async function syncCloud(){
     if (!cloudOK()) return;
     try {
+      try { const mk = await Cloud.getItem('eq-makes'); if (mk && Array.isArray(mk.list)){ const before = MAKES.length; MAKES = [...new Set([...mk.list, ...MAKES])]; try { localStorage.setItem('bco-eq-makes', JSON.stringify(MAKES)); } catch(e){} if (MAKES.length > mk.list.length) saveMakes(); if (MAKES.length !== before && S.view === 'list') render(); } } catch(e){}
       const remote = await Cloud.listKind('equipment'); const seen = {};
       remote.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; seen[r.id] = 1; const l = S.lists[r.id]; if (!l || (r.savedAt || 0) > (l.savedAt || 0)) S.lists[r.id] = r; });
       Object.values(S.lists).forEach(l => { if (!seen[l.id]) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); });
@@ -144,10 +153,9 @@
   }
   function refreshSuggestions(){
     const d = new Set(['Chain block','Lever hoist','Electric chain hoist','Wire rope hoist','Beam trolley','Beam clamp','Shackle','Web sling','Round sling','Chain sling','Wire rope sling','Spreader beam','Lifting clamp','Eye bolt','Gantry crane','Overhead crane','Jib crane','Pallet jack','Engine crane']);
-    const m = new Set(['Yale','Kito','Toyota','Blue Cranes','Crosby','Columbus McKinnon','Demag','Stahl','Konecranes','Elephant','Vital']);
-    Object.values(S.lists).forEach(l => (l.rows || []).forEach(r => { if (r.desc) d.add(r.desc); if (r.make) m.add(r.make); }));
+    Object.values(S.lists).forEach(l => (l.rows || []).forEach(r => { if (r.desc) d.add(r.desc); }));
     document.getElementById('descList').innerHTML = [...d].sort().map(x => `<option value="${esc(x)}">`).join('');
-    m.delete('Unknown'); document.getElementById('makeList').innerHTML = ['Unknown', ...[...m].sort()].map(x => `<option value="${esc(x)}">`).join('');
+
   }
 
   // ---------- views ----------
@@ -156,7 +164,7 @@
 
   function vList(){
     const l = S.cur; const inv = inventory()[norm(l.customer)]; const known = inv ? inv.items : {};
-    const dupes = {}; (l.rows || []).forEach(r => { const k = norm(r.serial); if (k) dupes[k] = (dupes[k] || 0) + 1; });
+    const MK = makesList(); const dupes = {}; (l.rows || []).forEach(r => { const k = norm(r.serial); if (k) dupes[k] = (dupes[k] || 0) + 1; });
     return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), 'Equipment list', backBtn('../timesheet/', 'Back to the time sheet'),
         `<button class="ib" id="toInv" aria-label="Customer inventory">${ICON.list}</button>`) + `<main>
       <section class="card">
@@ -168,7 +176,7 @@
         <div class="field"><label for="fLoc">Location</label><input id="fLoc" value="${esc(l.location)}" placeholder="e.g. Workshop, Cellar 2, Yard"></div>
       </section>
       <div class="row" style="justify-content:space-between;padding:2px"><h2>Equipment</h2><span class="hint">${(l.rows||[]).length} ${(l.rows||[]).length === 1 ? 'item' : 'items'}</span></div>
-      ${(l.rows || []).map((r, i) => { const k = norm(r.serial); const seen = k && known[k] && known[k].job !== l.job;
+      ${(l.rows || []).map((r, i) => { const k = norm(r.serial); if (r.make && !MK.includes(r.make)) MK.push(r.make); const seen = k && known[k] && known[k].job !== l.job;
         return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}" data-i="${i}">
           <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters"></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
@@ -176,8 +184,10 @@
           ${seen ? `<span class="hint" style="color:var(--ok)">Already in ${esc(l.customer)}'s inventory (job ${esc(known[k].job)}, ${esc(niceDate(known[k].date))}).</span>` : ''}
           <div class="field"><label for="d${i}">Description</label><input id="d${i}" data-f="desc" value="${esc(r.desc)}" list="descList" placeholder="e.g. Chain block"></div>
           <div class="grid2">
-            <div class="field"><label for="m${i}">Manufacturer</label><input id="m${i}" data-f="make" value="${esc(r.make)}" list="makeList" placeholder="Tap to choose or type">
-              ${r.make ? '' : `<button type="button" data-unknown="${i}" style="align-self:flex-start;border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:4px 0;cursor:pointer">Unknown</button>`}</div>
+            <div class="field"><label for="m${i}">Manufacturer</label><select id="m${i}" data-make="${i}">
+                ${r.make ? '' : '<option value="" selected disabled>Choose…</option>'}${MK.map(x => `<option value="${esc(x)}" ${x === r.make ? 'selected' : ''}>${esc(x)}</option>`).join('')}
+                <option value="__new">+ Add new manufacturer</option></select>
+              <div id="mn${i}" style="display:none;gap:6px;flex-direction:column"><input id="mni${i}" placeholder="New manufacturer"><button type="button" class="btn secondary small" data-addmake="${i}" style="width:100%">Add to list</button></div></div>
             <div class="field"><label for="w${i}">SWL (kg)</label><div style="position:relative"><input id="w${i}" data-f="swl" value="${esc(r.swl)}" inputmode="decimal" placeholder="e.g. 2000" style="padding-right:40px"><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">kg</span></div></div>
           </div>
           <div class="field"><span style="font-size:12.5px;font-weight:600;color:var(--label)" id="stl${i}">Condition</span>
@@ -258,7 +268,12 @@
         l.rows[i][inp.dataset.f] = v; saveList(l); };
       if (inp.dataset.f === 'serial') inp.onchange = () => { inp.value = inp.value.toUpperCase(); render(); const n = document.getElementById('d' + inp.closest('.item').dataset.i); if (n && !n.value) n.focus(); };
     });
-    app.querySelectorAll('[data-unknown]').forEach(b => b.onclick = () => { const i = Number(b.dataset.unknown); l.rows[i].make = 'Unknown'; saveList(l); render(); const n = document.getElementById('w' + i); if (n) n.focus(); });
+    app.querySelectorAll('select[data-make]').forEach(sel => sel.onchange = () => { const i = Number(sel.dataset.make); const box = document.getElementById('mn' + i);
+      if (sel.value === '__new'){ box.style.display = 'flex'; document.getElementById('mni' + i).focus(); return; }
+      box.style.display = 'none'; l.rows[i].make = sel.value; saveList(l); const n = document.getElementById('w' + i); if (n && !n.value) n.focus(); });
+    app.querySelectorAll('[data-addmake]').forEach(b => { const i = Number(b.dataset.addmake); const inp = document.getElementById('mni' + i);
+      const add = () => { const v = addMake(inp.value); if (!v){ inp.focus(); return; } l.rows[i].make = v; saveList(l); render(); toast(v + ' added to the list'); const n = document.getElementById('w' + i); if (n && !n.value) n.focus(); };
+      b.onclick = add; inp.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } }; });
     const addRow = r => { l.rows = l.rows || []; l.rows.push(r); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
     $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'' });
     const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'' }); };
