@@ -55,6 +55,13 @@
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
   .modal{background:#fff;border-radius:16px 16px 0 0;padding:20px 16px calc(20px + env(safe-area-inset-bottom));width:100%;max-width:560px;display:flex;flex-direction:column;gap:12px}
   .toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--navyDeep);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:600;z-index:30;max-width:90%}
+  .st{flex:1;height:46px;border-radius:10px;border:2px solid var(--field);background:#fff;color:var(--muted);font-weight:800;font-size:15px;font-family:inherit;cursor:pointer}
+  .st.on-safe{background:var(--ok);border-color:var(--ok);color:#fff}
+  .st.on-unsafe{background:var(--bad);border-color:var(--bad);color:#fff}
+  .item.unsafe{border:2px solid var(--bad);background:#FDF3F2}
+  .field textarea{border-radius:10px;border:1.5px solid var(--field);background:#fff;padding:10px 12px;font-size:16px;font-family:inherit;color:var(--ink);width:100%;resize:vertical}
+  .photo{width:100%;max-height:260px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#fff}
+  .pill.bad{background:#F8E1DE;color:var(--bad)} .pill.ok{background:#E3F1E8;color:var(--ok)}
   input[type=search]{height:46px;border-radius:10px;border:1.5px solid var(--field);padding:0 12px;font-size:16px;font-family:inherit;width:100%}
 </style>
 </head>
@@ -69,7 +76,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
   const niceDate = k => { if (!k) return ''; const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d).toLocaleDateString('en-ZA', { day:'numeric', month:'short', year:'numeric' }); };
-  const swlText = v => { v = String(v == null ? '' : v).trim(); return /^\d+(\.\d+)?$/.test(v) ? Number(v).toLocaleString('en-ZA').replace(/,/g, ' ') + ' kg' : v; };
+  const swlText = v => { v = String(v == null ? '' : v).trim(); if (!/^\d+(\.\d+)?$/.test(v)) return v; const [a, b] = v.split('.'); return String(Number(a)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (b ? '.' + b : '') + ' kg'; };
   const norm = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 2600); }
   function modal(html){ const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`; document.body.appendChild(bg); return bg; }
@@ -85,6 +92,20 @@
   const S = { lists:{}, view:'list', cur:null, active:null, profile:null, cust:null, q:'' };
   function lsLoad(){ try { S.lists = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ S.lists = {}; } }
   function lsSave(){ try { localStorage.setItem(LKEY, JSON.stringify(S.lists)); } catch(e){} }
+  const PH = {};
+  function photoGet(pid){
+    if (PH[pid]) return Promise.resolve(PH[pid]);
+    try { const v = localStorage.getItem('bco-eqp-' + pid); if (v){ PH[pid] = v; return Promise.resolve(v); } } catch(e){}
+    if (!cloudOK()) return Promise.resolve(null);
+    return Cloud.getItem('eqp-' + pid).then(d => { if (d && d.data){ PH[pid] = d.data; try { localStorage.setItem('bco-eqp-' + pid, d.data); } catch(e){} return d.data; } return null; }).catch(() => null);
+  }
+  function photoPut(pid, data){ PH[pid] = data; try { localStorage.setItem('bco-eqp-' + pid, data); } catch(e){} if (cloudOK()) Cloud.putItem('eqp-' + pid, { kind:'eqphoto', data }); }
+  function photoDel(pid){ delete PH[pid]; try { localStorage.removeItem('bco-eqp-' + pid); } catch(e){} if (cloudOK()) Cloud.deleteItem('eqp-' + pid); }
+  // shrink a camera photo so it saves quickly (about 100–200 KB)
+  function shrinkPhoto(file){ return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = () => rej(new Error('read')); fr.onload = () => { const im = new Image(); im.onerror = () => rej(new Error('decode'));
+    im.onload = () => { const sc = Math.min(1, 1280 / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.7)); }; im.src = fr.result; }; fr.readAsDataURL(file); }); }
+  const rowId = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const cloudOK = () => !!(window.Cloud && Cloud.user && Cloud.user());
   const docId = id => 'eq-' + String(id).replace(/\//g, '_');
   let saveT;
@@ -148,7 +169,7 @@
       </section>
       <div class="row" style="justify-content:space-between;padding:2px"><h2>Equipment</h2><span class="hint">${(l.rows||[]).length} ${(l.rows||[]).length === 1 ? 'item' : 'items'}</span></div>
       ${(l.rows || []).map((r, i) => { const k = norm(r.serial); const seen = k && known[k] && known[k].job !== l.job;
-        return `<div class="item" data-i="${i}">
+        return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}" data-i="${i}">
           <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters"></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
           ${dupes[k] > 1 ? '<span class="warn">This serial nr is on the list more than once.</span>' : ''}
@@ -158,7 +179,16 @@
             <div class="field"><label for="m${i}">Manufacturer</label><input id="m${i}" data-f="make" value="${esc(r.make)}" list="makeList" placeholder="Tap to choose or type">
               ${r.make ? '' : `<button type="button" data-unknown="${i}" style="align-self:flex-start;border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:4px 0;cursor:pointer">Unknown</button>`}</div>
             <div class="field"><label for="w${i}">SWL (kg)</label><div style="position:relative"><input id="w${i}" data-f="swl" value="${esc(r.swl)}" inputmode="decimal" placeholder="e.g. 2000" style="padding-right:40px"><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">kg</span></div></div>
-          </div></div>`; }).join('') || '<div class="empty">No equipment yet. Tap <b>Add item</b> for each piece of equipment.</div>'}
+          </div>
+          <div class="field"><span style="font-size:12.5px;font-weight:600;color:var(--label)" id="stl${i}">Condition</span>
+            <div class="row" role="group" aria-labelledby="stl${i}">
+              <button type="button" class="st${r.status === 'SAFE' ? ' on-safe' : ''}" data-st="${i}" data-v="SAFE" aria-pressed="${r.status === 'SAFE'}">✓ Safe</button>
+              <button type="button" class="st${r.status === 'UNSAFE' ? ' on-unsafe' : ''}" data-st="${i}" data-v="UNSAFE" aria-pressed="${r.status === 'UNSAFE'}">✕ Unsafe</button></div></div>
+          ${r.status === 'UNSAFE' ? `<div class="field"><label for="u${i}" style="color:var(--bad)">Why is it unsafe? (required)</label><textarea id="u${i}" data-f="reason" rows="2" placeholder="e.g. Hook latch missing, chain stretched">${esc(r.reason)}</textarea></div>
+            ${r.photo ? `<img class="photo" id="ph${i}" data-pid="${esc(r.photo)}" alt="Photo of the defect on item ${i+1}">` : ''}
+            <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label>
+              ${r.photo ? `<button type="button" class="btn secondary small" data-nophoto="${i}" style="color:var(--bad);border-color:var(--bad)">Remove photo</button>` : ''}</div>` : ''}
+          </div>`; }).join('') || '<div class="empty">No equipment yet. Tap <b>Add item</b> for each piece of equipment.</div>'}
       <div class="row">
         <button class="btn primary" id="add">${ICON.plus} Add item</button>
         ${(l.rows || []).length ? `<button class="btn secondary" id="copy" style="width:auto;padding:0 14px">Copy last</button>` : ''}
@@ -188,7 +218,8 @@
     return head('Inventory', c.name, `<button class="ib" id="toInv" aria-label="Back to inventory">${ICON.back}</button>`) + `<main>
       <section class="card" style="gap:6px;padding:10px 12px">
         <table class="inv"><thead><tr><th>Serial nr</th><th>Description</th><th>Make</th><th>SWL</th></tr></thead><tbody>
-          ${items.map(r => `<tr><td style="font-weight:700">${esc(r.serial) || '–'}</td><td>${esc(r.desc)}${r.location ? `<div class="hint">${esc(r.location)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(swlText(r.swl))}</td></tr>`).join('')}
+          ${items.map(r => `<tr><td style="font-weight:700">${esc(r.serial) || '–'}</td><td>${esc(r.desc)}${r.location ? `<div class="hint">${esc(r.location)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(swlText(r.swl))}${r.status ? `<div><span class="pill ${r.status === 'SAFE' ? 'ok' : 'bad'}">${r.status === 'SAFE' ? 'Safe' : 'Unsafe'}</span></div>` : ''}</td></tr>
+            ${r.status === 'UNSAFE' && r.reason ? `<tr><td colspan="4" style="color:var(--bad);font-size:12.5px;padding-top:0">Unsafe: ${esc(r.reason)}</td></tr>` : ''}`).join('')}
         </tbody></table>
       </section>
       <h2 style="padding:2px">Equipment lists</h2>
@@ -221,7 +252,7 @@
     if (S.view !== 'list') return;
     const l = S.cur;
     $('fLoc').oninput = e => { l.location = e.target.value; saveList(l); };
-    app.querySelectorAll('.item input[data-f]').forEach(inp => {
+    app.querySelectorAll('.item [data-f]').forEach(inp => {
       inp.oninput = () => { const i = Number(inp.closest('.item').dataset.i); let v = inp.value; if (inp.dataset.f === 'serial') v = v.toUpperCase();
         if (inp.dataset.f === 'swl'){ const c = v.replace(/[^\d.,]/g, '').replace(',', '.'); if (c !== v){ v = c; inp.value = c; } }
         l.rows[i][inp.dataset.f] = v; saveList(l); };
@@ -229,12 +260,30 @@
     });
     app.querySelectorAll('[data-unknown]').forEach(b => b.onclick = () => { const i = Number(b.dataset.unknown); l.rows[i].make = 'Unknown'; saveList(l); render(); const n = document.getElementById('w' + i); if (n) n.focus(); });
     const addRow = r => { l.rows = l.rows || []; l.rows.push(r); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
-    $('add').onclick = () => addRow({ serial:'', desc:'', make:'', swl:'' });
-    const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ serial:'', desc:p.desc, make:p.make, swl:p.swl }); };
+    $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'' });
+    const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'' }); };
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = Number(b.dataset.del); const r = l.rows[i];
       const go = () => { l.rows.splice(i, 1); saveList(l); render(); };
       if (r.serial || r.desc) confirmBox('Remove item ' + (i + 1) + (r.serial ? ' (' + r.serial + ')' : '') + ' from this list?', 'Remove', go); else go(); });
-    $('pdf').onclick = () => { saveList(l, true); listPdf(l, $('pdf')); };
+    app.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { const i = Number(b.dataset.st); const r = l.rows[i]; r.status = r.status === b.dataset.v ? '' : b.dataset.v; saveList(l); render();
+      if (r.status === 'UNSAFE'){ const u = document.getElementById('u' + i); if (u){ u.scrollIntoView({ block:'center' }); if (!u.value) u.focus(); } } });
+    app.querySelectorAll('[data-photo]').forEach(inp => inp.onchange = async () => { const i = Number(inp.dataset.photo); const f = inp.files && inp.files[0]; if (!f) return;
+      try { toast('Saving photo…'); const data = await shrinkPhoto(f); const r = l.rows[i]; if (!r.id) r.id = rowId(); const pid = (l.id + '_' + r.id).replace(/[^\w\-]+/g, '_'); photoPut(pid, data); r.photo = pid; saveList(l, true); render(); toast('Photo saved'); }
+      catch(e){ toast('Could not read that photo'); } });
+    app.querySelectorAll('[data-nophoto]').forEach(b => b.onclick = () => { const i = Number(b.dataset.nophoto); const r = l.rows[i]; confirmBox('Remove the photo of item ' + (i + 1) + '?', 'Remove photo', () => { if (r.photo) photoDel(r.photo); r.photo = ''; saveList(l, true); render(); }); });
+    app.querySelectorAll('img[data-pid]').forEach(im => photoGet(im.dataset.pid).then(d => { if (d) im.src = d; else im.alt = 'Photo not on this phone yet'; }));
+    $('pdf').onclick = () => {
+      const used = (l.rows || []).map((r, i) => ({ r, i })).filter(x => x.r.serial || x.r.desc);
+      const noReason = used.filter(x => x.r.status === 'UNSAFE' && !String(x.r.reason || '').trim());
+      if (noReason.length){ toast('Give the reason for unsafe item ' + noReason.map(x => x.i + 1).join(', ')); const u = document.getElementById('u' + noReason[0].i); if (u){ u.scrollIntoView({ block:'center' }); u.focus(); } return; }
+      const open = used.filter(x => !x.r.status);
+      const go = () => { saveList(l, true); listPdf(l, $('pdf')); };
+      if (open.length){ const m = modal(`<div style="font-size:16px;font-weight:700">Not marked safe or unsafe</div><div style="font-size:14px">Item ${open.map(x => x.i + 1).join(', ')} ${open.length === 1 ? 'has' : 'have'} no Safe / Unsafe yet.</div>
+          <button class="btn secondary" id="mBack">Go back</button><button class="btn primary" id="mGo">Save PDF anyway</button>`);
+        m.querySelector('#mBack').onclick = () => { m.remove(); const el = document.querySelector('.item[data-i="' + open[0].i + '"]'); if (el) el.scrollIntoView({ block:'center' }); };
+        m.querySelector('#mGo').onclick = () => { m.remove(); go(); }; return; }
+      go();
+    };
   }
 
   // ---------- PDFs (layout of the paper sheet) ----------
@@ -260,20 +309,42 @@
     for (let i = 0; i < minRows; i++){
       if (y + rowH > maxY){ doc.addPage(); y = pageHead(false); headRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); }
       doc.setLineWidth(0.3); doc.rect(L, y, R - L, rowH); const r = rows[i];
-      let x = L; cols.forEach(c => { if (r){ const t = doc.splitTextToSize(String(r[c.k] || ''), c.w - 3); doc.text(t[0] || '', x + 1.5, y + 5.4); } x += c.w; if (x < R) doc.line(x, y, x, y + rowH); });
+      let x = L; cols.forEach(c => { if (r){ const t = doc.splitTextToSize(String(r[c.k] || ''), c.w - 3); if (c.color){ const col = c.color(r); doc.setTextColor(col[0], col[1], col[2]); doc.setFont('helvetica', 'bold'); }
+        doc.text(t[0] || '', x + 1.5, y + 5.4); if (c.color){ doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); } } x += c.w; if (x < R) doc.line(x, y, x, y + rowH); });
       y += rowH; if (!r && i >= rows.length && y + rowH > maxY) break;
     }
     if (foot){ doc.setFontSize(8.5); doc.setTextColor(90, 96, 112); doc.text(foot, L, 290); doc.setTextColor(0, 0, 0); }
+  }
+  const STATUS_COLOR = r => r.status === 'UNSAFE' ? [161, 42, 31] : r.status === 'SAFE' ? [21, 112, 61] : [0, 0, 0];
+  async function unsafePages(doc, l, rows){
+    const bad = rows.filter(r => r.status === 'UNSAFE'); if (!bad.length) return;
+    const L = 15, R = 195; let y = 0;
+    const page = () => { doc.addPage(); doc.setTextColor(161, 42, 31); doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.text('UNSAFE ITEMS', L, 18);
+      doc.setTextColor(0, 0, 0); doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${l.customer || ''} · Job ${l.job || '–'} · ${niceDate(l.date)}${l.location ? ' · ' + l.location : ''}`, L, 25); y = 33; };
+    page();
+    for (const r of bad){
+      const img = r.photo ? await photoGet(r.photo) : null; let iw = 0, ih = 0;
+      if (img){ const d = await new Promise(res => { const im = new Image(); im.onload = () => res({ w:im.width, h:im.height }); im.onerror = () => res(null); im.src = img; }); if (d){ const sc = Math.min(110 / d.w, 80 / d.h); iw = d.w * sc; ih = d.h * sc; } }
+      const reason = doc.splitTextToSize('Reason: ' + (r.reason || ''), R - L - 4);
+      const need = 10 + reason.length * 5 + (ih ? ih + 4 : 0) + 6;
+      if (y + need > 285) page();
+      doc.setDrawColor(161, 42, 31); doc.setLineWidth(0.6); doc.rect(L, y, R - L, need - 2); doc.setDrawColor(0, 0, 0);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text([r.serial, r.desc, r.make, r.swl].filter(Boolean).join('  ·  '), L + 3, y + 7);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(reason, L + 3, y + 13);
+      if (ih){ try { doc.addImage(img, 'JPEG', L + 3, y + 13 + reason.length * 5, iw, ih, undefined, 'FAST'); } catch(e){} }
+      y += need + 2;
+    }
   }
   async function ensurePdf(){ for (let i = 0; i < 50 && !(window.jspdf && window.jspdf.jsPDF); i++) await new Promise(r => setTimeout(r, 100)); if (!(window.jspdf && window.jspdf.jsPDF)) throw new Error('PDF maker not loaded'); }
   async function listPdf(l, btn){
     if (!l) return; const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
     try {
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { swl: swlText(r.swl) }));
+      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { swl: swlText(r.swl), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
       await table(doc, 'Equipment list', [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Location:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
-        rows, [{ t:'Serial nr', k:'serial', w:45 }, { t:'Description', k:'desc', w:65 }, { t:'Manufacturer', k:'make', w:40 }, { t:'SWL (kg)', k:'swl', w:30 }],
-        (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items');
+        rows, [{ t:'Serial nr', k:'serial', w:38 }, { t:'Description', k:'desc', w:52 }, { t:'Manufacturer', k:'make', w:34 }, { t:'SWL (kg)', k:'swl', w:26 }, { t:'Condition', k:'cond', w:30, color:STATUS_COLOR }],
+        (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items' + (rows.some(r => r.status === 'UNSAFE') ? ' · unsafe items with reasons and photos on the next page' : ''));
+      await unsafePages(doc, l, rows);
       const how = await BC.saveFile(doc.output('blob'), `Equipment_list_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`, 'application/pdf', 'Equipment list');
       if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded');
     } catch(e){ console.error(e); toast('Could not make the PDF'); }
@@ -284,9 +355,9 @@
     try {
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
       const rows = Object.values(c.items).sort((a,b) => String(a.desc).localeCompare(String(b.desc)) || String(a.serial).localeCompare(String(b.serial), undefined, { numeric:true }))
-        .map(r => Object.assign({}, r, { swl: swlText(r.swl), seen: niceDate(r.date) + (r.job ? ' (' + r.job + ')' : '') }));
+        .map(r => Object.assign({}, r, { swl: swlText(r.swl), cond: r.status || '', seen: niceDate(r.date) + (r.job ? ' (' + r.job + ')' : '') }));
       await table(doc, 'Equipment inventory', [[['Customer:', c.name, 15, 140, 42], ['Date:', niceDate(today()), 145, 195, 160]]],
-        rows, [{ t:'Serial nr', k:'serial', w:36 }, { t:'Description', k:'desc', w:50 }, { t:'Manufacturer', k:'make', w:32 }, { t:'SWL', k:'swl', w:22 }, { t:'Last listed', k:'seen', w:40 }],
+        rows, [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:44 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL', k:'swl', w:20 }, { t:'Condition', k:'cond', w:22, color:STATUS_COLOR }, { t:'Last listed', k:'seen', w:34 }],
         rows.length + ' items');
       const how = await BC.saveFile(doc.output('blob'), `Inventory_${safe(c.name)}_${today()}.pdf`, 'application/pdf', 'Inventory ' + c.name);
       if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded');
@@ -304,7 +375,8 @@
     if (S.active){
       const id = listIdFor(S.active);
       S.cur = S.lists[id] || { id, date:S.active.date, job:S.active.card || '', customer:S.active.customer || '', location:'', rows:[], tech:(S.profile && S.profile.name) || '' };
-      if (!S.cur.rows.length && !S.lists[id]){ S.cur.rows.push({ serial:'', desc:'', make:'', swl:'' }); }
+      if (!S.cur.rows.length && !S.lists[id]){ S.cur.rows.push({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'' }); }
+      S.cur.rows.forEach(r => { if (!r.id) r.id = rowId(); });
       S.lists[id] = S.cur; lsSave();
     }
     S.view = wantInv ? 'inventory' : S.active ? 'list' : 'gate';

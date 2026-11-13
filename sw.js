@@ -1,6 +1,6 @@
 // Offline support: keeps the app files on the phone so it opens without signal.
 // Bump VERSION whenever you change any app file, so phones pick up the update.
-const VERSION = 'bco-2026-11-13h';
+const VERSION = 'bco-2026-11-13i';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './shared/cloud.js', './shared/firebase-config.js', './shared/app.js',
