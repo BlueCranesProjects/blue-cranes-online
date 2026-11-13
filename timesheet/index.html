@@ -255,7 +255,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (D)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (E)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -434,7 +434,7 @@
         <button type="button" data-done="${i}" aria-pressed="${!!j.done}" aria-label="${j.done ? 'Completed – tap to undo' : 'Mark job ' + (i+1) + ' completed'}"
           style="width:64px;flex-shrink:0;border-radius:12px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;${j.done ? 'background:var(--A);color:#fff;border:2px solid var(--A)' : 'background:#fff;color:var(--navyDeep);border:2px dashed var(--field)'}">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>${j.done ? 'Done' : 'Finish'}</button>
-        </div>${j.done ? '' : reportButtons(`data-fl="${i}"`)}</div>`).join('')
+        </div></div>`).join('')
         : `<div class="empty">No jobs yet. Tap <b>Add job</b> when you arrive at your first job.</div>`}
       <div class="grid2" style="gap:10px">
         <div class="stat"><span class="k">Job card time</span><span class="big">${fmtH(jobHours(sh))} h</span></div>
@@ -456,7 +456,10 @@
     const prevOdo = prevIdx >= 0 ? Number(sh.jobs[prevIdx].odo) : Number(sh.firstOdo);
     state._hrs = Number(j.hrs) || 0; state._done = !!j.done;
     const n = editing ? state.jobIdx + 1 : sh.jobs.length + 1;
-    return headerBack((editing?'EDIT JOB ':(state.prefill?'START JOB ':'ADD JOB ')) + n, 'today') + `<main>
+    return headerBack((editing?'JOB ':(state.prefill?'START JOB ':'ADD JOB ')) + n, 'today') + `<main>
+      ${editing && !j.done ? `<section class="card" style="display:flex;flex-direction:column;gap:10px;border-left:5px solid var(--yellow)">
+        <div style="display:flex;align-items:center;gap:8px"><span class="pill prog">Busy</span><span class="hint">Reports for this job</span></div>
+        ${reportButtons(`data-fl="${state.jobIdx}"`)}</section>` : ''}
       <form id="jobForm" style="display:flex;flex-direction:column;gap:18px">
         ${locked ? `<div class="hint" style="display:flex;gap:8px;align-items:center;color:var(--label)">${ICON.cal}<span>From your schedule. Job card no., customer and contact can only be changed on the Schedule tab.</span></div>` : ''}
         <div class="field"><label for="card">Job card no.</label><input id="card" value="${esc(j.card)}" ${ro}></div>
@@ -783,7 +786,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 13 Nov (D)</span>
+        <span class="hint">App version 13 Nov (E)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
