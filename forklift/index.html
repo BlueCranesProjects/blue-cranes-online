@@ -727,6 +727,9 @@ async function renumberOld(){let n=0;
   try{const all=await RDB.all();for(const r of all){const d=String((r.state&&r.state.f&&r.state.f.docno)||"").trim();if(d&&needsFix(d)){r.state.f.docno=fixNo(d);r.savedAt=Date.now();await RDB.put(r);n++;}}}catch(e){console.error(e);}
   const cur=String(state.f.docno||"").trim();if(cur&&needsFix(cur)){state.f.docno=fixNo(cur);applyState();save();}
   await fixEquipmentNos();if(n){updRepCount();if($("repPanel").classList.contains("show"))showReports();toast(n+" report number"+(n>1?"s":"")+" updated");}}
+// used by the equipment list to put every report of a job in one folder
+window.BCF={async reports(){for(let i=0;i<80&&!window.BCF_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCF_READY;}catch(e){}return RDB.all();},
+  buildPdf:st=>buildPdf(st),buildCert:st=>buildCert(st)};
 async function saveReport(st){if(!st._rid)st._rid=st.f.docno||("r"+Date.now());const snap=JSON.parse(JSON.stringify(st));
   await RDB.put({id:st._rid,savedAt:Date.now(),date:st.f.date||today(),job:(st.f.jobno||"").trim(),state:snap});save();updRepCount();}
 async function updRepCount(){const a=await RDB.all();$("repCount").textContent=a.length;$("repCount").style.display=a.length?"":"none";}
@@ -861,11 +864,12 @@ if(saved){try{state=Object.assign(blank(),JSON.parse(saved));state.fork=Object.a
 applyState();syncDoc();checkSession();save();updRepCount();
 function showGate(){modal(`<h3>No job started</h3><p>New forklift inspections and load tests open from the job you are busy with.</p><p>On the time sheet, tap <b>Start job</b> on the job, then <b>Forklift inspection / load test</b>.</p><button class="secondary" id="gRep" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">View saved reports</button><div class="btns"><a class="primary" href="../timesheet/" style="flex:1;padding:12px;border-radius:10px;font-weight:700;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Go to time sheet</a></div>`);$("gRep").onclick=()=>{closeModal();$("repPanel").classList.add("show");showReports();};}
 const WANT_REPORTS=/[?&]reports=1/.test(location.search);
-if(!ACTIVE){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else showGate();}
+const EMBED=/[?&]embed=1/.test(location.search);
+if(!ACTIVE&&!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else showGate();}
 $("repClose").onclick=()=>{$("repPanel").classList.remove("show");if(!ACTIVE){if(WANT_REPORTS)location.href="../timesheet/";else showGate();}};
-if(ACTIVE&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
+if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
 {const wt=new URLSearchParams(location.search).get("type");if(ACTIVE&&(wt==="INSPECTION"||wt==="LOAD TEST")&&state.type!==wt){state.type=wt;applyState();save();}}
-BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");syncReports().then(renumberOld);});
+BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");window.BCF_READY=syncReports().then(renumberOld);});
 </script>
 </body>
 </html>

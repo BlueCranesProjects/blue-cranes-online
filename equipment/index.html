@@ -13,6 +13,7 @@
 <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="../vendor/jspdf.umd.min.js" defer></script>
+<script src="../vendor/jszip.min.js" defer></script>
 <script src="../shared/firebase-config.js"></script>
 <script type="module" src="../shared/cloud.js"></script>
 <script src="../shared/app.js"></script>
@@ -26,7 +27,7 @@
   .sub{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#C9D5EA}
   h1,h2{font-family:Montserrat,sans-serif;font-weight:900;margin:0;text-transform:uppercase}
   h1{font-size:20px;line-height:1.15} h2{font-size:15px;color:var(--navyDeep)}
-  main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+  main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:calc(130px + env(safe-area-inset-bottom))}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .field{display:flex;flex-direction:column;gap:5px;min-width:0}
@@ -221,7 +222,8 @@
       </div>
       <span class="hint">“Copy last” adds a new item with the same description, manufacturer and SWL – just enter the serial nr.</span>
     </main>
-    <div class="bar"><button class="btn navy" id="pdf">${ICON.pdf} Save PDF</button></div>`;
+    <div class="bar" style="flex-direction:column;align-items:center;gap:4px"><button class="btn navy" id="pdf">${ICON.pdf} Save PDF – whole job</button>
+      <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Equipment list only</button></div>`;
   }
 
   function vInventory(){
@@ -303,12 +305,13 @@
       catch(e){ toast('Could not read that photo'); } });
     app.querySelectorAll('[data-nophoto]').forEach(b => b.onclick = () => { const i = Number(b.dataset.nophoto); const r = l.rows[i]; confirmBox('Remove the photo of item ' + (i + 1) + '?', 'Remove photo', () => { if (r.photo) photoDel(r.photo); r.photo = ''; saveList(l, true); render(); }); });
     app.querySelectorAll('img[data-pid]').forEach(im => photoGet(im.dataset.pid).then(d => { if (d) im.src = d; else im.alt = 'Photo not on this phone yet'; }));
+    $('pdfOnly').onclick = () => { saveList(l, true); listPdf(l, $('pdfOnly')); };
     $('pdf').onclick = () => {
       const used = (l.rows || []).map((r, i) => ({ r, i })).filter(x => x.r.serial || x.r.desc);
       const noReason = used.filter(x => x.r.status === 'UNSAFE' && !String(x.r.reason || '').trim());
       if (noReason.length){ toast('Give the reason for unsafe item ' + noReason.map(x => x.i + 1).join(', ')); const u = document.getElementById('u' + noReason[0].i); if (u){ u.scrollIntoView({ block:'center' }); u.focus(); } return; }
       const open = used.filter(x => !x.r.status);
-      const go = () => { saveList(l, true); listPdf(l, $('pdf')); };
+      const go = () => { saveList(l, true); jobPack(l, $('pdf')); };
       if (open.length){ const m = modal(`<div style="font-size:16px;font-weight:700">Not marked safe or unsafe</div><div style="font-size:14px">Item ${open.map(x => x.i + 1).join(', ')} ${open.length === 1 ? 'has' : 'have'} no Safe / Unsafe yet.</div>
           <button class="btn secondary" id="mBack">Go back</button><button class="btn primary" id="mGo">Save PDF anyway</button>`);
         m.querySelector('#mBack').onclick = () => { m.remove(); const el = document.querySelector('.item[data-i="' + open[0].i + '"]'); if (el) el.scrollIntoView({ block:'center' }); };
@@ -367,19 +370,61 @@
     }
   }
   async function ensurePdf(){ for (let i = 0; i < 50 && !(window.jspdf && window.jspdf.jsPDF); i++) await new Promise(r => setTimeout(r, 100)); if (!(window.jspdf && window.jspdf.jsPDF)) throw new Error('PDF maker not loaded'); }
-  async function listPdf(l, btn){
-    if (!l) return; const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
-    try {
+  async function listDoc(l){
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
       const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { swl: swlText(r.swl), rep: repText(r), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
       await table(doc, 'Equipment list', [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Location:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
         rows, [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:38 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL (kg)', k:'swl', w:22 }, { t:'Condition', k:'cond', w:24, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:36 }],
         (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items' + (rows.some(r => r.status === 'UNSAFE') ? ' · unsafe items with reasons and photos on the next page' : ''));
       await unsafePages(doc, l, rows);
-      const how = await BC.saveFile(doc.output('blob'), `Equipment_list_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`, 'application/pdf', 'Equipment list');
-      if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded');
-    } catch(e){ console.error(e); toast('Could not make the PDF'); }
+      return { blob: doc.output('blob'), name: `Equipment_list_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
+  }
+  async function listPdf(l, btn){
+    if (!l) return; const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
+    try { const f = await listDoc(l); const how = await BC.saveFile(f.blob, f.name, 'application/pdf', 'Equipment list'); if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded'); }
+    catch(e){ console.error(e); toast('Could not make the PDF'); }
     finally { if (btn){ btn.disabled = false; btn.innerHTML = old; } }
+  }
+  // the forklift app, loaded out of sight, builds the job's report and certificate PDFs
+  function forkliftTools(){
+    return new Promise((res, rej) => {
+      const fr = document.createElement('iframe'); fr.src = '../forklift/?embed=1'; fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
+      fr.style.cssText = 'position:fixed;left:-9999px;top:0;width:400px;height:800px;border:0;visibility:hidden'; document.body.appendChild(fr);
+      let n = 0; const t = setInterval(() => { n++; const w = fr.contentWindow;
+        if (w && w.BCF && w.jspdf){ clearInterval(t); res({ api:w.BCF, done:() => fr.remove() }); }
+        else if (n > 200){ clearInterval(t); fr.remove(); rej(new Error('forklift app did not load')); } }, 100);
+    });
+  }
+  function busy(text){ let m = document.getElementById('busyBox'); if (!m){ m = modal('<div style="font-size:16px;font-weight:700">Making the job folder</div><div class="hint" id="busyTxt" style="font-size:14px"></div>'); m.id = 'busyBox'; }
+    m.querySelector('#busyTxt').textContent = text; return m; }
+  async function jobPack(l, btn){
+    if (!l) return; const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Working…';
+    const folder = `Job ${String(l.job || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(l.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')} - ${l.date}`;
+    try {
+      for (let i = 0; i < 50 && !window.JSZip; i++) await new Promise(r => setTimeout(r, 100));
+      if (!window.JSZip) throw new Error('zip tool not loaded');
+      busy('Equipment list…'); const files = [await listDoc(l)];
+      let reps = [], tools = null;
+      try {
+        busy('Finding forklift reports…'); tools = await forkliftTools();
+        reps = (await tools.api.reports()).filter(r => r && r.state && norm(r.job || r.state.f.jobno) === norm(l.job) && (!l.customer || !r.state.f.customer || norm(r.state.f.customer) === norm(l.customer)))
+          .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
+        for (let k = 0; k < reps.length; k++){
+          const st = reps[k].state; busy(`Forklift report ${k + 1} of ${reps.length} (${st.f.docno || ''})…`);
+          const a = await tools.api.buildPdf(JSON.parse(JSON.stringify(st))); files.push({ blob:a.doc.output('blob'), name:a.name });
+          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(JSON.parse(JSON.stringify(st))); files.push({ blob:c.doc.output('blob'), name:c.name }); }
+        }
+      } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
+      finally { if (tools) tools.done(); }
+      busy('Packing the folder…');
+      const zip = new JSZip(), dir = zip.folder(folder), used = {};
+      files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.pdf$/, `_${++used[n]}.pdf`); else used[n] = 1; dir.file(n, f.blob); });
+      const blob = await zip.generateAsync({ type:'blob' });
+      const bb = document.getElementById('busyBox'); if (bb) bb.remove();
+      const how = await BC.saveFile(blob, folder + '.zip', 'application/zip', folder);
+      if (how) toast(`${files.length} ${files.length === 1 ? 'file' : 'files'} in one folder` + (how === 'shared' ? ' – ready to send' : ' – downloaded'));
+    } catch(e){ console.error(e); const bb = document.getElementById('busyBox'); if (bb) bb.remove(); toast('Could not make the job folder'); }
+    finally { btn.disabled = false; btn.innerHTML = old; }
   }
   async function inventoryPdf(ck, btn){
     const c = inventory()[ck]; if (!c) return; const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Making PDF…';
