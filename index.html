@@ -67,7 +67,7 @@
   const TOOLS = [
     { href:'timesheet/', name:'Daily Time Sheet', text:'Vehicle check, jobs, km and hours. PDF and WhatsApp.',
       icon:'<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>' },
-    { href:'forklift/', name:'Forklift Inspection', text:'Inspection and load test reports with certificate.',
+    { href:'forklift/', name:'Forklift Inspection', gate:true, text:'Opens from the job you are busy with on the time sheet.',
       icon:'<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>' }
   ];
 
@@ -118,7 +118,9 @@
     const first = String(p.name || '').split(' ')[0];
     return `<header><img class="logo" src="icons/logo.png" alt="Blue Cranes"><div style="flex:1;min-width:0"><div class="sub">${new Date().toLocaleDateString('en-ZA',{weekday:'long',day:'numeric',month:'long'})}</div><h1>${esc(hi)}${first ? ', ' + esc(first) : ''}</h1></div></header>
       <main>
-        <div class="tiles">${TOOLS.map(t => `<a class="tile" href="${t.href}"><span class="ic">${t.icon}</span><b>${esc(t.name)}</b><span>${esc(t.text)}</span></a>`).join('')}</div>
+        <div class="tiles">${TOOLS.map(t => t.gate
+          ? `<div class="tile" style="opacity:.6" aria-disabled="true"><span class="ic">${t.icon}</span><b>${esc(t.name)}</b><span>${esc(t.text)}</span></div>`
+          : `<a class="tile" href="${t.href}"><span class="ic">${t.icon}</span><b>${esc(t.name)}</b><span>${esc(t.text)}</span></a>`).join('')}</div>
         <section class="card" style="gap:10px">
           <div style="display:flex;justify-content:space-between;align-items:center"><h2>My profile</h2><button class="link" id="editProf" style="padding:6px">Edit</button></div>
           <div class="me">${p.signature ? `<img src="${esc(p.signature)}" alt="Your signature">` : ''}<div style="min-width:0"><div style="font-weight:700">${esc(p.name)}</div><div class="hint" style="word-break:break-all">${esc(S.user ? S.user.email : '')}${p.phone ? ' · ' + esc(p.phone) : ''}</div></div></div>
@@ -189,7 +191,7 @@
     };
     if (document.getElementById('profForm')) go.onclick = () => busy(async () => {
       err.textContent = ''; const prof = readProfile(err); if (!prof) return;
-      await saveProfile(prof); toast('Profile saved'); S.view = 'home'; render();
+      await saveProfile(prof); if (S.view === 'setup' && !/[?&]home=1/.test(location.search)){ location.replace('timesheet/'); return; } toast('Profile saved'); S.view = 'home'; render();
     });
     const cancel = document.getElementById('cancel'); if (cancel) cancel.onclick = () => { S.view = 'home'; render(); };
     const ep = document.getElementById('editProf'); if (ep) ep.onclick = () => { S.sig = (S.profile || {}).signature || null; S.view = 'profile'; render(); };
@@ -218,8 +220,8 @@
   (async function start(){
     if (!window.Cloud && document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r, { once:true }));
     S.cloud = window.Cloud ? await Cloud.ready : false;
-    if (!S.cloud){ S.profile = BC.cachedProfile(); S.view = S.profile ? 'home' : 'setup'; if (!S.profile) S.sig = null; render(); return; }
-    const wantProfile = /[?&]profile=1/.test(location.search);
+    if (!S.cloud){ S.profile = BC.cachedProfile(); if (S.profile && !/[?&]home=1/.test(location.search)){ location.replace('timesheet/'); return; } S.view = S.profile ? 'home' : 'setup'; if (!S.profile) S.sig = null; render(); return; }
+    const wantHome = /[?&]home=1/.test(location.search);
     Cloud.onAuth(async u => {
       S.user = u;
       if (!u){ S.profile = null; BC.cacheProfile(null); S.view = 'auth'; render(); return; }
@@ -228,7 +230,8 @@
       else { try { p = await Cloud.getItem('profile'); } catch(e){} if (p){ p.uid = u.uid; BC.cacheProfile(p); } }
       S.profile = p;
       if (!p || !p.name || !p.signature){ S.sig = p && p.signature || null; S.view = 'setup'; render(); return; }
-      S.view = wantProfile ? 'home' : 'home'; render();
+      if (!wantHome){ location.replace('timesheet/'); return; }
+      S.view = 'home'; render();
     });
   })();
 })();

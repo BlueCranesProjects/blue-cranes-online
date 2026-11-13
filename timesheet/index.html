@@ -238,7 +238,7 @@
   function techName(sh){ return (state.profile && state.profile.name) || (sh && sh.tech) || state.settings.tech || ''; }
   function headerMain(sub, title, pill){
     return `<header style="padding:14px 16px 14px;gap:12px">
-      <a href="../" aria-label="Blue Cranes Online home" style="display:flex"><img class="logo" src="${LOGO}" alt="Blue Cranes"></a>
+      <a href="../?home=1" aria-label="My profile" style="display:flex"><img class="logo" src="${LOGO}" alt="Blue Cranes"></a>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><div class="sub">${esc(sub)}</div><h1>${esc(title)}</h1></div>
       ${pill||''}</header>`;
   }
@@ -247,7 +247,7 @@
   }
   function tabs(active){
     return `<nav class="tabs" aria-label="Main">
-      <button onclick="location.href='../'"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>Home</button>
+      <button onclick="location.href='../?home=1'"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Profile</button>
       <button data-go="today" ${active==='today'?'aria-current="page"':''}>${ICON.sheet}Today</button>
       <button data-go="schedule" ${active==='schedule'?'aria-current="page"':''}>${ICON.cal}Schedule</button>
       <button data-go="history" ${active==='history'?'aria-current="page"':''}>${ICON.clock}History</button></nav>`;
@@ -424,7 +424,7 @@
       </section>
       ${schedSection(key)}
       <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0"><h2>JOBS TODAY</h2><span class="hint">${jobs.length} ${jobs.length===1?'job':'jobs'}${jobs.length ? ' · ' + jobs.filter(x=>x.done).length + ' completed' : ''}</span></div>
-      ${jobs.length ? jobs.map((j,i)=>`<div style="display:flex;gap:8px;align-items:stretch">
+      ${jobs.length ? jobs.map((j,i)=>`<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:8px;align-items:stretch">
         <button class="job" data-editjob="${i}" aria-label="Edit job ${i+1}" style="flex:1;min-width:0;${j.done ? 'border-color:#9CC9AD;background:#F3FAF5' : ''}">
           <span class="num-badge" style="${j.done ? 'background:var(--A)' : ''}">${i+1}</span>
           <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(j.card||'')}${j.card&&(j.customer||j.desc)?' · ':''}${esc(j.customer||j.desc||'')}</span>
@@ -434,7 +434,7 @@
         <button type="button" data-done="${i}" aria-pressed="${!!j.done}" aria-label="${j.done ? 'Completed – tap to undo' : 'Mark job ' + (i+1) + ' completed'}"
           style="width:64px;flex-shrink:0;border-radius:12px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;${j.done ? 'background:var(--A);color:#fff;border:2px solid var(--A)' : 'background:#fff;color:var(--navyDeep);border:2px dashed var(--field)'}">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>${j.done ? 'Done' : 'Finish'}</button>
-        </div>`).join('')
+        </div>${j.done ? '' : `<button class="btn" data-fl="${i}" style="height:46px;font-size:14px;background:var(--navyDeep);color:#fff"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Forklift inspection / load test</button>`}</div>`).join('')
         : `<div class="empty">No jobs yet. Tap <b>Add job</b> when you arrive at your first job.</div>`}
       <div class="grid2" style="gap:10px">
         <div class="stat"><span class="k">Job card time</span><span class="big">${fmtH(jobHours(sh))} h</span></div>
@@ -456,7 +456,7 @@
     const prevOdo = prevIdx >= 0 ? Number(sh.jobs[prevIdx].odo) : Number(sh.firstOdo);
     state._hrs = Number(j.hrs) || 0; state._done = !!j.done;
     const n = editing ? state.jobIdx + 1 : sh.jobs.length + 1;
-    return headerBack((editing?'EDIT JOB ':'ADD JOB ') + n, 'today') + `<main>
+    return headerBack((editing?'EDIT JOB ':(state.prefill?'START JOB ':'ADD JOB ')) + n, 'today') + `<main>
       <form id="jobForm" style="display:flex;flex-direction:column;gap:18px">
         ${locked ? `<div class="hint" style="display:flex;gap:8px;align-items:center;color:var(--label)">${ICON.cal}<span>From your schedule. Job card no., customer and contact can only be changed on the Schedule tab.</span></div>` : ''}
         <div class="field"><label for="card">Job card no.</label><input id="card" value="${esc(j.card)}" ${ro}></div>
@@ -537,11 +537,11 @@
   }
   function schedSection(key){
     const due = schedFor(key).filter(x => !x.addedTo); if (!due.length) return '';
-    return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0"><h2>SCHEDULED</h2><span class="hint">${due.length} to do</span></div>
+    return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0"><h2>JOB SCHEDULE</h2><span class="hint">${due.length} to do</span></div>
       ${due.map(x => `<div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-left:5px solid var(--yellow)">
         <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(schedLabel(x))}</span>
         <span class="hint">${x.time ? esc(x.time) : 'Any time'}${x.contact ? ' · ' + esc(x.contact) : ''}${x.notes ? ' · ' + esc(x.notes) : ''}</span></span>
-        <button class="btn primary" style="width:auto;height:44px;font-size:14px" data-schedto="${esc(x.id)}">${ICON.plus} Add to sheet</button></div>`).join('')}`;
+        <button class="btn primary" style="width:auto;height:44px;font-size:14px" data-schedto="${esc(x.id)}">${ICON.plus} Start job</button></div>`).join('')}`;
   }
   function viewSchedule(){
     const tk = todayKey(); const ws = state.schedWeek || weekStart(tk); const thisWeek = ws === weekStart(tk);
@@ -640,7 +640,7 @@
     const u = state.user;
     return `<section class="card" style="display:flex;flex-direction:column;gap:10px">
       <h2>ACCOUNT &amp; DATA</h2>
-      ${u ? `<div style="font-size:14px;min-width:0;word-break:break-all">Signed in as <b>${esc(u.email)}</b>. Sign out and profile are on the Blue Cranes Online home screen.</div>`
+      ${u ? `<div style="font-size:14px;min-width:0;word-break:break-all">Signed in as <b>${esc(u.email)}</b>. Profile and sign out: tap <b>Profile</b> below.</div>`
         : `<div class="hint">${state.cloudOn ? 'Not signed in.' : 'Cloud saving is not set up yet, so your data is only on this phone. Make a backup now and then.'}</div>`}
       <div class="row">
         <button class="btn secondary" style="height:46px;font-size:14px;border-width:1.5px" id="backupBtn">Back up data</button>
@@ -939,6 +939,11 @@
       } catch(e){ err.textContent = authMessage(e); btn.disabled = false; btn.textContent = old; }
     };
 
+    app.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => {
+      const k = curKey(); const sh = state.sheets[k]; const i = Number(b.dataset.fl); const j = sh && sh.jobs[i]; if (!j || j.done) return;
+      try { localStorage.setItem('bco-active-job', JSON.stringify({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() })); } catch(e){}
+      location.href = '../forklift/';
+    });
     app.querySelectorAll('[data-done]').forEach(b => b.onclick = () => {
       const k = curKey(); const sh = state.sheets[k]; const j = sh && sh.jobs[Number(b.dataset.done)]; if (!j) return;
       j.done = !j.done; if (j.done) j.doneAt = new Date().toISOString(); else delete j.doneAt;

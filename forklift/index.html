@@ -166,7 +166,7 @@
 <body>
 <header>
   <div class="hrow">
-    <a href="../" class="homebtn" aria-label="Blue Cranes Online home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg></a>
+    <a href="../timesheet/" class="homebtn" aria-label="Back to the time sheet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
     <img id="logoImg" alt="Blue Cranes – Material Handling Lifting Equipment">
     <div class="htitle"><span id="hType">Forklift Inspection</span><small>Report</small></div>
     <button id="repBtn" class="repbtn" aria-label="Saved reports"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="repCount">0</span></button>
@@ -806,9 +806,18 @@ function session(){return PROFILE&&PROFILE.name?{date:today(),name:PROFILE.name}
 function techSig(){return PROFILE&&PROFILE.signature||null;}
 function saveTechSig(){}
 function checkSession(){state.f.engName=PROFILE?PROFILE.name||"":"";state.sig.sigEng=PROFILE?PROFILE.signature||null:null;applyState();}
+// ---- Blue Cranes Online: only open for the job the tech is busy with on the time sheet ----
+const ACTIVE=(function(){try{const a=JSON.parse(load("bco-active-job")||"null");if(!a||a.date!==today())return null;
+  const ts=JSON.parse(load("dts-v1")||"null");const j=ts&&ts.sheets&&ts.sheets[a.date]&&ts.sheets[a.date].jobs&&ts.sheets[a.date].jobs[a.idx];
+  if(ts&&(!j||j.done||(j.card||"")!==(a.card||"")))return null;return a;}catch(e){return null;}})();
+const jobKey=f=>String((f&&(f.jobno||f.customer))||"").trim().toLowerCase();
+function fresh(){state=blank();{const u=utSaved();state.f.utName=u.name||"";state.f.utLmi=u.lmi||"";state.sig.sigUt=u.sig||null;}state.f.date=today();state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);const se=session();state.f.engName=se?se.name:"";state.sig.sigEng=se?techSig(se.name):null;
+  if(ACTIVE){state.f.customer=ACTIVE.customer||"";state.f.jobno=ACTIVE.card||"";state.f.custName=ACTIVE.contact||"";state.f.docno=ACTIVE.card?nextDoc(ACTIVE.card):"";}}
 const saved=load(KEY);
 if(saved){try{state=Object.assign(blank(),JSON.parse(saved));state.fork=Object.assign(blank().fork,state.fork||{});state.chain=Object.assign(blank().chain,state.chain||{});state.wr=Object.assign(blank().wr,state.wr||{});state.batt=Object.assign(blank().batt,state.batt||{});if(state.f.prevLoad)state.f.prevLoad=String(state.f.prevLoad).slice(0,4);if(state.val[BATT-1]&&!state.batt.min&&!state.batt.max&&!/Min|Max/.test(state.val[BATT-1]))state.batt.min=String(state.val[BATT-1]).replace(/[^\d.,]/g,"");if(!state.type)state.type="INSPECTION";state.res[CRACK-1]=null;VALUE_ONLY.forEach(n=>state.res[n-1]=null);if(state.crack!=="inspected"&&state.crack!=="tested")state.crack="";{const e=ENGINE_OPTS.find(o=>o.toLowerCase()===String(state.val[31]||"").trim().toLowerCase());state.val[31]=e||"";}{const l=LOAD_OPTS.find(o=>o.toLowerCase()===String(state.val[33]||"").trim().toLowerCase());state.val[33]=l||"";}if(state.res.length===44){["res","val","note"].forEach(k=>state[k].splice(39,1));}if(state.res.length===43){if(!state.f.lc&&state.val[34])state.f.lc=String(state.val[34]).replace(/[^\d.,]/g,"");["res","val","note"].forEach(k=>state[k].splice(34,1));}if(state.res.length===42){if(!state.f.mh&&state.val[35])state.f.mh=String(state.val[35]).replace(/[^\d.,]/g,"");["res","val","note"].forEach(k=>state[k].splice(35,1));}if(state.res.length===41){if(!state.f.alc&&state.val[37])state.f.alc=String(state.val[37]).replace(/[^\d.,]/g,"");["res","val","note"].forEach(k=>state[k].splice(37,1));}if(state.f.equipment&&!state.f.make){state.f.make=state.f.equipment;}delete state.f.equipment;if(state.f.swl)state.f.swl=String(state.f.swl).replace(/\s*kg\s*$/i,"");state.res[ATTACH-1]=null;if(state.val[ATTACH-1]&&!ATTACH_OPTS.includes(state.val[ATTACH-1]))state.val[ATTACH-1]="";}catch(e){fresh();}}else fresh();
 applyState();syncDoc();checkSession();save();updRepCount();
+if(!ACTIVE){modal(`<h3>No job started</h3><p>Forklift inspections and load tests open from the job you are busy with.</p><p>On the time sheet, tap <b>Start job</b> on the job, then <b>Forklift inspection / load test</b>.</p><div class="btns"><a class="primary" href="../timesheet/" style="flex:1;padding:12px;border-radius:10px;font-weight:700;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Go to time sheet</a></div>`);}
+else if(jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
 BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");syncReports();});
 </script>
 </body>
