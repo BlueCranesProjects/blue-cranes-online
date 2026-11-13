@@ -255,7 +255,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (E)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (F)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -428,8 +428,8 @@
         <button class="job" data-editjob="${i}" aria-label="Edit job ${i+1}" style="flex:1;min-width:0;${j.done ? 'border-color:#9CC9AD;background:#F3FAF5' : ''}">
           <span class="num-badge" style="${j.done ? 'background:var(--A)' : ''}">${i+1}</span>
           <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(j.card||'')}${j.card&&(j.customer||j.desc)?' · ':''}${esc(j.customer||j.desc||'')}</span>
-          <span class="hint">${j.contact ? 'Contact: ' + esc(j.contact) + ' · ' : ''}Odometer ${fmtKm(j.odo)} km</span>
-          ${j.done ? '<span class="pill ok" style="align-self:flex-start">Completed</span>' : ''}</span>
+          <span class="hint">${j.contact ? 'Contact: ' + esc(j.contact) : ''}${j.done || (j.odo !== '' && j.odo != null) ? (j.contact ? ' · ' : '') + 'Odometer ' + fmtKm(j.odo) + ' km' : ''}</span>
+          ${j.done ? '<span class="pill ok" style="align-self:flex-start">Completed</span>' : '<span class="pill prog" style="align-self:flex-start">Busy – tap to open</span>'}</span>
           <span class="big" style="font-size:22px">${fmtH(Number(j.hrs)||0)}<span style="font-size:14px;color:var(--muted)"> h</span></span></button>
         <button type="button" data-done="${i}" aria-pressed="${!!j.done}" aria-label="${j.done ? 'Completed – tap to undo' : 'Mark job ' + (i+1) + ' completed'}"
           style="width:64px;flex-shrink:0;border-radius:12px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;${j.done ? 'background:var(--A);color:#fff;border:2px solid var(--A)' : 'background:#fff;color:var(--navyDeep);border:2px dashed var(--field)'}">
@@ -446,6 +446,36 @@
       </div>${storeLine()}</main>` + tabs('today');
   }
 
+  function hoursSince(iso){ const t = Date.parse(iso || ''); if (isNaN(t)) return 1; return Math.min(24, Math.max(0.5, Math.round((Date.now() - t) / 1800000) / 2)); }
+  function startScheduled(id){
+    const k = todayKey(); const sh = state.sheets[k]; const x = state.schedule[id]; if (!x) return;
+    if (!sheetReady(k)){ toast('Do the vehicle inspection and start the sheet first'); state.activeDate = null; go('today', { schedId:null }); return; }
+    const had = (sh.jobs || []).findIndex(j => j.sched === id);
+    if (had >= 0){ state.activeDate = null; go('jobpage', { jobIdx:had, schedId:null }); return; }
+    sh.jobs = sh.jobs || [];
+    sh.jobs.push({ sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', odo:'', hrs:0, notes:x.notes || '', done:false, startedAt:new Date().toISOString() });
+    x.addedTo = k; saveSched(id); saveSheet(k);
+    state.activeDate = null; toast('Job started'); go('jobpage', { jobIdx:sh.jobs.length - 1, schedId:null, prefill:null });
+  }
+  // a started job: only the report sheets, plus finish
+  function viewJobPage(){
+    const key = curKey(); const sh = state.sheets[key]; const j = sh && sh.jobs[state.jobIdx]; if (!j) return viewToday();
+    if (j.done) return viewJob();
+    const t = Date.parse(j.startedAt || ''); const since = isNaN(t) ? '' : new Date(t).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' });
+    return headerBack('JOB ' + (state.jobIdx + 1), 'today') + `<main>
+      <section class="card" style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="pill prog">Busy</span>${since ? `<span class="hint">Started ${esc(since)}</span>` : ''}</div>
+        <div style="font-size:19px;font-weight:700">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · '))}</div>
+        ${j.contact ? `<div class="hint" style="font-size:14px;color:var(--label)">Contact: <b>${esc(j.contact)}</b></div>` : ''}
+        ${j.notes ? `<div class="hint" style="font-size:14px">${esc(j.notes)}</div>` : ''}
+      </section>
+      <h2 style="padding:4px 2px 0">REPORTS</h2>
+      ${reportButtons(`data-fl="${state.jobIdx}"`)}
+      <button class="btn primary" style="margin-top:10px" data-jobfinish="${state.jobIdx}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Finish job</button>
+      <span class="hint" style="text-align:center">Finish asks for the odometer and hours for the time sheet.</span>
+      <button class="btn secondary" data-jobedit="${state.jobIdx}">Edit job details</button>
+    </main>`;
+  }
   function viewJob(){
     const key = curKey(); const sh = state.sheets[key]; if (!sh || !checkDone(sh)){ return viewToday(); }
     const editing = state.jobIdx != null; const p = !editing && state.prefill ? state.schedule[state.prefill] : null;
@@ -456,31 +486,35 @@
     const prevOdo = prevIdx >= 0 ? Number(sh.jobs[prevIdx].odo) : Number(sh.firstOdo);
     state._hrs = Number(j.hrs) || 0; state._done = !!j.done;
     const n = editing ? state.jobIdx + 1 : sh.jobs.length + 1;
-    return headerBack((editing?'JOB ':(state.prefill?'START JOB ':'ADD JOB ')) + n, 'today') + `<main>
-      ${editing && !j.done ? `<section class="card" style="display:flex;flex-direction:column;gap:10px;border-left:5px solid var(--yellow)">
-        <div style="display:flex;align-items:center;gap:8px"><span class="pill prog">Busy</span><span class="hint">Reports for this job</span></div>
-        ${reportButtons(`data-fl="${state.jobIdx}"`)}</section>` : ''}
+    const quick = !editing && !p;                          // Add job: just who/what, then start
+    const finishing = editing && !!state._finishing && !j.done;
+    if (finishing && !(Number(j.hrs) > 0)) state._hrs = hoursSince(j.startedAt);
+    const hide = quick ? 'style="display:none"' : '';
+    return headerBack((finishing ? 'FINISH JOB ' : editing ? 'JOB ' : 'START JOB ') + n, editing && !j.done ? 'jobpage' : 'today') + `<main>
       <form id="jobForm" style="display:flex;flex-direction:column;gap:18px">
         ${locked ? `<div class="hint" style="display:flex;gap:8px;align-items:center;color:var(--label)">${ICON.cal}<span>From your schedule. Job card no., customer and contact can only be changed on the Schedule tab.</span></div>` : ''}
         <div class="field"><label for="card">Job card no.</label><input id="card" value="${esc(j.card)}" ${ro}></div>
         <div class="field"><label for="customer">Customer</label><input id="customer" autocomplete="organization" value="${esc(j.customer||j.desc||'')}" ${ro}></div>
         ${locked && j.contact ? `<div class="field"><label for="contact">Contact person</label><input id="contact" value="${esc(j.contact)}" ${ro}></div>` : ''}
-        <div class="field"><label for="odo">Odometer on arrival (km)</label><input id="odo" class="num" inputmode="numeric" value="${esc(j.odo)}" required>
+        ${!locked ? `<div class="field"><label for="contactIn">Contact person (optional)</label><input id="contactIn" autocomplete="name" value="${esc(j.contact || '')}"></div>` : ''}
+        <div ${hide}>
+        <div class="field"><label for="odo">Odometer at this job (km)</label><input id="odo" class="num" inputmode="numeric" value="${esc(j.odo)}" required>
           <span class="hint" id="odoHint">Previous reading ${fmtKm(prevOdo)} km</span></div>
         <div class="field"><span class="lab" id="hrsLab">Hours on job</span>
           <div class="stepper" role="group" aria-labelledby="hrsLab">
             <button type="button" id="minus" aria-label="Less time">−</button>
             <div class="val" id="hrsVal" aria-live="polite">${fmtH(state._hrs)} h</div>
             <button type="button" id="plus" aria-label="More time">+</button></div>
-          <span class="hint">Steps of 0.5 h</span></div>
-        <div class="field"><span class="lab" id="doneLab">Job status</span>
+          <span class="hint">${finishing && j.startedAt ? 'Worked out from when you started – adjust if needed. ' : ''}Steps of 0.5 h</span></div>
+        </div>
+        <div class="field" ${quick || finishing ? 'style="display:none"' : ''}><span class="lab" id="doneLab">Job status</span>
           <div class="seg" role="group" aria-labelledby="doneLab" style="width:100%">
             <button type="button" id="stOpen" aria-pressed="${!j.done}" style="flex:1;width:auto;height:48px;font-size:15px;${!j.done ? 'background:var(--yellow);border-color:var(--yellowDark);color:var(--navyDeep)' : ''}">Not finished</button>
             <button type="button" id="stDone" aria-pressed="${!!j.done}" style="flex:1;width:auto;height:48px;font-size:15px;${j.done ? 'background:var(--A);border-color:var(--A);color:#fff' : ''}">✓ Completed</button>
           </div></div>
-        <div class="field"><label for="notes">Notes (optional)</label><textarea id="notes" rows="3">${esc(j.notes)}</textarea></div>
+        <div class="field" ${hide}><label for="notes">Notes (optional)</label><textarea id="notes" rows="3">${esc(j.notes)}</textarea></div>
         <div id="jobErr" class="warn" role="alert"></div>
-        <button class="btn primary" type="button" data-submit>${editing?'Save changes':'Save job'}</button>
+        <button class="btn primary" type="button" data-submit>${quick ? 'Start job' : finishing ? '✓ Finish job' : 'Save changes'}</button>
         ${editing?`<button class="btn ghost" type="button" id="delJob">Delete this job</button>`:''}
       </form></main>`;
   }
@@ -591,10 +625,11 @@
     const tk = todayKey(); const sj = sheetJobFor(x.id);
     const box = inner => `<section class="card" style="display:flex;flex-direction:column;gap:10px;border-left:5px solid var(--yellow)">${inner}</section>`;
     if (sj && sj.j.done) return box('<div style="display:flex;align-items:center;gap:8px"><span class="pill ok">✓ Completed</span><span class="hint">This job is finished.</span></div>');
-    if (sj) return box(`<div style="display:flex;align-items:center;gap:8px"><span class="pill prog">Busy</span><span class="hint">Started ${esc(niceDate(sj.k))} · odometer ${fmtKm(sj.j.odo)} km</span></div>${reportButtons(`data-flk="${sj.k}" data-fli="${sj.i}"`)}`);
+    if (sj) return box(`<div style="display:flex;align-items:center;gap:8px"><span class="pill prog">Busy</span><span class="hint">Started ${esc(niceDate(sj.k))}</span></div>${reportButtons(`data-flk="${sj.k}" data-fli="${sj.i}"`)}
+      <button class="btn secondary" type="button" data-finishk="${sj.k}" data-finishi="${sj.i}">✓ Finish job</button>`);
     if (x.date !== tk) return box(`<span class="hint">You can start this job on ${esc(niceDate(x.date))}.</span>`);
     return box(`<button class="btn primary" type="button" data-schedstart="${esc(x.id)}">${ICON.plus} Start job</button>
-      <span class="hint">${sheetReady(tk) ? 'Records your arrival odometer. Forklift inspection and load test open once the job is started.' : 'Do the vehicle inspection and start today\'s sheet first.'}</span>`);
+      <span class="hint">${sheetReady(tk) ? 'Forklift inspection and load test open once the job is started.' : 'Do the vehicle inspection and start today\'s sheet first.'}</span>`);
   }
   function viewSchedJob(){
     const editing = !!(state.schedId && state.schedule[state.schedId]);
@@ -786,7 +821,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 13 Nov (E)</span>
+        <span class="hint">App version 13 Nov (F)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -933,13 +968,13 @@
   // ---------- render & wire ----------
   function render(){
     const v = state.view;
-    app.innerHTML = v==='signin' ? viewSignIn() : v==='schedule' ? viewSchedule() : v==='schedjob' ? viewSchedJob() : v==='check' ? viewCheck() : v==='job' ? viewJob() : v==='end' ? viewEnd() : v==='history' ? viewHistory() : v==='detail' ? viewDetail() : viewToday();
+    app.innerHTML = v==='signin' ? viewSignIn() : v==='schedule' ? viewSchedule() : v==='schedjob' ? viewSchedJob() : v==='check' ? viewCheck() : v==='job' ? viewJob() : v==='jobpage' ? viewJobPage() : v==='end' ? viewEnd() : v==='history' ? viewHistory() : v==='detail' ? viewDetail() : viewToday();
     wire();
   }
 
   function wire(){
-    app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go, { jobIdx:null, prefill:null, schedId:null }));
-    app.querySelectorAll('[data-addjob]').forEach(b => b.onclick = () => go('job', { jobIdx:null, prefill:null }));
+    app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'jobpage' ? go('jobpage', { _finishing:false }) : go(b.dataset.go, { jobIdx:null, prefill:null, schedId:null, _finishing:false }));
+    app.querySelectorAll('[data-addjob]').forEach(b => b.onclick = () => go('job', { jobIdx:null, prefill:null, _finishing:false }));
     // account, backup, install
     const so = document.getElementById('signOut');
     if (so) so.onclick = () => confirmBox('Sign out? Your data stays saved in your account.', 'Sign out', async () => {
@@ -971,11 +1006,12 @@
     app.querySelectorAll('[data-schedstart]').forEach(b => b.onclick = () => {
       const tk = todayKey();
       if (!sheetReady(tk)){ toast('Do the vehicle inspection and start the sheet first'); state.activeDate = null; go('today', { schedId:null }); return; }
-      state.activeDate = null; go('job', { jobIdx:null, prefill:b.dataset.schedstart, schedId:null });
+      state.activeDate = null; startScheduled(b.dataset.schedstart);
     });
     app.querySelectorAll('[data-schedopen]').forEach(b => b.onclick = () => { state._schedBack = 'today'; go('schedjob', { schedId:b.dataset.schedopen }); });
     app.querySelectorAll('[data-done]').forEach(b => b.onclick = () => {
       const k = curKey(); const sh = state.sheets[k]; const j = sh && sh.jobs[Number(b.dataset.done)]; if (!j) return;
+      if (!j.done){ go('job', { jobIdx:Number(b.dataset.done), _finishing:true }); return; }
       j.done = !j.done; if (j.done) j.doneAt = new Date().toISOString(); else delete j.doneAt;
       syncSchedDone(j); saveSheet(k); toast(j.done ? 'Job ' + (Number(b.dataset.done) + 1) + ' completed' : 'Marked as not finished'); render();
     });
@@ -988,7 +1024,7 @@
       };
       stO.onclick = () => { state._done = false; paint(); }; stD.onclick = () => { state._done = true; paint(); };
     }
-    app.querySelectorAll('[data-schedto]').forEach(b => b.onclick = () => go('job', { jobIdx:null, prefill:b.dataset.schedto }));
+    app.querySelectorAll('[data-schedto]').forEach(b => b.onclick = () => startScheduled(b.dataset.schedto));
     app.querySelectorAll('[data-week]').forEach(b => b.onclick = () => {
       const n = Number(b.dataset.week); const cur = state.schedWeek || weekStart(todayKey());
       go('schedule', { schedWeek: n === 0 ? null : addDays(cur, n) });
@@ -1023,7 +1059,11 @@
         saveSched(nid); toast(id ? 'Changes saved' : 'Added to schedule'); back(date);
       };
     }
-    app.querySelectorAll('[data-editjob]').forEach(b => b.onclick = () => go('job', { jobIdx:Number(b.dataset.editjob) }));
+    app.querySelectorAll('[data-editjob]').forEach(b => b.onclick = () => { const i = Number(b.dataset.editjob); const sh = state.sheets[curKey()]; const j = sh && sh.jobs[i];
+      if (j && !j.done) go('jobpage', { jobIdx:i, _finishing:false }); else go('job', { jobIdx:i, _finishing:false }); });
+    app.querySelectorAll('[data-jobedit]').forEach(b => b.onclick = () => go('job', { jobIdx:Number(b.dataset.jobedit), _finishing:false }));
+    app.querySelectorAll('[data-jobfinish]').forEach(b => b.onclick = () => go('job', { jobIdx:Number(b.dataset.jobfinish), _finishing:true }));
+    app.querySelectorAll('[data-finishk]').forEach(b => b.onclick = () => { const k = b.dataset.finishk; state.activeDate = k === todayKey() ? null : k; go('job', { jobIdx:Number(b.dataset.finishi), _finishing:true, schedId:null }); });
     app.querySelectorAll('[data-detail]').forEach(b => b.onclick = () => go('detail', { detailKey:b.dataset.detail }));
     app.querySelectorAll('[data-reopen]').forEach(b => b.onclick = () => {
       const k = b.dataset.reopen; state.sheets[k].status = 'open'; saveSheet(k);
@@ -1143,10 +1183,18 @@
         const k = curKey(); const sh = state.sheets[k]; const err = document.getElementById('jobErr');
         const odo = parseNum(jf.odo.value);
         if (!jf.card.value.trim() && !jf.customer.value.trim()){ err.textContent = 'Add a job card no. or a customer.'; return; }
-        if (isNaN(odo)){ err.textContent = 'Enter the odometer reading as a number.'; return; }
-        if (odo < Number(sh.firstOdo)){ err.textContent = 'That reading is lower than this morning\'s first reading (' + fmtKm(sh.firstOdo) + ' km). Check the number.'; return; }
-        const job = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), odo, hrs: state._hrs, notes: jf.notes.value.trim(), done: !!state._done };
-        if (state.jobIdx != null){ const was = sh.jobs[state.jobIdx];
+        const cIn = document.getElementById('contactIn');
+        if (state.jobIdx == null && !state.prefill){   // Add job → start it straight away, no odometer or hours yet
+          sh.jobs = sh.jobs || [];
+          sh.jobs.push({ card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '', odo:'', hrs:0, notes:'', done:false, startedAt:new Date().toISOString() });
+          saveSheet(k); toast('Job started'); go('jobpage', { jobIdx:sh.jobs.length - 1, prefill:null, _finishing:false }); return;
+        }
+        const finishing = !!state._finishing; if (finishing) state._done = true;
+        const needOdo = finishing || state._done || jf.odo.value.trim() !== '';
+        if (needOdo && isNaN(odo)){ err.textContent = 'Enter the odometer reading at this job.'; return; }
+        if (needOdo && odo < Number(sh.firstOdo)){ err.textContent = 'That reading is lower than this morning\'s first reading (' + fmtKm(sh.firstOdo) + ' km). Check the number.'; return; }
+        const job = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '', odo: needOdo ? odo : '', hrs: state._hrs, notes: jf.notes.value.trim(), done: !!state._done };
+        if (state.jobIdx != null){ const was = sh.jobs[state.jobIdx]; if (was && was.startedAt) job.startedAt = was.startedAt;
           if (was && was.sched){ Object.assign(job, { sched: was.sched, card: was.card || '', customer: was.customer || '', contact: was.contact || '' }); }
           if (was && was.done && job.done) job.doneAt = was.doneAt;
           sh.jobs[state.jobIdx] = job; }
@@ -1158,7 +1206,7 @@
         if (job.done && !job.doneAt) job.doneAt = new Date().toISOString();
         if (!job.done) delete job.doneAt;
         syncSchedDone(job);
-        saveSheet(k); toast('Job saved'); go('today', { jobIdx:null, prefill:null });
+        saveSheet(k); toast(finishing ? 'Job finished' : 'Job saved'); go('today', { jobIdx:null, prefill:null, _finishing:false });
       };
     }
 
@@ -1194,6 +1242,8 @@
         if (isNaN(l)){ err.textContent = 'Enter the last odometer reading.'; return; }
         if (l < lastOdo(sh)){ err.textContent = 'Last reading is lower than a job reading today (' + fmtKm(lastOdo(sh)) + ' km). Check the number.'; return; }
         if (!ef.cin.value || !ef.cout.value){ err.textContent = 'Fill in clock in and clock out.'; return; }
+        const busy = (sh.jobs || []).findIndex(j => !j.done);
+        if (busy >= 0){ err.textContent = 'Job ' + (busy + 1) + ' is still busy – open it and tap Finish job first.'; return; }
         const missing = PARTS.filter(x => !sh.condition[x]);
         if (missing.length){ err.textContent = 'The vehicle check isn\'t done yet – go back and tap "Do check" on the Today screen.'; return; }
         Object.assign(sh, { lastOdo:l, clockIn:ef.cin.value, clockOut:ef.cout.value, status:'submitted', submittedAt:new Date().toISOString() });
