@@ -62,6 +62,10 @@
   .item.unsafe{border:2px solid var(--bad);background:#FDF3F2}
   .field textarea{border-radius:10px;border:1.5px solid var(--field);background:#fff;padding:10px 12px;font-size:16px;font-family:inherit;color:var(--ink);width:100%;resize:vertical}
   .photo{width:100%;max-height:260px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#fff}
+  .from{display:flex;align-items:center;gap:8px;background:var(--navyDeep);color:#fff;border-radius:8px;padding:7px 10px;font-size:12.5px}
+  .repno{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px dashed var(--line);padding-top:8px}
+  .repno .k{font-size:12px;font-weight:600;color:var(--label)} .repno .rn{font-weight:800;font-size:15px;color:var(--navyDeep)}
+  .repno .rt{font-size:11px;font-weight:700;background:var(--yellow);color:var(--navyDeep);border-radius:999px;padding:2px 8px}
   .pill.bad{background:#F8E1DE;color:var(--bad)} .pill.ok{background:#E3F1E8;color:var(--ok)}
   input[type=search]{height:46px;border-radius:10px;border:1.5px solid var(--field);padding:0 12px;font-size:16px;font-family:inherit;width:100%}
 </style>
@@ -100,6 +104,8 @@
     set.delete('Unknown'); set.delete(''); return ['Unknown', ...[...set].sort((a, b) => a.localeCompare(b))];
   }
   function addMake(v){ v = String(v || '').trim(); if (!v) return ''; const hit = makesList().find(x => x.toLowerCase() === v.toLowerCase()); if (hit) return hit; MAKES.push(v); saveMakes(); return v; }
+  const FL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
+  const repText = r => r && r.report && r.report.no ? r.report.no + (r.report.cert ? ' / ' + r.report.cert : '') : '';
   const PH = {};
   function photoGet(pid){
     if (PH[pid]) return Promise.resolve(PH[pid]);
@@ -177,18 +183,20 @@
       </section>
       <div class="row" style="justify-content:space-between;padding:2px"><h2>Equipment</h2><span class="hint">${(l.rows||[]).length} ${(l.rows||[]).length === 1 ? 'item' : 'items'}</span></div>
       ${(l.rows || []).map((r, i) => { const k = norm(r.serial); if (r.make && !MK.includes(r.make)) MK.push(r.make); const seen = k && known[k] && known[k].job !== l.job;
+        const ro = r.auto ? 'readonly' : ''; const rep = r.report && r.report.no ? r.report : null;
         return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}" data-i="${i}">
-          <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters"></div>
+          ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
+          <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
           ${dupes[k] > 1 ? '<span class="warn">This serial nr is on the list more than once.</span>' : ''}
           ${seen ? `<span class="hint" style="color:var(--ok)">Already in ${esc(l.customer)}'s inventory (job ${esc(known[k].job)}, ${esc(niceDate(known[k].date))}).</span>` : ''}
-          <div class="field"><label for="d${i}">Description</label><input id="d${i}" data-f="desc" value="${esc(r.desc)}" list="descList" placeholder="e.g. Chain block"></div>
+          <div class="field"><label for="d${i}">Description</label><input id="d${i}" data-f="desc" value="${esc(r.desc)}" list="descList" placeholder="e.g. Chain block" ${ro}></div>
           <div class="grid2">
-            <div class="field"><label for="m${i}">Manufacturer</label><select id="m${i}" data-make="${i}">
+            <div class="field"><label for="m${i}">Manufacturer</label><select id="m${i}" data-make="${i}" ${r.auto ? 'disabled' : ''}>
                 ${r.make ? '' : '<option value="" selected disabled>Choose…</option>'}${MK.map(x => `<option value="${esc(x)}" ${x === r.make ? 'selected' : ''}>${esc(x)}</option>`).join('')}
                 <option value="__new">+ Add new manufacturer</option></select>
               <div id="mn${i}" style="display:none;gap:6px;flex-direction:column"><input id="mni${i}" placeholder="New manufacturer"><button type="button" class="btn secondary small" data-addmake="${i}" style="width:100%">Add to list</button></div></div>
-            <div class="field"><label for="w${i}">SWL (kg)</label><div style="position:relative"><input id="w${i}" data-f="swl" value="${esc(r.swl)}" inputmode="decimal" placeholder="e.g. 2000" style="padding-right:40px"><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">kg</span></div></div>
+            <div class="field"><label for="w${i}">SWL (kg)</label><div style="position:relative"><input id="w${i}" data-f="swl" value="${esc(r.swl)}" inputmode="decimal" placeholder="e.g. 2000" style="padding-right:40px" ${ro}><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">kg</span></div></div>
           </div>
           <div class="field"><span style="font-size:12.5px;font-weight:600;color:var(--label)" id="stl${i}">Condition</span>
             <div class="row" role="group" aria-labelledby="stl${i}">
@@ -198,6 +206,7 @@
             ${r.photo ? `<img class="photo" id="ph${i}" data-pid="${esc(r.photo)}" alt="Photo of the defect on item ${i+1}">` : ''}
             <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label>
               ${r.photo ? `<button type="button" class="btn secondary small" data-nophoto="${i}" style="color:var(--bad);border-color:var(--bad)">Remove photo</button>` : ''}</div>` : ''}
+          ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
           </div>`; }).join('') || '<div class="empty">No equipment yet. Tap <b>Add item</b> for each piece of equipment.</div>'}
       <div class="row">
         <button class="btn primary" id="add">${ICON.plus} Add item</button>
@@ -228,7 +237,7 @@
     return head('Inventory', c.name, `<button class="ib" id="toInv" aria-label="Back to inventory">${ICON.back}</button>`) + `<main>
       <section class="card" style="gap:6px;padding:10px 12px">
         <table class="inv"><thead><tr><th>Serial nr</th><th>Description</th><th>Make</th><th>SWL</th></tr></thead><tbody>
-          ${items.map(r => `<tr><td style="font-weight:700">${esc(r.serial) || '–'}</td><td>${esc(r.desc)}${r.location ? `<div class="hint">${esc(r.location)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(swlText(r.swl))}${r.status ? `<div><span class="pill ${r.status === 'SAFE' ? 'ok' : 'bad'}">${r.status === 'SAFE' ? 'Safe' : 'Unsafe'}</span></div>` : ''}</td></tr>
+          ${items.map(r => `<tr><td style="font-weight:700">${esc(r.serial) || '–'}</td><td>${esc(r.desc)}${r.location ? `<div class="hint">${esc(r.location)}</div>` : ''}${repText(r) ? `<div class="hint">Report ${esc(repText(r))}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(swlText(r.swl))}${r.status ? `<div><span class="pill ${r.status === 'SAFE' ? 'ok' : 'bad'}">${r.status === 'SAFE' ? 'Safe' : 'Unsafe'}</span></div>` : ''}</td></tr>
             ${r.status === 'UNSAFE' && r.reason ? `<tr><td colspan="4" style="color:var(--bad);font-size:12.5px;padding-top:0">Unsafe: ${esc(r.reason)}</td></tr>` : ''}`).join('')}
         </tbody></table>
       </section>
@@ -355,9 +364,9 @@
     if (!l) return; const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
     try {
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { swl: swlText(r.swl), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
+      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { swl: swlText(r.swl), rep: repText(r), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
       await table(doc, 'Equipment list', [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Location:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
-        rows, [{ t:'Serial nr', k:'serial', w:38 }, { t:'Description', k:'desc', w:52 }, { t:'Manufacturer', k:'make', w:34 }, { t:'SWL (kg)', k:'swl', w:26 }, { t:'Condition', k:'cond', w:30, color:STATUS_COLOR }],
+        rows, [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:38 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL (kg)', k:'swl', w:22 }, { t:'Condition', k:'cond', w:24, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:36 }],
         (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items' + (rows.some(r => r.status === 'UNSAFE') ? ' · unsafe items with reasons and photos on the next page' : ''));
       await unsafePages(doc, l, rows);
       const how = await BC.saveFile(doc.output('blob'), `Equipment_list_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`, 'application/pdf', 'Equipment list');
@@ -370,9 +379,9 @@
     try {
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
       const rows = Object.values(c.items).sort((a,b) => String(a.desc).localeCompare(String(b.desc)) || String(a.serial).localeCompare(String(b.serial), undefined, { numeric:true }))
-        .map(r => Object.assign({}, r, { swl: swlText(r.swl), cond: r.status || '', seen: niceDate(r.date) + (r.job ? ' (' + r.job + ')' : '') }));
+        .map(r => Object.assign({}, r, { swl: swlText(r.swl), cond: r.status || '', rep: repText(r), seen: niceDate(r.date) + (r.job ? ' (' + r.job + ')' : '') }));
       await table(doc, 'Equipment inventory', [[['Customer:', c.name, 15, 140, 42], ['Date:', niceDate(today()), 145, 195, 160]]],
-        rows, [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:44 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL', k:'swl', w:20 }, { t:'Condition', k:'cond', w:22, color:STATUS_COLOR }, { t:'Last listed', k:'seen', w:34 }],
+        rows, [{ t:'Serial nr', k:'serial', w:28 }, { t:'Description', k:'desc', w:32 }, { t:'Manufacturer', k:'make', w:24 }, { t:'SWL', k:'swl', w:20 }, { t:'Condition', k:'cond', w:22, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:28 }, { t:'Last listed', k:'seen', w:26 }],
         rows.length + ' items');
       const how = await BC.saveFile(doc.output('blob'), `Inventory_${safe(c.name)}_${today()}.pdf`, 'application/pdf', 'Inventory ' + c.name);
       if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded');
