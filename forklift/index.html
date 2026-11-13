@@ -709,6 +709,18 @@ function toEquipment(st){
   l.savedAt=Date.now();all[id]=l;store("bco-equipment",JSON.stringify(all));
   if(cloudOK())window.Cloud.putItem("eq-"+String(id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));
 }
+// ---- one-time: old report numbers (7001.1) get the F prefix (F7001.1), also on equipment lists ----
+const NOF=/^(?!F)(.+\.\d+)$/i;
+async function fixEquipmentNos(){let eq={};try{eq=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){return 0;}let n=0;
+  if(cloudOK()){try{(await window.Cloud.listKind("equipment")).forEach(d=>{const r=d.data;if(!r||!r.id)return;delete r.kind;const l=eq[r.id];if(!l||(r.savedAt||0)>(l.savedAt||0))eq[r.id]=r;});}catch(e){}}
+  Object.values(eq).forEach(l=>{let c=false;(l.rows||[]).forEach(x=>{if(x.report&&x.report.no&&NOF.test(String(x.report.no).trim())){x.report.no="F"+String(x.report.no).trim();c=true;}
+    if(x.reason&&/^See report (?!F)/.test(x.reason)){x.reason=x.reason.replace(/^See report /,"See report F");c=true;}});
+    if(c){n++;l.savedAt=Date.now();if(cloudOK())window.Cloud.putItem("eq-"+String(l.id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));}});
+  store("bco-equipment",JSON.stringify(eq));return n;}
+async function renumberOld(){let n=0;
+  try{const all=await RDB.all();for(const r of all){const d=String((r.state&&r.state.f&&r.state.f.docno)||"").trim();if(d&&NOF.test(d)){r.state.f.docno="F"+d;r.savedAt=Date.now();await RDB.put(r);n++;}}}catch(e){console.error(e);}
+  const cur=String(state.f.docno||"").trim();if(cur&&NOF.test(cur)){state.f.docno="F"+cur;applyState();save();}
+  await fixEquipmentNos();if(n){updRepCount();if($("repPanel").classList.contains("show"))showReports();toast(n+" old report"+(n>1?"s":"")+" renumbered with F");}}
 async function saveReport(st){if(!st._rid)st._rid=st.f.docno||("r"+Date.now());const snap=JSON.parse(JSON.stringify(st));
   await RDB.put({id:st._rid,savedAt:Date.now(),date:st.f.date||today(),job:(st.f.jobno||"").trim(),state:snap});save();updRepCount();}
 async function updRepCount(){const a=await RDB.all();$("repCount").textContent=a.length;$("repCount").style.display=a.length?"":"none";}
@@ -847,7 +859,7 @@ if(!ACTIVE){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}
 $("repClose").onclick=()=>{$("repPanel").classList.remove("show");if(!ACTIVE){if(WANT_REPORTS)location.href="../timesheet/";else showGate();}};
 if(ACTIVE&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
 {const wt=new URLSearchParams(location.search).get("type");if(ACTIVE&&(wt==="INSPECTION"||wt==="LOAD TEST")&&state.type!==wt){state.type=wt;applyState();save();}}
-BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");syncReports();});
+BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");syncReports().then(renumberOld);});
 </script>
 </body>
 </html>

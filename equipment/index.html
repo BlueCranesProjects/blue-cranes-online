@@ -136,7 +136,10 @@
       remote.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; seen[r.id] = 1; const l = S.lists[r.id]; if (!l || (r.savedAt || 0) > (l.savedAt || 0)) S.lists[r.id] = r; });
       Object.values(S.lists).forEach(l => { if (!seen[l.id]) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); });
       if (S.cur && S.lists[S.cur.id] && S.lists[S.cur.id] !== S.cur){ S.cur = S.lists[S.cur.id]; lsSave(); render(); return; }
-      lsSave(); if (S.view !== 'list') render(); else refreshSuggestions();
+      let fixed = false; const NOF = /^(?!F)(.+\.\d+)$/i;
+      Object.values(S.lists).forEach(l => { let c = false; (l.rows || []).forEach(x => { if (x.report && x.report.no && NOF.test(String(x.report.no).trim())){ x.report.no = 'F' + String(x.report.no).trim(); c = true; }
+        if (x.reason && /^See report (?!F)/.test(x.reason)){ x.reason = x.reason.replace(/^See report /, 'See report F'); c = true; } }); if (c){ fixed = true; saveList(l, true); } });
+      lsSave(); if (fixed || S.view !== 'list') render(); else refreshSuggestions();
     } catch(e){ console.error('Equipment sync failed', e); }
   }
   function activeJob(){
