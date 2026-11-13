@@ -1,47 +1,50 @@
-# Blue Cranes – Daily Time Sheet
+# Blue Cranes Online
 
-Installable phone app (PWA) for the daily vehicle inspection, jobs, end-of-day odometer and clock times, PDF time sheet, WhatsApp message and a weekly job schedule.
+One installable phone app (PWA) with all Blue Cranes technician tools. One sign-in; each person has a profile (name, cell number, signature) that fills in the technician on every tool.
 
-- Works offline once opened.
-- Saves to Firebase (cloud) when `firebase-config.js` is filled in; otherwise saves on the phone only.
-- **History → Back up data / Restore backup** moves all data between phones or from the old Claude version.
+Live: https://bluecranesprojects.github.io/blue-cranes-online/
 
-## Files
+## Tools
+
+| Folder | Tool |
+|---|---|
+| `timesheet/` | Daily Time Sheet – vehicle check, jobs, schedule, PDF, WhatsApp |
+| `forklift/` | Forklift Inspection / Load Test report and load test certificate |
+
+## Adding a new tool
+
+1. Make a folder, e.g. `crane/`, with an `index.html`.
+2. In its `<head>` load the shared files:
+   ```html
+   <script src="../shared/firebase-config.js"></script>
+   <script type="module" src="../shared/cloud.js"></script>
+   <script src="../shared/app.js"></script>
+   ```
+3. Call `BC.requireUser()` → `{ user, profile }` (sends people to the home screen if not signed in).
+   Save with `Cloud.putItem('crane-<id>', { kind:'crane', ... })`, list with `Cloud.listKind('crane')`.
+   Share or download files with `BC.saveFiles([{ blob, name }])`.
+4. Add a tile to the `TOOLS` list at the top of the script in the root `index.html`.
+5. Add the new files to `SHELL` in `sw.js` and change `VERSION`.
+
+## Shared files
 
 | File | What it is |
 |---|---|
-| `index.html` | The app |
-| `cloud.js` | Firebase sign-in and saving |
-| `firebase-config.js` | **Your Firebase keys go here** |
-| `sw.js` | Offline support. Change `VERSION` after every update so phones get the new files |
-| `manifest.webmanifest`, `icons/` | App name and home-screen icon |
-| `vendor/jspdf.umd.min.js` | PDF maker (kept locally so PDFs work offline) |
-| `firestore.rules` | Database security rules to paste into Firebase |
+| `index.html` | Home screen: sign in, create account + profile, tool tiles |
+| `shared/firebase-config.js` | Firebase project keys |
+| `shared/cloud.js` | Firebase sign-in and saving (works offline, syncs later) |
+| `shared/app.js` | Profile, sign-in check, share/download, signature upload, offline worker |
+| `sw.js` | Offline support. **Change `VERSION` after every update** |
+| `vendor/` | jsPDF, pdf-lib, JSZip (kept locally so PDFs work offline) |
+| `firestore.rules` | Database rules: each person only sees their own data |
 
-## 1. Put it on GitHub Pages
+## Data in Firebase
 
-1. The repository must be **public** for free GitHub Pages (no data is stored in the code – your time sheets live in Firebase).
-2. On GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: `main` / `(root)` → Save**.
-3. After a minute the app is at `https://<your-github-name>.github.io/<repo-name>/`.
+Everything for a person is under `users/{uid}/items/`:
+`profile`, `settings`, `sheet-YYYY-MM-DD`, `sched-<id>` (time sheet), `fl-<doc no>` (forklift reports).
 
-## 2. Set up Firebase (free)
+## Firebase settings that must stay in place
 
-1. Go to <https://console.firebase.google.com> → **Add project** (e.g. `blue-cranes-timesheet`). Google Analytics can be off.
-2. **Build → Authentication → Get started → Sign-in method → Email/Password → Enable → Save.**
-3. **Authentication → Settings → Authorized domains → Add domain** → `<your-github-name>.github.io`.
-4. **Build → Firestore Database → Create database** → pick location `africa-south1 (Johannesburg)` → start in **production mode**.
-5. **Firestore → Rules** → replace everything with the contents of `firestore.rules` → **Publish**.
-6. **Project settings (gear) → General → Your apps → Web (`</>`)** → register app (no hosting) → copy the `firebaseConfig` values.
-7. Paste them into `firebase-config.js` (replace `window.FIREBASE_CONFIG = null;`), commit, and bump `VERSION` in `sw.js`.
-
-These Firebase web keys are meant to be public; the security rules are what protect the data.
-
-## 3. Install on the phone
-
-- **Android (Chrome):** open the link → History tab → **Install app on this phone**, or menu ⋮ → *Install app*.
-- **iPhone (Safari):** open the link → Share → **Add to Home Screen**.
-
-## 4. Move your old data
-
-1. In the old Claude version: **History → Back up data**.
-2. In the new app (signed in): **History → Restore backup** → pick the file.
+- Authentication → Sign-in method → **Email/Password** enabled
+- Authentication → Settings → Authorized domains → **bluecranesprojects.github.io**
+- Firestore → Rules → contents of `firestore.rules`

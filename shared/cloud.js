@@ -52,6 +52,26 @@ window.Cloud = api;
         }
       };
     };
+    const itemsCol = () => { const u = auth.currentUser; if (!u) throw new Error('Not signed in'); return F.collection(fs, 'users', u.uid, 'items'); };
+    // one document, e.g. the profile (server when online, phone cache when not)
+    api.getItem = async id => {
+      const ref = F.doc(itemsCol(), id); let s;
+      try { s = await F.getDoc(ref); } catch (e) { try { s = await F.getDocFromCache(ref); } catch (_) { return null; } }
+      return s.exists() ? s.data() : null;
+    };
+    // wait for the server for important saves (profile); falls back to "saved on phone" after a few seconds
+    api.setItem = (id, data) => {
+      const p = F.setDoc(F.doc(itemsCol(), id), data);
+      return Promise.race([p, new Promise(r => setTimeout(r, 6000))]);
+    };
+    api.deleteItem = id => { F.deleteDoc(F.doc(itemsCol(), id)).catch(report); return Promise.resolve(); };
+    api.putItem = (id, data) => { F.setDoc(F.doc(itemsCol(), id), data).catch(report); return Promise.resolve(); };
+    // all documents of one kind, e.g. 'forklift'
+    api.listKind = async kind => {
+      const q = F.query(itemsCol(), F.where('kind', '==', kind)); let s;
+      try { s = await F.getDocs(q); } catch (e) { s = await F.getDocsFromCache(q); }
+      return s.docs.map(d => ({ id: d.id, data: d.data() }));
+    };
     api.signIn = (email, pw) => A.signInWithEmailAndPassword(auth, email, pw);
     api.signUp = (email, pw) => A.createUserWithEmailAndPassword(auth, email, pw);
     api.resetPassword = email => A.sendPasswordResetEmail(auth, email);
