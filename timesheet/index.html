@@ -255,7 +255,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (G)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (H)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -823,7 +823,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 13 Nov (G)</span>
+        <span class="hint">App version 13 Nov (H)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}

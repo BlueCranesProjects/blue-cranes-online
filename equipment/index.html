@@ -69,6 +69,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
   const niceDate = k => { if (!k) return ''; const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d).toLocaleDateString('en-ZA', { day:'numeric', month:'short', year:'numeric' }); };
+  const swlText = v => { v = String(v == null ? '' : v).trim(); return /^\d+(\.\d+)?$/.test(v) ? Number(v).toLocaleString('en-ZA').replace(/,/g, ' ') + ' kg' : v; };
   const norm = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 2600); }
   function modal(html){ const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`; document.body.appendChild(bg); return bg; }
@@ -125,7 +126,7 @@
     const m = new Set(['Yale','Kito','Toyota','Blue Cranes','Crosby','Columbus McKinnon','Demag','Stahl','Konecranes','Elephant','Vital']);
     Object.values(S.lists).forEach(l => (l.rows || []).forEach(r => { if (r.desc) d.add(r.desc); if (r.make) m.add(r.make); }));
     document.getElementById('descList').innerHTML = [...d].sort().map(x => `<option value="${esc(x)}">`).join('');
-    document.getElementById('makeList').innerHTML = [...m].sort().map(x => `<option value="${esc(x)}">`).join('');
+    m.delete('Unknown'); document.getElementById('makeList').innerHTML = ['Unknown', ...[...m].sort()].map(x => `<option value="${esc(x)}">`).join('');
   }
 
   // ---------- views ----------
@@ -154,8 +155,9 @@
           ${seen ? `<span class="hint" style="color:var(--ok)">Already in ${esc(l.customer)}'s inventory (job ${esc(known[k].job)}, ${esc(niceDate(known[k].date))}).</span>` : ''}
           <div class="field"><label for="d${i}">Description</label><input id="d${i}" data-f="desc" value="${esc(r.desc)}" list="descList" placeholder="e.g. Chain block"></div>
           <div class="grid2">
-            <div class="field"><label for="m${i}">Manufacturer</label><input id="m${i}" data-f="make" value="${esc(r.make)}" list="makeList"></div>
-            <div class="field"><label for="w${i}">SWL</label><input id="w${i}" data-f="swl" value="${esc(r.swl)}" placeholder="e.g. 2 t, 500 kg"></div>
+            <div class="field"><label for="m${i}">Manufacturer</label><input id="m${i}" data-f="make" value="${esc(r.make)}" list="makeList" placeholder="Tap to choose or type">
+              ${r.make ? '' : `<button type="button" data-unknown="${i}" style="align-self:flex-start;border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:4px 0;cursor:pointer">Unknown</button>`}</div>
+            <div class="field"><label for="w${i}">SWL (kg)</label><div style="position:relative"><input id="w${i}" data-f="swl" value="${esc(r.swl)}" inputmode="decimal" placeholder="e.g. 2000" style="padding-right:40px"><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">kg</span></div></div>
           </div></div>`; }).join('') || '<div class="empty">No equipment yet. Tap <b>Add item</b> for each piece of equipment.</div>'}
       <div class="row">
         <button class="btn primary" id="add">${ICON.plus} Add item</button>
@@ -186,7 +188,7 @@
     return head('Inventory', c.name, `<button class="ib" id="toInv" aria-label="Back to inventory">${ICON.back}</button>`) + `<main>
       <section class="card" style="gap:6px;padding:10px 12px">
         <table class="inv"><thead><tr><th>Serial nr</th><th>Description</th><th>Make</th><th>SWL</th></tr></thead><tbody>
-          ${items.map(r => `<tr><td style="font-weight:700">${esc(r.serial) || '–'}</td><td>${esc(r.desc)}${r.location ? `<div class="hint">${esc(r.location)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(r.swl)}</td></tr>`).join('')}
+          ${items.map(r => `<tr><td style="font-weight:700">${esc(r.serial) || '–'}</td><td>${esc(r.desc)}${r.location ? `<div class="hint">${esc(r.location)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(swlText(r.swl))}</td></tr>`).join('')}
         </tbody></table>
       </section>
       <h2 style="padding:2px">Equipment lists</h2>
@@ -220,9 +222,12 @@
     const l = S.cur;
     $('fLoc').oninput = e => { l.location = e.target.value; saveList(l); };
     app.querySelectorAll('.item input[data-f]').forEach(inp => {
-      inp.oninput = () => { const i = Number(inp.closest('.item').dataset.i); let v = inp.value; if (inp.dataset.f === 'serial') v = v.toUpperCase(); l.rows[i][inp.dataset.f] = v; saveList(l); };
+      inp.oninput = () => { const i = Number(inp.closest('.item').dataset.i); let v = inp.value; if (inp.dataset.f === 'serial') v = v.toUpperCase();
+        if (inp.dataset.f === 'swl'){ const c = v.replace(/[^\d.,]/g, '').replace(',', '.'); if (c !== v){ v = c; inp.value = c; } }
+        l.rows[i][inp.dataset.f] = v; saveList(l); };
       if (inp.dataset.f === 'serial') inp.onchange = () => { inp.value = inp.value.toUpperCase(); render(); const n = document.getElementById('d' + inp.closest('.item').dataset.i); if (n && !n.value) n.focus(); };
     });
+    app.querySelectorAll('[data-unknown]').forEach(b => b.onclick = () => { const i = Number(b.dataset.unknown); l.rows[i].make = 'Unknown'; saveList(l); render(); const n = document.getElementById('w' + i); if (n) n.focus(); });
     const addRow = r => { l.rows = l.rows || []; l.rows.push(r); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
     $('add').onclick = () => addRow({ serial:'', desc:'', make:'', swl:'' });
     const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ serial:'', desc:p.desc, make:p.make, swl:p.swl }); };
@@ -265,9 +270,9 @@
     if (!l) return; const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
     try {
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl);
+      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { swl: swlText(r.swl) }));
       await table(doc, 'Equipment list', [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Location:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
-        rows, [{ t:'Serial nr', k:'serial', w:45 }, { t:'Description', k:'desc', w:65 }, { t:'Manufacturer', k:'make', w:40 }, { t:'SWL', k:'swl', w:30 }],
+        rows, [{ t:'Serial nr', k:'serial', w:45 }, { t:'Description', k:'desc', w:65 }, { t:'Manufacturer', k:'make', w:40 }, { t:'SWL (kg)', k:'swl', w:30 }],
         (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items');
       const how = await BC.saveFile(doc.output('blob'), `Equipment_list_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`, 'application/pdf', 'Equipment list');
       if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded');
@@ -279,7 +284,7 @@
     try {
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
       const rows = Object.values(c.items).sort((a,b) => String(a.desc).localeCompare(String(b.desc)) || String(a.serial).localeCompare(String(b.serial), undefined, { numeric:true }))
-        .map(r => Object.assign({}, r, { seen: niceDate(r.date) + (r.job ? ' (' + r.job + ')' : '') }));
+        .map(r => Object.assign({}, r, { swl: swlText(r.swl), seen: niceDate(r.date) + (r.job ? ' (' + r.job + ')' : '') }));
       await table(doc, 'Equipment inventory', [[['Customer:', c.name, 15, 140, 42], ['Date:', niceDate(today()), 145, 195, 160]]],
         rows, [{ t:'Serial nr', k:'serial', w:36 }, { t:'Description', k:'desc', w:50 }, { t:'Manufacturer', k:'make', w:32 }, { t:'SWL', k:'swl', w:22 }, { t:'Last listed', k:'seen', w:40 }],
         rows.length + ' items');
