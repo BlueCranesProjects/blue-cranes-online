@@ -82,7 +82,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
   const niceDate = k => { if (!k) return ''; const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d).toLocaleDateString('en-ZA', { day:'numeric', month:'short', year:'numeric' }); };
-  const swlText = v => { v = String(v == null ? '' : v).trim(); if (!/^\d+(\.\d+)?$/.test(v)) return v; const [a, b] = v.split('.'); return String(Number(a)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (b ? '.' + b : '') + ' kg'; };
+  const swlText = v => { v = String(v == null ? '' : v).trim().replace(/\s*kg$/i, '').replace(',', '.'); if (!/^\d+(\.\d+)?$/.test(v)) return v; const [a, b] = v.split('.'); return String(Number(a)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (b ? '.' + b : '') + ' kg'; };
   const norm = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 2600); }
   function modal(html){ const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`; document.body.appendChild(bg); return bg; }
@@ -223,7 +223,8 @@
       <span class="hint">“Copy last” adds a new item with the same description, manufacturer and SWL – just enter the serial nr.</span>
     </main>
     <div class="bar" style="flex-direction:column;align-items:center;gap:4px"><button class="btn navy" id="pdf">${ICON.pdf} Save PDF – whole job</button>
-      <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Equipment list only</button></div>`;
+      <div style="display:flex;gap:18px"><button type="button" id="pdfZip" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Download as zip folder</button>
+      <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Equipment list only</button></div></div>`;
   }
 
   function vInventory(){
@@ -306,6 +307,7 @@
     app.querySelectorAll('[data-nophoto]').forEach(b => b.onclick = () => { const i = Number(b.dataset.nophoto); const r = l.rows[i]; confirmBox('Remove the photo of item ' + (i + 1) + '?', 'Remove photo', () => { if (r.photo) photoDel(r.photo); r.photo = ''; saveList(l, true); render(); }); });
     app.querySelectorAll('img[data-pid]').forEach(im => photoGet(im.dataset.pid).then(d => { if (d) im.src = d; else im.alt = 'Photo not on this phone yet'; }));
     $('pdfOnly').onclick = () => { saveList(l, true); listPdf(l, $('pdfOnly')); };
+    $('pdfZip').onclick = () => { saveList(l, true); jobPack(l, $('pdfZip'), true); };
     $('pdf').onclick = () => {
       const used = (l.rows || []).map((r, i) => ({ r, i })).filter(x => x.r.serial || x.r.desc);
       const noReason = used.filter(x => x.r.status === 'UNSAFE' && !String(x.r.reason || '').trim());
@@ -339,14 +341,19 @@
     const headRow = () => { doc.setLineWidth(0.5); doc.setFillColor(230, 234, 242); doc.rect(L, y, R - L, rowH, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
       let x = L; cols.forEach(c => { doc.text(c.t, x + c.w / 2, y + 5.4, { align:'center' }); x += c.w; if (x < R) doc.line(x, y, x, y + rowH); }); y += rowH; };
     headRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
-    const minRows = Math.max(rows.length, Math.floor((maxY - y) / rowH));
-    for (let i = 0; i < minRows; i++){
-      if (y + rowH > maxY){ doc.addPage(); y = pageHead(false); headRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); }
-      doc.setLineWidth(0.3); doc.rect(L, y, R - L, rowH); const r = rows[i];
-      let x = L; cols.forEach(c => { if (r){ const t = doc.splitTextToSize(String(r[c.k] || ''), c.w - 3); if (c.color){ const col = c.color(r); doc.setTextColor(col[0], col[1], col[2]); doc.setFont('helvetica', 'bold'); }
-        doc.text(t[0] || '', x + 1.5, y + 5.4); if (c.color){ doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); } } x += c.w; if (x < R) doc.line(x, y, x, y + rowH); });
-      y += rowH; if (!r && i >= rows.length && y + rowH > maxY) break;
-    }
+    const LH = 4.3;   // line height inside a cell (mm)
+    const drawRow = r => {
+      const cells = r ? cols.map(c => doc.splitTextToSize(String(r[c.k] || ''), c.w - 3)) : null;
+      const h = cells ? Math.max(rowH, Math.max(...cells.map(t => t.length || 1)) * LH + 3.7) : rowH;
+      if (y + h > maxY){ doc.addPage(); y = pageHead(false); headRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); }
+      doc.setLineWidth(0.3); doc.rect(L, y, R - L, h);
+      let x = L; cols.forEach((c, k) => { if (cells){ if (c.color){ const col = c.color(r); doc.setTextColor(col[0], col[1], col[2]); doc.setFont('helvetica', 'bold'); }
+        cells[k].forEach((line, n) => doc.text(line, x + 1.5, y + 5.4 + n * LH)); if (c.color){ doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); } }
+        x += c.w; if (x < R) doc.line(x, y, x, y + h); });
+      y += h;
+    };
+    rows.forEach(drawRow);
+    while (y + rowH <= maxY) drawRow(null);   // empty lines to the bottom of the page, like the paper sheet
     if (foot){ doc.setFontSize(8.5); doc.setTextColor(90, 96, 112); doc.text(foot, L, 290); doc.setTextColor(0, 0, 0); }
   }
   const STATUS_COLOR = r => r.status === 'UNSAFE' ? [161, 42, 31] : r.status === 'SAFE' ? [21, 112, 61] : [0, 0, 0];
@@ -397,7 +404,7 @@
   }
   function busy(text){ let m = document.getElementById('busyBox'); if (!m){ m = modal('<div style="font-size:16px;font-weight:700">Making the job folder</div><div class="hint" id="busyTxt" style="font-size:14px"></div>'); m.id = 'busyBox'; }
     m.querySelector('#busyTxt').textContent = text; return m; }
-  async function jobPack(l, btn){
+  async function jobPack(l, btn, asZip){
     if (!l) return; const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Working…';
     const folder = `Job ${String(l.job || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(l.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')} - ${l.date}`;
     try {
@@ -407,7 +414,8 @@
       let reps = [], tools = null;
       try {
         busy('Finding forklift reports…'); tools = await forkliftTools();
-        reps = (await tools.api.reports()).filter(r => r && r.state && norm(r.job || r.state.f.jobno) === norm(l.job) && (!l.customer || !r.state.f.customer || norm(r.state.f.customer) === norm(l.customer)))
+        const core = j => norm(j).replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
+        reps = (await tools.api.reports()).filter(r => r && r.state && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))
           .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
         for (let k = 0; k < reps.length; k++){
           const st = reps[k].state; busy(`Forklift report ${k + 1} of ${reps.length} (${st.f.docno || ''})…`);
@@ -416,13 +424,24 @@
         }
       } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
       finally { if (tools) tools.done(); }
-      busy('Packing the folder…');
-      const zip = new JSZip(), dir = zip.folder(folder), used = {};
-      files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.pdf$/, `_${++used[n]}.pdf`); else used[n] = 1; dir.file(n, f.blob); });
-      const blob = await zip.generateAsync({ type:'blob' });
-      const bb = document.getElementById('busyBox'); if (bb) bb.remove();
-      const how = await BC.saveFile(blob, folder + '.zip', 'application/zip', folder);
-      if (how) toast(`${files.length} ${files.length === 1 ? 'file' : 'files'} in one folder` + (how === 'shared' ? ' – ready to send' : ' – downloaded'));
+      const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.pdf$/, `_${++used[n]}.pdf`); else used[n] = 1; f.name = n; f.type = 'application/pdf'; });
+      const pdfs = files.map(f => new File([f.blob], f.name, { type:'application/pdf' }));
+      const canShareAll = !asZip && navigator.canShare && navigator.share && navigator.canShare({ files:pdfs });
+      const bb = document.getElementById('busyBox');
+      if (canShareAll){
+        // the share needs a fresh tap, so ask for one
+        bb.querySelector('.modal').innerHTML = `<div style="font-size:16px;font-weight:700">${files.length} PDFs ready</div>
+          <div class="hint" style="font-size:14px">${files.map(f => esc(f.name)).join('<br>')}</div>
+          <button class="btn navy" id="shareAll">Share all ${files.length} – WhatsApp, email, Files…</button><button class="btn secondary" id="shareNo">Cancel</button>`;
+        await new Promise(done => { bb.querySelector('#shareNo').onclick = () => { bb.remove(); done(); };
+          bb.querySelector('#shareAll').onclick = async () => { try { await navigator.share({ files:pdfs, title:folder }); toast(files.length + ' PDFs sent'); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – try “Download as zip folder”'); } bb.remove(); done(); }; });
+      } else {
+        busy('Packing the folder…');
+        const zip = new JSZip(), dir = zip.folder(folder); files.forEach(f => dir.file(f.name, f.blob));
+        const blob = await zip.generateAsync({ type:'blob' }); if (bb) bb.remove();
+        const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = folder + '.zip'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
+        toast(`Zip folder with ${files.length} ${files.length === 1 ? 'file' : 'files'} saved to Downloads`);
+      }
     } catch(e){ console.error(e); const bb = document.getElementById('busyBox'); if (bb) bb.remove(); toast('Could not make the job folder'); }
     finally { btn.disabled = false; btn.innerHTML = old; }
   }
