@@ -707,6 +707,7 @@ function toEquipment(st){
     status:st.status==="UNSAFE"?"UNSAFE":st.status==="SAFE"?"SAFE":(r.status||""),
     report:{no:f.docno||"",type:lt?"Load test":"Inspection",cert:lt?certNo(f):""}});
   if(r.auto||!r.desc)r.desc="Forklift";
+  if(!r.loc&&f.location){r.loc=String(f.location).trim();if(!(l.locs||[]).some(x=>x.toLowerCase()===r.loc.toLowerCase()))l.locs=(l.locs||[]).concat(r.loc);}
   if(r.status==="UNSAFE"){if(!r.reason||/^See report /.test(r.reason))r.reason=auto;}else if(/^See report /.test(r.reason||""))r.reason="";
   l.savedAt=Date.now();all[id]=l;store("bco-equipment",JSON.stringify(all));
   if(cloudOK())window.Cloud.putItem("eq-"+String(id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));

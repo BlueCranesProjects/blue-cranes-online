@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Equipment List</title>
+<title>Client's Inventory</title>
 <meta name="theme-color" content="#0B3575">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -68,6 +68,13 @@
   .repno .k{font-size:12px;font-weight:600;color:var(--label)} .repno .rn{font-weight:800;font-size:15px;color:var(--navyDeep)}
   .repno .rt{font-size:11px;font-weight:700;background:var(--yellow);color:var(--navyDeep);border-radius:999px;padding:2px 8px}
   .pill.bad{background:#F8E1DE;color:var(--bad)} .pill.ok{background:#E3F1E8;color:var(--ok)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .lc{height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--navy);background:#fff;color:var(--navyDeep);font-weight:700;font-size:14px;font-family:inherit;cursor:pointer}
+  .lc.on{background:var(--navyDeep);color:#fff;border-color:var(--navyDeep)} .lc.add{border-style:dashed}
+  .lc small{font-weight:600;opacity:.75;margin-left:4px}
+  .pick{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;color:var(--navyDeep)} .pick input{width:24px;height:24px;accent-color:var(--navyDeep)}
+  .item.sel{outline:3px solid var(--navyDeep)}
+  .locrow{background:#E6EAF2;border-radius:10px;padding:8px 12px;font-weight:800;color:var(--navyDeep);font-size:14px;display:flex;justify-content:space-between}
   input[type=search]{height:46px;border-radius:10px;border:1.5px solid var(--field);padding:0 12px;font-size:16px;font-family:inherit;width:100%}
 </style>
 </head>
@@ -107,6 +114,33 @@
   function addMake(v){ v = String(v || '').trim(); if (!v) return ''; const hit = makesList().find(x => x.toLowerCase() === v.toLowerCase()); if (hit) return hit; MAKES.push(v); saveMakes(); return v; }
   const FL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
   const repText = r => r && r.report && r.report.no ? r.report.no + (r.report.cert ? ' / ' + r.report.cert : '') : '';
+  // ---- locations inside a site (Workshop, Cellar 2, Yard…) ----
+  function locsOf(l){ const out = []; (l.locs || []).concat((l.rows || []).map(r => r.loc)).forEach(v => { v = String(v || '').trim(); if (v && !out.includes(v)) out.push(v); }); return out; }
+  function addLoc(l, v){ v = String(v || '').trim(); if (!v) return ''; const hit = locsOf(l).find(x => x.toLowerCase() === v.toLowerCase()); if (hit) return hit; l.locs = (l.locs || []).concat(v); return v; }
+  function askLocation(l, title, done){
+    const ls = locsOf(l);
+    const m = modal(`<div style="font-size:16px;font-weight:700">${esc(title)}</div>
+      ${ls.length ? `<div class="chips">${ls.map(x => `<button type="button" class="lc" data-pickloc="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}
+      <div class="field"><label for="newLoc">New location</label><input id="newLoc" placeholder="e.g. Workshop, Cellar 2, Yard"></div>
+      <button class="btn primary" id="mAdd">Use new location</button>
+      ${ls.length ? '<button class="btn secondary" id="mNone">No location</button>' : ''}
+      <button class="btn secondary" id="mNo">Cancel</button>`);
+    const close = v => { m.remove(); if (v !== null) done(v); };
+    m.querySelectorAll('[data-pickloc]').forEach(b => b.onclick = () => close(b.dataset.pickloc));
+    const inp = m.querySelector('#newLoc'); const add = () => { const v = addLoc(l, inp.value); if (!v){ inp.focus(); return; } close(v); };
+    m.querySelector('#mAdd').onclick = add; inp.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } };
+    const nn = m.querySelector('#mNone'); if (nn) nn.onclick = () => close('');
+    m.querySelector('#mNo').onclick = () => close(null);
+    if (!ls.length) setTimeout(() => inp.focus(), 50);
+  }
+  // rows in location order, with a heading row per location (for the PDF)
+  function grouped(rows, order){
+    const names = order.slice(); rows.forEach(r => { const v = r.loc || ''; if (v && !names.includes(v)) names.push(v); });
+    const out = []; const anyLoc = rows.some(r => r.loc);
+    names.concat(['']).forEach(n => { const g = rows.filter(r => (r.loc || '') === n); if (!g.length) return;
+      if (anyLoc) out.push({ _group: (n || 'No location') + '  (' + g.length + (g.length === 1 ? ' item' : ' items') + ')' }); out.push(...g); });
+    return out;
+  }
   const PH = {};
   function photoGet(pid){
     if (PH[pid]) return Promise.resolve(PH[pid]);
@@ -161,7 +195,7 @@
       const ck = norm(l.customer) || '(NO CUSTOMER)'; const c = by[ck] = by[ck] || { name: l.customer || 'No customer', items:{}, lists:0, last:'' };
       c.name = l.customer || c.name; c.lists++; if (l.date > c.last) c.last = l.date;
       (l.rows || []).forEach(r => { if (!r.serial && !r.desc) return; const k = norm(r.serial) || ('#' + l.id + r.desc);
-        c.items[k] = Object.assign({}, r, { location: l.location || '', job: l.job || '', date: l.date }); });
+        c.items[k] = Object.assign({}, r, { location: r.loc || l.location || '', loc: r.loc || '', job: l.job || '', date: l.date }); });
     });
     return by;
   }
@@ -179,25 +213,41 @@
   function vList(){
     const l = S.cur; const inv = inventory()[norm(l.customer)]; const known = inv ? inv.items : {};
     const MK = makesList(); const dupes = {}; (l.rows || []).forEach(r => { const k = norm(r.serial); if (k) dupes[k] = (dupes[k] || 0) + 1; });
-    return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), 'Equipment list', backBtn('../timesheet/', 'Back to the time sheet'),
-        `<button class="ib" id="toInv" aria-label="Customer inventory">${ICON.list}</button>`) + `<main>
+    const LOCS = locsOf(l); const cur = l.curLoc || ''; const show = (r) => !cur || (cur === '__none' ? !r.loc : r.loc === cur);
+    const cnt = v => (l.rows || []).filter(r => v === '__none' ? !r.loc : r.loc === v).length;
+    const sel = S.sel || null;
+    return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Client's inventory", backBtn('../timesheet/', 'Back to the time sheet'),
+        `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main>
       <section class="card">
         <div class="field"><label for="fCust">Customer</label><input id="fCust" value="${esc(l.customer)}" readonly></div>
         <div class="grid2">
           <div class="field"><label for="fJob">Job nr</label><input id="fJob" value="${esc(l.job)}" readonly></div>
           <div class="field"><label for="fDate">Date</label><input id="fDate" value="${esc(niceDate(l.date))}" readonly></div>
         </div>
-        <div class="field"><label for="fLoc">Location</label><input id="fLoc" value="${esc(l.location)}" placeholder="e.g. Workshop, Cellar 2, Yard"></div>
+        <div class="field"><label for="fLoc">Site</label><input id="fLoc" value="${esc(l.location)}" placeholder="e.g. Ceres factory"></div>
       </section>
-      <div class="row" style="justify-content:space-between;padding:2px"><h2>Equipment</h2><span class="hint">${(l.rows||[]).length} ${(l.rows||[]).length === 1 ? 'item' : 'items'}</span></div>
-      ${(l.rows || []).map((r, i) => { const k = norm(r.serial); if (r.make && !MK.includes(r.make)) MK.push(r.make); const seen = k && known[k] && known[k].job !== l.job;
+      <section class="card" style="gap:10px">
+        <div class="row" style="justify-content:space-between"><h2>Locations</h2>
+          ${(l.rows || []).length ? `<button class="btn secondary small" id="selMode">${sel ? 'Stop selecting' : 'Select items'}</button>` : ''}</div>
+        <div class="chips">
+          <button type="button" class="lc${cur ? '' : ' on'}" data-loc="">All<small>${(l.rows || []).length}</small></button>
+          ${LOCS.map(x => `<button type="button" class="lc${cur === x ? ' on' : ''}" data-loc="${esc(x)}">${esc(x)}<small>${cnt(x)}</small></button>`).join('')}
+          ${LOCS.length && cnt('__none') ? `<button type="button" class="lc${cur === '__none' ? ' on' : ''}" data-loc="__none">No location<small>${cnt('__none')}</small></button>` : ''}
+          <button type="button" class="lc add" id="newLocBtn">+ Location</button></div>
+        <span class="hint">${cur && cur !== '__none' ? `Showing <b>${esc(cur)}</b> – new items are added here.` : LOCS.length ? 'Tap a location to see only its items; new items then go there.' : 'Add the places where equipment is, e.g. Workshop, Cellar 2, Yard.'}${(l.rows || []).length ? ' Use <b>Select items</b> to give many items the same location at once.' : ''}</span>
+      </section>
+      <div class="row" style="justify-content:space-between;padding:2px"><h2>Items</h2><span class="hint">${cur ? (l.rows || []).filter(show).length + ' of ' : ''}${(l.rows||[]).length} ${(l.rows||[]).length === 1 ? 'item' : 'items'}</span></div>
+      ${(l.rows || []).map((r, i) => { if (!show(r)) return ''; const k = norm(r.serial); if (r.make && !MK.includes(r.make)) MK.push(r.make); const seen = k && known[k] && known[k].job !== l.job;
         const ro = r.auto ? 'readonly' : ''; const rep = r.report && r.report.no ? r.report : null;
-        return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}" data-i="${i}">
+        const on = sel && sel.has(r.id);
+        return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}${on ? ' sel' : ''}" data-i="${i}">
+          ${sel ? `<label class="pick"><input type="checkbox" data-pick="${i}" ${on ? 'checked' : ''}> Select item ${i + 1}${r.desc ? ' – ' + esc(r.desc) : ''}</label>` : ''}
           ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
           <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
           ${dupes[k] > 1 ? '<span class="warn">This serial nr is on the list more than once.</span>' : ''}
           ${seen ? `<span class="hint" style="color:var(--ok)">Already in ${esc(l.customer)}'s inventory (job ${esc(known[k].job)}, ${esc(niceDate(known[k].date))}).</span>` : ''}
+          <div class="field"><label>Location</label><button type="button" class="btn secondary small" data-setloc="${i}" style="width:100%;justify-content:space-between;height:44px;font-size:15px;padding:0 12px"><span>${r.loc ? '📍 ' + esc(r.loc) : '📍 Choose location'}</span><span>›</span></button></div>
           <div class="field"><label for="d${i}">Description</label><input id="d${i}" data-f="desc" value="${esc(r.desc)}" list="descList" placeholder="e.g. Chain block" ${ro}></div>
           <div class="grid2">
             <div class="field"><label for="m${i}">Manufacturer</label><select id="m${i}" data-make="${i}" ${r.auto ? 'disabled' : ''}>
@@ -215,29 +265,32 @@
             <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label>
               ${r.photo ? `<button type="button" class="btn secondary small" data-nophoto="${i}" style="color:var(--bad);border-color:var(--bad)">Remove photo</button>` : ''}</div>` : ''}
           ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
-          </div>`; }).join('') || '<div class="empty">No equipment yet. Tap <b>Add item</b> for each piece of equipment.</div>'}
+          </div>`; }).join('') || '<div class="empty">No items yet. Tap <b>Add item</b> for each piece of equipment.</div>'}
       <div class="row">
         <button class="btn primary" id="add">${ICON.plus} Add item</button>
         ${(l.rows || []).length ? `<button class="btn secondary" id="copy" style="width:auto;padding:0 14px">Copy last</button>` : ''}
       </div>
       <span class="hint">“Copy last” adds a new item with the same description, manufacturer and SWL – just enter the serial nr.</span>
     </main>
-    <div class="bar" style="flex-direction:column;align-items:center;gap:4px"><button class="btn navy" id="pdf">${ICON.pdf} Save PDF – whole job</button>
+    ${sel ? `<div class="bar" style="flex-direction:column;align-items:center;gap:6px"><div class="row" style="width:100%;max-width:520px">
+        <button class="btn secondary" id="selAll" style="width:auto;padding:0 14px;font-size:14px">${(l.rows || []).filter(show).every(r => sel.has(r.id)) ? 'Clear' : 'All shown'}</button>
+        <button class="btn primary" id="selSet" ${sel.size ? '' : 'disabled'}>📍 Set location for ${sel.size} ${sel.size === 1 ? 'item' : 'items'}</button></div></div>` :
+    `<div class="bar" style="flex-direction:column;align-items:center;gap:4px"><button class="btn navy" id="pdf">${ICON.pdf} Save PDF – whole job</button>
       <div style="display:flex;gap:18px"><button type="button" id="pdfZip" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Download as zip folder</button>
-      <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Equipment list only</button></div></div>`;
+      <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory PDF only</button></div></div>`}`;
   }
 
   function vInventory(){
     const inv = inventory(); const q = S.q.trim().toLowerCase();
     const keys = Object.keys(inv).filter(k => !q || inv[k].name.toLowerCase().includes(q) || Object.values(inv[k].items).some(r => String(r.serial).toLowerCase().includes(q)))
       .sort((a,b) => inv[b].last.localeCompare(inv[a].last));
-    const back = S.cur ? `<button class="ib" id="toList" aria-label="Back to the equipment list">${ICON.back}</button>` : backBtn('../timesheet/', 'Back to the time sheet');
-    return head('Blue Cranes', 'Inventory', back) + `<main>
+    const back = S.cur ? `<button class="ib" id="toList" aria-label="Back to the client's inventory">${ICON.back}</button>` : backBtn('../timesheet/', 'Back to the time sheet');
+    return head('Blue Cranes', 'All client inventories', back) + `<main>
       <input type="search" id="q" placeholder="Search customer or serial nr…" value="${esc(S.q)}">
       ${keys.length ? keys.map(k => { const c = inv[k]; const n = Object.keys(c.items).length;
         return `<button class="cust" data-cust="${esc(k)}"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:15px">${esc(c.name)}</div>
           <div class="hint">${n} ${n === 1 ? 'item' : 'items'} · last listed ${esc(niceDate(c.last))}</div></div><span class="pill">${n}</span></button>`; }).join('')
-        : `<div class="empty">${q ? 'Nothing matches “' + esc(S.q) + '”.' : 'No equipment listed yet.<br>Equipment lists made on jobs build up each customer\'s inventory here.'}</div>`}
+        : `<div class="empty">${q ? 'Nothing matches “' + esc(S.q) + '”.' : 'No inventories yet.<br>Client\'s inventories made on jobs build up each customer\'s register here.'}</div>`}
     </main>`;
   }
   function vCustomer(){
@@ -251,7 +304,7 @@
             ${r.status === 'UNSAFE' && r.reason ? `<tr><td colspan="4" style="color:var(--bad);font-size:12.5px;padding-top:0">Unsafe: ${esc(r.reason)}</td></tr>` : ''}`).join('')}
         </tbody></table>
       </section>
-      <h2 style="padding:2px">Equipment lists</h2>
+      <h2 style="padding:2px">Inventory per job</h2>
       ${lists.map(l => `<div class="cust" style="cursor:default"><div style="flex:1;min-width:0"><div style="font-weight:700">Job ${esc(l.job || '–')}</div>
           <div class="hint">${esc(niceDate(l.date))}${l.location ? ' · ' + esc(l.location) : ''} · ${(l.rows||[]).length} items${l.tech ? ' · ' + esc(l.tech) : ''}</div></div>
           <button class="btn secondary small" data-listpdf="${esc(l.id)}">PDF</button></div>`).join('')}
@@ -259,11 +312,11 @@
     <div class="bar"><button class="btn navy" id="invPdf">${ICON.pdf} Inventory PDF</button></div>`;
   }
   function vGate(){
-    return head('Blue Cranes', 'Equipment list', backBtn('../timesheet/', 'Back to the time sheet')) + `<main>
+    return head('Blue Cranes', "Client's inventory", backBtn('../timesheet/', 'Back to the time sheet')) + `<main>
       <section class="card"><h2>No job started</h2>
-        <span style="font-size:14px;line-height:1.5">Equipment lists open from the job you are busy with. On the time sheet, tap <b>Start job</b>, then <b>Equipment list</b>.</span>
+        <span style="font-size:14px;line-height:1.5">The client\'s inventory opens from the job you are busy with. On the time sheet, tap <b>Start job</b>, then <b>Client\'s inventory</b>.</span>
         <a class="btn primary" href="../timesheet/">Go to time sheet</a>
-        <button class="btn secondary" id="toInv">View customer inventory</button></section></main>`;
+        <button class="btn secondary" id="toInv">All client inventories</button></section></main>`;
   }
 
   function render(){
@@ -294,8 +347,20 @@
       const add = () => { const v = addMake(inp.value); if (!v){ inp.focus(); return; } l.rows[i].make = v; saveList(l); render(); toast(v + ' added to the list'); const n = document.getElementById('w' + i); if (n && !n.value) n.focus(); };
       b.onclick = add; inp.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } }; });
     const addRow = r => { l.rows = l.rows || []; l.rows.push(r); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
-    $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'' });
-    const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'' }); };
+    const curLoc = () => (l.curLoc && l.curLoc !== '__none') ? l.curLoc : '';
+    $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'', loc:curLoc() });
+    const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'', loc:curLoc() || p.loc || '' }); };
+    app.querySelectorAll('[data-loc]').forEach(b => b.onclick = () => { l.curLoc = b.dataset.loc; saveList(l); render(); });
+    $('newLocBtn').onclick = () => askLocation(l, 'Add a location', v => { if (v){ l.curLoc = v; saveList(l, true); render(); toast(v + ' added – new items go here'); } });
+    app.querySelectorAll('[data-setloc]').forEach(b => b.onclick = () => { const i = Number(b.dataset.setloc);
+      askLocation(l, 'Location of item ' + (i + 1), v => { l.rows[i].loc = v; if (v) addLoc(l, v); saveList(l, true); render(); }); });
+    const sm = $('selMode'); if (sm) sm.onclick = () => { S.sel = S.sel ? null : new Set(); render(); };
+    app.querySelectorAll('[data-pick]').forEach(cb => cb.onchange = () => { const r = l.rows[Number(cb.dataset.pick)]; if (cb.checked) S.sel.add(r.id); else S.sel.delete(r.id); render(); });
+    const sa = $('selAll'); if (sa) sa.onclick = () => { const shown = l.rows.filter(r => !l.curLoc || (l.curLoc === '__none' ? !r.loc : r.loc === l.curLoc));
+      if (shown.every(r => S.sel.has(r.id))) shown.forEach(r => S.sel.delete(r.id)); else shown.forEach(r => S.sel.add(r.id)); render(); };
+    const ss = $('selSet'); if (ss) ss.onclick = () => { const n = S.sel.size; askLocation(l, 'Location for ' + n + (n === 1 ? ' item' : ' items'), v => {
+      l.rows.forEach(r => { if (S.sel.has(r.id)) r.loc = v; }); if (v) addLoc(l, v); S.sel = null; saveList(l, true); render(); toast(n + (n === 1 ? ' item' : ' items') + (v ? ' moved to ' + v : ' set to no location')); }); };
+    if (S.sel) return;
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = Number(b.dataset.del); const r = l.rows[i];
       const go = () => { l.rows.splice(i, 1); saveList(l); render(); };
       if (r.serial || r.desc) confirmBox('Remove item ' + (i + 1) + (r.serial ? ' (' + r.serial + ')' : '') + ' from this list?', 'Remove', go); else go(); });
@@ -306,6 +371,7 @@
       catch(e){ toast('Could not read that photo'); } });
     app.querySelectorAll('[data-nophoto]').forEach(b => b.onclick = () => { const i = Number(b.dataset.nophoto); const r = l.rows[i]; confirmBox('Remove the photo of item ' + (i + 1) + '?', 'Remove photo', () => { if (r.photo) photoDel(r.photo); r.photo = ''; saveList(l, true); render(); }); });
     app.querySelectorAll('img[data-pid]').forEach(im => photoGet(im.dataset.pid).then(d => { if (d) im.src = d; else im.alt = 'Photo not on this phone yet'; }));
+    if (!$('pdf')) return;
     $('pdfOnly').onclick = () => { saveList(l, true); listPdf(l, $('pdfOnly')); };
     $('pdfZip').onclick = () => { saveList(l, true); jobPack(l, $('pdfZip'), true); };
     $('pdf').onclick = () => {
@@ -343,6 +409,9 @@
     headRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
     const LH = 4.3;   // line height inside a cell (mm)
     const drawRow = r => {
+      if (r && r._group){ const gh = 8; if (y + gh + rowH > maxY){ doc.addPage(); y = pageHead(false); headRow(); }
+        doc.setLineWidth(0.3); doc.setFillColor(251, 236, 160); doc.rect(L, y, R - L, gh, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(11, 53, 117);
+        doc.text('Location: ' + r._group, L + 2, y + 5.5); doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); y += gh; return; }
       const cells = r ? cols.map(c => doc.splitTextToSize(String(r[c.k] || ''), c.w - 3)) : null;
       const h = cells ? Math.max(rowH, Math.max(...cells.map(t => t.length || 1)) * LH + 3.7) : rowH;
       if (y + h > maxY){ doc.addPage(); y = pageHead(false); headRow(); doc.setFont('helvetica', 'normal'); doc.setFontSize(10); }
@@ -353,7 +422,7 @@
       y += h;
     };
     rows.forEach(drawRow);
-    while (y + rowH <= maxY) drawRow(null);   // empty lines to the bottom of the page, like the paper sheet
+    if (!rows.length) drawRow(null);
     if (foot){ doc.setFontSize(8.5); doc.setTextColor(90, 96, 112); doc.text(foot, L, 290); doc.setTextColor(0, 0, 0); }
   }
   const STATUS_COLOR = r => r.status === 'UNSAFE' ? [161, 42, 31] : r.status === 'SAFE' ? [21, 112, 61] : [0, 0, 0];
@@ -370,7 +439,7 @@
       const need = 10 + reason.length * 5 + (ih ? ih + 4 : 0) + 6;
       if (y + need > 285) page();
       doc.setDrawColor(161, 42, 31); doc.setLineWidth(0.6); doc.rect(L, y, R - L, need - 2); doc.setDrawColor(0, 0, 0);
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text([r.serial, r.desc, r.make, r.swl].filter(Boolean).join('  ·  '), L + 3, y + 7);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text([r.serial, r.desc, r.make, r.swl, r.loc ? '(' + r.loc + ')' : ''].filter(Boolean).join('  ·  '), L + 3, y + 7);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(reason, L + 3, y + 13);
       if (ih){ try { doc.addImage(img, 'JPEG', L + 3, y + 13 + reason.length * 5, iw, ih, undefined, 'FAST'); } catch(e){} }
       y += need + 2;
@@ -380,15 +449,15 @@
   async function listDoc(l){
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
       const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { swl: swlText(r.swl), rep: repText(r), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
-      await table(doc, 'Equipment list', [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Location:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
-        rows, [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:38 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL (kg)', k:'swl', w:22 }, { t:'Condition', k:'cond', w:24, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:36 }],
+      await table(doc, "Client's inventory", [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Site:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
+        grouped(rows, locsOf(l)), [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:38 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL (kg)', k:'swl', w:22 }, { t:'Condition', k:'cond', w:24, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:36 }],
         (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items' + (rows.some(r => r.status === 'UNSAFE') ? ' · unsafe items with reasons and photos on the next page' : ''));
       await unsafePages(doc, l, rows);
-      return { blob: doc.output('blob'), name: `Equipment_list_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
+      return { blob: doc.output('blob'), name: `Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
   }
   async function listPdf(l, btn){
     if (!l) return; const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
-    try { const f = await listDoc(l); const how = await BC.saveFile(f.blob, f.name, 'application/pdf', 'Equipment list'); if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded'); }
+    try { const f = await listDoc(l); const how = await BC.saveFile(f.blob, f.name, 'application/pdf', "Client's inventory"); if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded'); }
     catch(e){ console.error(e); toast('Could not make the PDF'); }
     finally { if (btn){ btn.disabled = false; btn.innerHTML = old; } }
   }
@@ -410,7 +479,7 @@
     try {
       for (let i = 0; i < 50 && !window.JSZip; i++) await new Promise(r => setTimeout(r, 100));
       if (!window.JSZip) throw new Error('zip tool not loaded');
-      busy('Equipment list…'); const files = [await listDoc(l)];
+      busy("Client's inventory…"); const files = [await listDoc(l)];
       let reps = [], tools = null;
       try {
         busy('Finding forklift reports…'); tools = await forkliftTools();
@@ -451,8 +520,8 @@
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
       const rows = Object.values(c.items).sort((a,b) => String(a.desc).localeCompare(String(b.desc)) || String(a.serial).localeCompare(String(b.serial), undefined, { numeric:true }))
         .map(r => Object.assign({}, r, { swl: swlText(r.swl), cond: r.status || '', rep: repText(r), seen: niceDate(r.date) + (r.job ? ' (' + r.job + ')' : '') }));
-      await table(doc, 'Equipment inventory', [[['Customer:', c.name, 15, 140, 42], ['Date:', niceDate(today()), 145, 195, 160]]],
-        rows, [{ t:'Serial nr', k:'serial', w:28 }, { t:'Description', k:'desc', w:32 }, { t:'Manufacturer', k:'make', w:24 }, { t:'SWL', k:'swl', w:20 }, { t:'Condition', k:'cond', w:22, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:28 }, { t:'Last listed', k:'seen', w:26 }],
+      await table(doc, "Client's inventory – all jobs", [[['Customer:', c.name, 15, 140, 42], ['Date:', niceDate(today()), 145, 195, 160]]],
+        grouped(rows, []), [{ t:'Serial nr', k:'serial', w:28 }, { t:'Description', k:'desc', w:32 }, { t:'Manufacturer', k:'make', w:24 }, { t:'SWL', k:'swl', w:20 }, { t:'Condition', k:'cond', w:22, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:28 }, { t:'Last listed', k:'seen', w:26 }],
         rows.length + ' items');
       const how = await BC.saveFile(doc.output('blob'), `Inventory_${safe(c.name)}_${today()}.pdf`, 'application/pdf', 'Inventory ' + c.name);
       if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded');

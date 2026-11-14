@@ -304,7 +304,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 14 Nov (A)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 14 Nov (B)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -601,7 +601,7 @@
       <h2 style="padding:4px 2px 0">REPORTS</h2>
       <button class="tile" data-fl="${state.jobIdx}" data-type="INSPECTION"><span class="ic">${ICON.forklift}</span><span><span class="tt" style="display:block">Forklift inspection</span><span class="ss" style="display:block">Tap to start a new report</span></span><span class="cnt" id="cntI"></span></button>
       <button class="tile" data-fl="${state.jobIdx}" data-type="LOAD TEST"><span class="ic">${ICON.loadtest}</span><span><span class="tt" style="display:block">Load test</span><span class="ss" style="display:block">Report + certificate</span></span><span class="cnt" id="cntL"></span></button>
-      <button class="tile light" data-fl="${state.jobIdx}" data-type="EQUIPMENT"><span class="ic">${ICON.list}</span><span><span class="tt" style="display:block">Equipment list</span><span class="ss" style="display:block">Serial nr, SWL, safe / unsafe</span></span><span class="cnt" id="cntE"></span></button>
+      <button class="tile light" data-fl="${state.jobIdx}" data-type="EQUIPMENT"><span class="ic">${ICON.list}</span><span><span class="tt" style="display:block">Client's inventory</span><span class="ss" style="display:block">Equipment per location, SWL, safe / unsafe</span></span><span class="cnt" id="cntE"></span></button>
       <button class="btn primary" style="margin-top:10px;height:60px;font-size:18px" data-jobfinish="${state.jobIdx}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Finish job</button>
       <button type="button" data-jobedit="${state.jobIdx}" style="border:0;background:none;color:var(--muted);font-weight:600;font-size:14px;font-family:inherit;padding:10px;cursor:pointer">⋯ Edit job details</button>
     </main>`;
@@ -745,7 +745,7 @@
     const st = 'flex:1;height:48px;font-size:14px;background:var(--navyDeep);color:#fff';
     return `<div style="display:flex;gap:8px"><button class="btn" ${attr} data-type="INSPECTION" style="${st}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Forklift inspection</button>
       <button class="btn" ${attr} data-type="LOAD TEST" style="${st}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Load test</button></div>
-      <button class="btn" ${attr} data-type="EQUIPMENT" style="height:48px;font-size:14px;background:#fff;color:var(--navyDeep);border:2px solid var(--navy)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg> Equipment list</button>`;
+      <button class="btn" ${attr} data-type="EQUIPMENT" style="height:48px;font-size:14px;background:#fff;color:var(--navyDeep);border:2px solid var(--navy)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg> Client's inventory</button>`;
   }
   function sheetReady(k){ const sh = state.sheets[k]; return !!(sh && sh.status !== 'submitted' && checkDone(sh) && sh.firstOdo !== '' && sh.firstOdo != null && sh.tech); }
   function sheetJobFor(id){ const x = state.schedule[id]; if (!x || !x.addedTo) return null; const sh = state.sheets[x.addedTo]; if (!sh) return null;
@@ -816,7 +816,7 @@
         <div class="card" style="padding:10px 12px"><div class="k">Job hrs</div><div class="big" style="font-size:22px;white-space:nowrap">${fmtHMs(mH)}</div></div>
       </div>
       <a class="btn" href="../forklift/?reports=1" style="background:var(--navyDeep);color:#fff;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Forklift reports &amp; certificates</a>
-      <a class="btn" href="../equipment/?inventory=1" style="background:#fff;color:var(--navyDeep);border:2px solid var(--navy);text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg> Customer equipment inventory</a>
+      <a class="btn" href="../equipment/?inventory=1" style="background:#fff;color:var(--navyDeep);border:2px solid var(--navy);text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg> All client inventories</a>
       ${keys.length ? keys.map(k=>{ const s = state.sheets[k]; const f = condFlags(s);
         const km = (s.lastOdo? Number(s.lastOdo):lastOdo(s)) - Number(s.firstOdo);
         let pill = s.status!=='submitted' ? '<span class="pill prog">In progress</span>' : f.x.length ? `<span class="pill bad">X · ${esc(f.x.join(', '))}</span>` : f.w.length ? `<span class="pill warn">W · ${esc(f.w.join(', '))}</span>` : '<span class="pill ok">All A</span>';
@@ -956,7 +956,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 14 Nov (A)</span>
+        <span class="hint">App version 14 Nov (B)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
