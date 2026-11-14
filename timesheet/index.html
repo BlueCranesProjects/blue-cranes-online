@@ -90,6 +90,29 @@
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
   .modal{background:#fff;border-radius:16px 16px 0 0;padding:20px 16px;width:100%;max-width:480px;display:flex;flex-direction:column;gap:12px}
   pre.summary{white-space:pre-wrap;font-size:13px;background:#F7F7F4;border:1px solid var(--line);border-radius:10px;padding:12px;max-height:50vh;overflow:auto;margin:0}
+  .steps{display:flex;gap:6px;align-items:center;font-size:12px;font-weight:700;color:#C9D5EA;margin-top:8px}
+  .steps .s{display:flex;align-items:center;gap:5px;white-space:nowrap}.steps .d{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;background:rgba(255,255,255,.15);color:#fff}
+  .steps .s.on .d{background:var(--yellow);color:var(--navyDeep)}.steps .s.on{color:#fff}.steps .s.ok .d{background:#2E9E5B;color:#fff}.steps .ln{flex:1;height:2px;background:rgba(255,255,255,.25);min-width:8px}
+  .me{width:40px;height:40px;border-radius:50%;background:#fff;color:var(--navyDeep);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;text-decoration:none;flex-shrink:0}
+  .next{background:var(--yellow);color:var(--navyDeep);border:0;border-radius:16px;padding:16px;display:flex;align-items:center;gap:14px;box-shadow:inset 0 -4px 0 rgba(0,0,0,.12);width:100%;text-align:left;font-family:inherit;cursor:pointer}
+  .next .t{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.8}.next .b{font-family:Montserrat,sans-serif;font-weight:900;font-size:20px;line-height:1.15}
+  .next .c{font-size:15px;font-weight:700;margin-top:2px}
+  .sumline{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--label);width:100%;text-align:left;font-family:inherit;cursor:pointer}
+  .jc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:12px}
+  .jc.busy{border:2px solid var(--yellowDark);background:#FFFBEA}.jc.done{background:#F3FAF5;border-color:#9CC9AD}
+  .jc .who{flex:1;min-width:0;border:0;background:none;padding:2px 0;text-align:left;font-family:inherit;color:inherit;cursor:pointer}
+  .jc .n{font-weight:700;font-size:16px;display:block}.jc .h{font-size:13px;color:var(--muted);display:block;margin-top:2px}
+  .chip{font-size:12px;font-weight:800;padding:5px 10px;border-radius:999px;white-space:nowrap}.chip.done{background:var(--A);color:#fff}
+  .go{height:46px;padding:0 18px;border-radius:12px;border:0;font-weight:800;font-size:15px;font-family:inherit;cursor:pointer;flex-shrink:0}
+  .go.y{background:var(--yellow);color:var(--navyDeep)}.go.n{background:var(--navyDeep);color:#fff}
+  .tile{background:var(--navyDeep);color:#fff;border:0;border-radius:16px;padding:16px;display:flex;align-items:center;gap:14px;width:100%;text-align:left;font-family:inherit;cursor:pointer}
+  .tile .ic{width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;color:var(--yellow);flex-shrink:0}
+  .tile .tt{font-family:Montserrat,sans-serif;font-weight:900;font-size:17px;text-transform:uppercase;line-height:1.15}.tile .ss{font-size:13px;color:#C9D5EA;margin-top:3px}
+  .tile.light{background:#fff;color:var(--navyDeep);border:2px solid var(--navy)}.tile.light .ic{background:#EEF2F7;color:var(--navyDeep)}.tile.light .ss{color:var(--muted)}
+  .tile .cnt{margin-left:auto;background:#2E9E5B;color:#fff;font-weight:800;font-size:12px;border-radius:999px;padding:4px 10px;white-space:nowrap}
+  .tile .cnt:empty{display:none}.tile.light .cnt{background:var(--navy)}
+  .okbox{background:#F3FAF5;border:2px solid #9CC9AD;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+  nav.tabs button.locked{opacity:.45}
 </style>
 </head>
 <body>
@@ -222,6 +245,10 @@
     back:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
     plus:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     sheet:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
+    truck:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
+    forklift:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+    loadtest:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v8"/><path d="M8 11h8l-1 4H9z"/><path d="M6 21h12"/><path d="M9 15l-1 6M15 15l1 6"/></svg>',
+    list:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
     clock:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     pdf:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
     wa:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.8 7L4 20l1.1-4A8 8 0 1 1 20 12z"/><path d="M9 9.5c.3 2 2.2 4.1 4.5 4.6l1-1.1 1.8.8"/></svg>',
@@ -248,7 +275,26 @@
   function headerBack(title, to){
     return `<header><button class="back" data-go="${to}" aria-label="Back">${ICON.back}</button><h1 style="font-size:28px">${esc(title)}</h1></header>`;
   }
+  function initials(){ const n = String((state.profile && state.profile.name) || techName() || '').trim().split(/\s+/); return ((n[0] || '')[0] || '') + ((n.length > 1 ? n[n.length - 1] : '')[0] || '') || '👤'; }
+  function dayStarted(sh){ return !!(sh && checkDone(sh) && sh.firstOdo !== '' && sh.firstOdo != null && sh.tech); }
+  function stepState(sh){ if (sh && sh.status === 'submitted') return ['ok','ok','ok']; if (!dayStarted(sh)) return ['on','','']; const busy = (sh.jobs || []).some(j => !j.done); return ['ok','on','']; }
+  function headerSteps(sub, title, sh){
+    const st = stepState(sh); const names = ['Vehicle','Jobs','End day'];
+    return `<header style="flex-direction:column;align-items:stretch;gap:0;padding:14px 16px 12px">
+      <div style="display:flex;align-items:center;gap:12px"><img class="logo" src="${LOGO}" alt="Blue Cranes" style="width:46px;height:46px">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><div class="sub">${esc(sub)}</div><h1>${esc(title)}</h1></div>
+        <a class="me" href="../?home=1" aria-label="My profile">${esc(initials())}</a></div>
+      <div class="steps" aria-label="Steps of the day">${names.map((t, i) => `<div class="s ${st[i]}"><span class="d">${st[i] === 'ok' ? '✓' : i + 1}</span>${t}</div>`).join('<div class="ln"></div>')}</div></header>`;
+  }
   function tabs(active){
+    const locked = !dayStarted(state.sheets[curKey()]) && !(state.sheets[curKey()] && state.sheets[curKey()].status === 'submitted');
+    return `<nav class="tabs" aria-label="Main">
+      <button data-go="vehicle" ${active==='vehicle'?'aria-current="page"':''}>${ICON.truck}Vehicle</button>
+      <button data-go="today" ${active==='today'?'aria-current="page"':''} ${locked ? 'class="locked" aria-label="Jobs – opens after Start day"' : ''}>${ICON.sheet}Jobs${locked ? ' 🔒' : ''}</button>
+      <button data-go="schedule" ${active==='schedule'?'aria-current="page"':''}>${ICON.cal}Schedule</button>
+      <button data-go="history" ${active==='history'?'aria-current="page"':''}>${ICON.clock}History</button></nav>`;
+  }
+  function tabsOld(active){
     return `<nav class="tabs" aria-label="Main">
       <button onclick="location.href='../?home=1'"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Profile</button>
       <button data-go="today" ${active==='today'?'aria-current="page"':''}>${ICON.sheet}Today</button>
@@ -258,7 +304,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 13 Nov (Q)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 14 Nov (A)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -368,11 +414,61 @@
     </div>`;
   }
   function checkDone(sh){ return !!sh && PARTS.every(x => (sh.condition||{})[x]); }
+  const norm2 = v => String(v || '').trim().toUpperCase();
+  function dayLine(){
+    const k = curKey(); const isToday = k === todayKey();
+    return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)">
+      <label for="dayPick">Sheet for</label><input id="dayPick" type="date" value="${k}" style="height:36px;border-radius:8px;border:1.5px solid var(--field);padding:0 8px;font-size:14px;font-family:inherit;color:var(--ink);background:#fff">
+      ${isToday ? '' : `<button class="btn secondary" style="width:auto;height:36px;font-size:12px;border-width:1.5px" id="dayToday">Back to today</button>`}</div>`;
+  }
+  // Vehicle tab: vehicle, check, odometer and assistant on one page → Start day
+  function viewVehicle(){
+    const key = curKey(); const sh = state.sheets[key]; const s = state.settings;
+    if (sh && sh.status === 'submitted') return headerSteps(niceDate(key,true), 'Vehicle', sh) + `<main>${dayLine()}
+      <div class="okbox"><span class="pill ok" style="align-self:flex-start">✓ Time sheet submitted</span>${daySummary(sh)}</div>
+      <button class="btn primary" data-go="today">Open the day's time sheet ›</button>${storeLine()}</main>` + tabs('vehicle');
+    if (dayStarted(sh) && !state._editDay) return headerSteps(niceDate(key,true), 'Vehicle', sh) + `<main>${dayLine()}
+      <div class="okbox"><span class="pill ok" style="align-self:flex-start">✓ Day started${sh.startedAt ? ' ' + esc(new Date(sh.startedAt).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' })) : ''}</span>${daySummary(sh)}</div>
+      <button class="btn primary" style="height:56px;font-size:17px" data-go="today">Go to today's jobs ›</button>
+      <button class="btn secondary" id="editDay">Edit vehicle check / odometer</button>
+      <button type="button" id="svcEdit" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:14px;font-family:inherit;padding:8px;cursor:pointer">${sheetService(sh) == null ? 'Set next service km' : 'Update next service km'}</button>
+      ${storeLine()}</main>` + tabs('vehicle');
+    const ck = key + (state._editDay ? 'e' : 'i');
+    if (!state._editCond || state._editCondKey !== ck){ state._editCond = Object.assign({}, (sh && sh.condition) || {}); state._editCondKey = ck; }
+    const reg = sh && sh.reg ? sh.reg : s.reg;
+    const prevKeys = Object.keys(state.sheets).filter(x => x < key).sort(); const prev = prevKeys.length ? state.sheets[prevKeys[prevKeys.length-1]] : null;
+    const sugg = sh && sh.firstOdo !== '' && sh.firstOdo != null ? sh.firstOdo : (prev && prev.lastOdo ? prev.lastOdo : '');
+    const tn = techName(sh);
+    return headerSteps(niceDate(key,true), 'Vehicle', sh) + `<main>${dayLine()}
+      <div class="card" style="font-size:14px;line-height:1.45;background:#FFFBEA;border-color:var(--yellowDark)"><b>Start of the day.</b> Check the vehicle and fill in the odometer. The Jobs tab opens when you tap <b>Start day</b>.</div>
+      <form id="dayForm" style="display:flex;flex-direction:column;gap:14px">
+        <section class="card" style="display:flex;flex-direction:column;gap:12px"><h2>1. VEHICLE</h2>
+          ${pickField('ireg', 'Vehicle you are using today', knownList('vehicles'), String(reg||'').toUpperCase(), 'Add new vehicle', '')}</section>
+        ${condSection(state._editCond, sh ? sh.condNote : '').replace('<h2>VEHICLE CHECK</h2>', '<h2>2. VEHICLE CHECK</h2>')}
+        <section class="card" style="display:flex;flex-direction:column;gap:12px"><h2>3. ODOMETER &amp; ASSISTANT</h2>
+          ${tn ? `<input id="tech" type="hidden" value="${esc(tn)}">` : `<div class="field"><label for="tech">Technician name</label><input id="tech" autocomplete="name"></div>`}
+          <div class="field"><label for="first">First odometer reading (km)</label><input id="first" class="num" inputmode="numeric" value="${esc(sugg)}">
+            ${sugg && !(sh && sh.firstOdo) ? `<span class="hint">Filled in from your last sheet's closing reading – check it against the dash.</span>` : ''}</div>
+          ${pickField('assistant', 'Assistant', knownList('assistants'), sh && sh.tech ? (sh.assistant || '') : (s.assistant || ''), 'Add new assistant', 'No assistant today')}
+          <div id="svcBox"></div>
+        </section>
+        <div id="dayErr" class="warn" role="alert"></div>
+        <button class="btn primary" type="button" data-submit style="height:60px;font-size:18px">${state._editDay ? 'Save changes' : 'Start day ›'}</button>
+        ${state._editDay ? '<button class="btn secondary" type="button" id="cancelDay">Cancel</button>' : ''}
+      </form>${storeLine()}</main>` + tabs('vehicle');
+  }
+  function daySummary(sh){
+    return `<div class="grid2" style="gap:8px 14px"><div><div class="k">Vehicle</div><div class="v">${esc(sh.reg)}</div></div><div><div class="k">First odometer</div><div class="v">${fmtKm(sh.firstOdo)} km</div></div>
+        <div><div class="k">Technician</div><div class="v">${esc(sh.tech)}</div></div><div><div class="k">Assistant</div><div class="v">${esc(sh.assistant) || '–'}</div></div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${condPills(sh.condition)}</div>${sh.condNote ? `<div class="hint" style="font-size:14px">${esc(sh.condNote)}</div>` : ''}
+      ${servicePill(kmToService(sh)) ? `<span style="align-self:flex-start">${servicePill(kmToService(sh))}</span>` : ''}`;
+  }
 
   function viewToday(){
     const key = curKey(); const sh = state.sheets[key];
-    if (!sh || (sh.status !== 'submitted' && !checkDone(sh))) return viewInspect();
-    if (sh.status !== 'submitted' && (sh.firstOdo === '' || sh.firstOdo == null || !sh.tech)){
+    if (!sh || (sh.status !== 'submitted' && !dayStarted(sh))) return viewVehicle();
+    if (sh.status !== 'submitted') return viewJobs();
+    if (false){
       const s = state.settings;
       const prevKeys = Object.keys(state.sheets).filter(x => x < key).sort(); const prev = prevKeys.length ? state.sheets[prevKeys[prevKeys.length-1]] : null;
       const sugg = sh.firstOdo !== '' && sh.firstOdo != null ? sh.firstOdo : (prev && prev.lastOdo ? prev.lastOdo : '');
@@ -398,7 +494,7 @@
         </form>${schedNote(key)}${storeLine()}</main>` + tabs('today');
     }
     if (sh.status === 'submitted'){
-      return headerMain(niceDate(key,true), 'DAILY TIME SHEET', '<span class="pill ok">Submitted</span>') + `<main>${dayBar()}
+      return headerSteps(niceDate(key,true), 'Jobs', sh) + `<main>${dayLine()}
         <div class="card" style="display:flex;flex-direction:column;gap:8px">
           <div class="v">${key === todayKey() ? "Today's" : 'This'} sheet is done.</div>
           <div class="hint">${(sh.jobs||[]).length} jobs · ${fmtHM(jobHours(sh))} job card · ${fmtKm(sh.lastOdo - sh.firstOdo)} km</div></div>
@@ -406,6 +502,36 @@
         <button class="btn secondary" data-detail="${key}">View sheet / send on WhatsApp</button>
         <button class="btn secondary" data-reopen="${key}">Reopen to make changes</button>${storeLine()}</main>` + tabs('today');
     }
+    return viewJobs();
+  }
+  function viewJobs(){
+    const key = curKey(); const sh = state.sheets[key]; const jobs = sh.jobs || [];
+    const todo = schedFor(key).filter(x => !x.addedTo);
+    const busyIdx = jobs.findIndex(j => !j.done);
+    const km = lastOdo(sh) - Number(sh.firstOdo);
+    let next;
+    if (busyIdx >= 0){ const j = jobs[busyIdx]; next = `<button class="next" data-editjob="${busyIdx}"><div style="flex:1"><div class="t">Next</div><div class="b">Open busy job</div><div class="c">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · '))}</div></div><span style="font-size:30px">›</span></button>`; }
+    else if (todo.length){ const x = todo[0]; next = `<button class="next" data-schedto="${esc(x.id)}"><div style="flex:1"><div class="t">Next</div><div class="b">Start next job</div><div class="c">${esc(schedLabel(x))}${x.time ? ' · ' + esc(x.time) : ''}</div></div><span style="font-size:30px">›</span></button>`; }
+    else if (jobs.length){ next = `<button class="next" data-go="end"><div style="flex:1"><div class="t">All jobs done</div><div class="b">End day</div><div class="c">Last odometer and clock times</div></div><span style="font-size:30px">›</span></button>`; }
+    else next = `<button class="next" data-addjob><div style="flex:1"><div class="t">No jobs planned</div><div class="b">Start a job</div></div><span style="font-size:30px">›</span></button>`;
+    const svc = kmToService(sh);
+    const cards = jobs.map((j, i) => j.done
+        ? `<div class="jc done"><button class="who" data-jobedit="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${j.card ? 'Job ' + esc(j.card) + ' · ' : ''}${fmtHM(Number(j.hrs) || 0)}</span></button><span class="chip done">✓ Done</span></div>`
+        : `<div class="jc busy"><button class="who" data-editjob="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${[j.card ? 'Job ' + esc(j.card) : '', esc(j.contact || ''), j.startedAt ? 'started ' + new Date(j.startedAt).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' }) : ''].filter(Boolean).join(' · ')}</span></button><button class="go n" data-editjob="${i}">Open</button></div>`)
+      .concat(todo.map(x => `<div class="jc"><button class="who" data-schedopen="${esc(x.id)}"><span class="n">${esc(x.customer || x.card || 'Job')}</span><span class="h">${[x.card ? 'Job ' + esc(x.card) : '', x.time ? esc(x.time) : '', esc(x.contact || '')].filter(Boolean).join(' · ')}</span></button><button class="go y" data-schedto="${esc(x.id)}">Start</button></div>`));
+    const nDone = jobs.filter(j => j.done).length, nBusy = jobs.length - nDone;
+    return headerSteps(niceDate(key,true), 'Jobs', sh) + `<main style="gap:12px">
+      ${next}
+      <button class="sumline" data-go="vehicle">${ICON.truck}<span style="flex:1;min-width:0"><b>${esc(sh.reg)}</b> · ${fmtKm(sh.firstOdo)} km${svc != null ? ' · service ' + (svc < 0 ? 'overdue' : 'in ' + fmtKm(svc) + ' km') : ''}</span><span style="color:var(--navy);font-weight:700">Details</span></button>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0"><h2>TODAY'S JOBS</h2><span class="hint">${[nDone ? nDone + ' done' : '', nBusy ? nBusy + ' busy' : '', todo.length ? todo.length + ' to do' : ''].filter(Boolean).join(' · ') || 'none yet'}</span></div>
+      ${cards.join('') || '<div class="empty">No jobs yet.</div>'}
+      <button type="button" data-addjob style="border:0;background:none;color:var(--navy);font-weight:800;font-size:16px;font-family:inherit;padding:10px;cursor:pointer">+ Unplanned job</button>
+      ${jobs.length ? `<div class="hint" style="text-align:center">Job time ${fmtHM(jobHours(sh))} · ${fmtKm(km)} km so far</div>` : ''}
+      <button class="btn secondary" data-go="end">End day</button>
+      ${storeLine()}</main>` + tabs('today');
+  }
+  function viewTodayOld(){
+    const key = curKey(); const sh = state.sheets[key];
     const jobs = sh.jobs || []; const km = lastOdo(sh) - Number(sh.firstOdo);
     return headerMain(niceDate(key,true), 'DAILY TIME SHEET', '<span class="pill prog">In progress</span>') + `<main>${dayBar()}
       <section class="card grid2">
@@ -473,10 +599,11 @@
         ${j.notes ? `<div class="hint" style="font-size:14px">${esc(j.notes)}</div>` : ''}
       </section>
       <h2 style="padding:4px 2px 0">REPORTS</h2>
-      ${reportButtons(`data-fl="${state.jobIdx}"`)}
-      <button class="btn primary" style="margin-top:10px" data-jobfinish="${state.jobIdx}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Finish job</button>
-      <span class="hint" style="text-align:center">Finish asks for the odometer and hours for the time sheet.</span>
-      <button class="btn secondary" data-jobedit="${state.jobIdx}">Edit job details</button>
+      <button class="tile" data-fl="${state.jobIdx}" data-type="INSPECTION"><span class="ic">${ICON.forklift}</span><span><span class="tt" style="display:block">Forklift inspection</span><span class="ss" style="display:block">Tap to start a new report</span></span><span class="cnt" id="cntI"></span></button>
+      <button class="tile" data-fl="${state.jobIdx}" data-type="LOAD TEST"><span class="ic">${ICON.loadtest}</span><span><span class="tt" style="display:block">Load test</span><span class="ss" style="display:block">Report + certificate</span></span><span class="cnt" id="cntL"></span></button>
+      <button class="tile light" data-fl="${state.jobIdx}" data-type="EQUIPMENT"><span class="ic">${ICON.list}</span><span><span class="tt" style="display:block">Equipment list</span><span class="ss" style="display:block">Serial nr, SWL, safe / unsafe</span></span><span class="cnt" id="cntE"></span></button>
+      <button class="btn primary" style="margin-top:10px;height:60px;font-size:18px" data-jobfinish="${state.jobIdx}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Finish job</button>
+      <button type="button" data-jobedit="${state.jobIdx}" style="border:0;background:none;color:var(--muted);font-weight:600;font-size:14px;font-family:inherit;padding:10px;cursor:pointer">⋯ Edit job details</button>
     </main>`;
   }
   function viewJob(){
@@ -494,16 +621,19 @@
     if (finishing && !(Number(j.hrs) > 0)) state._hrs = hoursSince(j.startedAt);
     const hide = quick ? 'style="display:none"' : '';
     return headerBack((finishing ? 'FINISH JOB ' : editing ? 'JOB ' : 'START JOB ') + n, editing && !j.done ? 'jobpage' : 'today') + `<main>
+      ${finishing ? `<div class="card" style="padding:12px 14px"><div style="font-weight:700;font-size:16px">${esc(j.customer || j.desc || '')}</div><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact].filter(Boolean).join(' · '))}</div></div>` : ''}
       <form id="jobForm" style="display:flex;flex-direction:column;gap:18px">
+        <div ${finishing ? 'style="display:none"' : ''} style="display:flex;flex-direction:column;gap:18px">
         ${locked ? `<div class="hint" style="display:flex;gap:8px;align-items:center;color:var(--label)">${ICON.cal}<span>From your schedule. Job card no., customer and contact can only be changed on the Schedule tab.</span></div>` : ''}
         <div class="field"><label for="card">Job card no.</label><input id="card" value="${esc(j.card)}" ${ro}></div>
         <div class="field"><label for="customer">Customer</label><input id="customer" autocomplete="organization" value="${esc(j.customer||j.desc||'')}" ${ro}></div>
         ${locked && j.contact ? `<div class="field"><label for="contact">Contact person</label><input id="contact" value="${esc(j.contact)}" ${ro}></div>` : ''}
         ${!locked ? `<div class="field"><label for="contactIn">Contact person (optional)</label><input id="contactIn" autocomplete="name" value="${esc(j.contact || '')}"></div>` : ''}
+        </div>
         <div ${hide}>
-        <div class="field"><label for="odo">Odometer at this job (km)</label><input id="odo" class="num" inputmode="numeric" value="${esc(j.odo)}" required>
+        <div class="field"><label for="odo">${finishing ? 'Odometer now (km)' : 'Odometer at this job (km)'}</label><input id="odo" class="num" inputmode="numeric" value="${esc(j.odo)}" required>
           <span class="hint" id="odoHint">Previous reading ${fmtKm(prevOdo)} km</span></div>
-        <div class="field"><span class="lab" id="hrsLab">Hours on job</span>
+        <div class="field"><span class="lab" id="hrsLab">${finishing ? 'Time on this job' : 'Hours on job'}</span>
           <div class="stepper" role="group" aria-labelledby="hrsLab">
             <button type="button" id="minus" aria-label="Less time">−</button>
             <div class="val" id="hrsVal" aria-live="polite">${fmtHM(state._hrs)}</div>
@@ -826,7 +956,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 13 Nov (Q)</span>
+        <span class="hint">App version 14 Nov (A)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -973,12 +1103,12 @@
   // ---------- render & wire ----------
   function render(){
     const v = state.view;
-    app.innerHTML = v==='signin' ? viewSignIn() : v==='schedule' ? viewSchedule() : v==='schedjob' ? viewSchedJob() : v==='check' ? viewCheck() : v==='job' ? viewJob() : v==='jobpage' ? viewJobPage() : v==='end' ? viewEnd() : v==='history' ? viewHistory() : v==='detail' ? viewDetail() : viewToday();
+    app.innerHTML = v==='signin' ? viewSignIn() : v==='schedule' ? viewSchedule() : v==='schedjob' ? viewSchedJob() : v==='check' ? viewCheck() : v==='job' ? viewJob() : v==='jobpage' ? viewJobPage() : v==='vehicle' ? viewVehicle() : v==='end' ? viewEnd() : v==='history' ? viewHistory() : v==='detail' ? viewDetail() : viewToday();
     wire();
   }
 
   function wire(){
-    app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'jobpage' ? go('jobpage', { _finishing:false }) : go(b.dataset.go, { jobIdx:null, prefill:null, schedId:null, _finishing:false }));
+    app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'jobpage' ? go('jobpage', { _finishing:false }) : go(b.dataset.go, { jobIdx:null, prefill:null, schedId:null, _finishing:false, _editDay:false }));
     app.querySelectorAll('[data-addjob]').forEach(b => b.onclick = () => go('job', { jobIdx:null, prefill:null, _finishing:false }));
     // account, backup, install
     const so = document.getElementById('signOut');
@@ -1083,8 +1213,56 @@
       catch(e){ const m = modal(`<div style="font-weight:600">Select and copy the summary:</div><pre class="summary" tabindex="0">${esc(txt)}</pre><button class="btn secondary" id="mClose">Close</button>`); m.querySelector('#mClose').onclick=()=>m.remove(); }
     });
 
+    // ---- Vehicle tab: start of the day ----
+    const ed = document.getElementById('editDay'); if (ed) ed.onclick = () => { state._editDay = true; state._editCond = null; render(); };
+    const cd = document.getElementById('cancelDay'); if (cd) cd.onclick = () => { state._editDay = false; state._editCond = null; render(); };
+    const df = document.getElementById('dayForm');
+    if (df){
+      wireCond(df, state._editCond); wirePicks(df);
+      const box = document.getElementById('svcBox');
+      const regNow = () => String(pickValue(df, 'ireg') || '').trim().toUpperCase();
+      const updSvc = () => { const reg = regNow(); const svc = reg ? serviceFor(reg) : null;
+        box.innerHTML = !reg ? '' : svc == null ? `<div class="field"><label for="svc">Next service due at (km)</label><input id="svc" class="num" inputmode="numeric" placeholder="e.g. 90 000"><span class="hint">Only asked once for ${esc(reg)}. The app then counts down the km left.</span></div>`
+          : `<div class="hint">Next service for ${esc(reg)} at <b>${fmtKm(svc)} km</b>.</div>`; };
+      updSvc(); df.querySelector('#ireg').addEventListener('change', updSvc); const rn = df.querySelector('#iregNew'); if (rn) rn.addEventListener('input', updSvc);
+      df.onsubmit = () => {
+        const k = curKey(); const err = document.getElementById('dayErr'); err.textContent = '';
+        const fail = (m, el) => { err.textContent = m; if (el){ el.scrollIntoView({ block:'center' }); } };
+        const reg = regNow(); if (!reg) return fail('Choose the vehicle, or add a new one.', df.querySelector('#ireg'));
+        const missing = PARTS.filter(x => !state._editCond[x]); if (missing.length) return fail('Vehicle check: rate ' + missing.join(', ') + '.', df.querySelector('[data-cond]'));
+        const tech = df.tech.value.trim(); if (!tech) return fail('Fill in the technician name.', df.tech);
+        const asel = df.querySelector('#assistant'); const assistant = pickValue(df, 'assistant');
+        if (asel.value === '__new' && !assistant) return fail('Type the new assistant\'s name, or pick one from the list.', asel);
+        const first = parseNum(df.first.value); if (isNaN(first) || first < 0) return fail('Enter the first odometer reading as a number.', df.first);
+        let svc = serviceFor(reg); const si = df.querySelector('#svc');
+        if (si){ const v = parseNum(si.value); if (isNaN(v)) return fail('Enter the km reading when the next service is due (once only).', si); if (v <= first) return fail('Service km must be higher than the odometer reading.', si); svc = v; }
+        const sh = state.sheets[k] || { date:k, jobs:[], status:'open' };
+        const editing = !!state._editDay;
+        Object.assign(sh, { date:k, reg, condition:Object.assign({}, state._editCond), condNote:df.condNote.value.trim(), tech, assistant, firstOdo:first, nextService: svc == null ? '' : svc });
+        if (!sh.jobs) sh.jobs = []; if (!sh.status) sh.status = 'open'; if (!sh.startedAt) sh.startedAt = new Date().toISOString();
+        state.sheets[k] = sh; remember('vehicles', reg); remember('assistants', assistant);
+        state.settings = Object.assign({}, state.settings, { tech, assistant, reg });
+        if (si) setService(reg, svc); else saveSettings();
+        state._editCond = null; state._editCondKey = null; state._editDay = false;
+        saveSheet(k); if (editing){ toast('Saved'); go('vehicle'); } else { toast('Day started'); go('today'); }
+      };
+    }
+    // ---- job page: how many reports are already saved for this job ----
+    if (document.getElementById('cntI')){
+      const k = curKey(); const j = (state.sheets[k].jobs || [])[state.jobIdx];
+      if (j){
+        const core = v => String(v || '').trim().toUpperCase().replace(/^C(?=\d)/, '');
+        try { const eq = JSON.parse(localStorage.getItem('bco-equipment') || '{}'); const id = (k + '_' + (j.card || j.customer || 'job')).replace(/[^\w\-]+/g, '_');
+          const n = ((eq[id] && eq[id].rows) || []).filter(r => r.serial || r.desc).length; if (n) document.getElementById('cntE').textContent = n + (n === 1 ? ' item' : ' items'); } catch(e){}
+        try { const rq = indexedDB.open('bc-forklift', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
+          rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => {
+            const mine = (g.result || []).filter(r => r && r.state && core(r.job || r.state.f.jobno) === core(j.card) && (j.card || norm2(r.state.f.customer) === norm2(j.customer)));
+            const ni = mine.filter(r => r.state.type !== 'LOAD TEST').length, nl = mine.length - ni;
+            const a = document.getElementById('cntI'), b = document.getElementById('cntL'); if (a && ni) a.textContent = ni + ' saved'; if (b && nl) b.textContent = nl + ' saved'; }; } catch(e){} }; } catch(e){}
+      }
+    }
     const dp = document.getElementById('dayPick');
-    if (dp) dp.onchange = () => { const v = dp.value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; state.activeDate = (v === todayKey()) ? null : v; state._editCond = null; go('today'); };
+    if (dp) dp.onchange = () => { const v = dp.value; if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; state.activeDate = (v === todayKey()) ? null : v; state._editCond = null; state._editDay = false; go('today'); };
     const dt = document.getElementById('dayToday');
     if (dt) dt.onclick = () => { state.activeDate = null; state._editCond = null; go('today'); };
     app.querySelectorAll('[data-pdf]').forEach(b => b.onclick = () => makePdf(b.dataset.pdf, b));
