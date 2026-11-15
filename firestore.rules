@@ -1,9 +1,33 @@
 rules_version = '2';
-// Each person can only read and write their own time sheets.
+// Blue Cranes Online
+// - Each person can read and write their own time sheets, reports and inventories.
+// - Admins (an "admins" document whose ID is their email, lower case) can read everyone's data
+//   and load jobs for technicians.
+// - A technician can read the jobs loaded for their email and only update the job's progress.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/items/{itemId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function signedIn() { return request.auth != null; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function isAdmin() { return signedIn() && request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(myEmail())); }
+
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+      allow read: if isAdmin();
+      match /items/{itemId} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+        allow read: if isAdmin();
+      }
+    }
+
+    match /admins/{email} {
+      allow read: if signedIn() && request.auth.token.email != null && myEmail() == email;
+    }
+
+    match /jobs/{jobId} {
+      allow read, write: if isAdmin();
+      allow read: if signedIn() && request.auth.token.email != null && resource.data.tech == myEmail();
+      allow update: if signedIn() && request.auth.token.email != null && resource.data.tech == myEmail()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'sheetDate', 'startedAt', 'doneAt', 'updatedAt']);
     }
   }
 }

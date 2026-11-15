@@ -28,6 +28,7 @@
       if (p && p.name){ p.uid = u.uid; BC.cacheProfile(p); }
       else if (cached && cached.uid === u.uid) p = cached;
       else { BC.goHome('?profile=1'); return; }
+      try { if (window.Cloud.saveUser) window.Cloud.saveUser({ email:String(u.email || '').toLowerCase(), name:(p && p.name) || '', seen:new Date().toISOString() }); } catch(e){}
       resolve({ user:u, profile:p });
     });
   });

@@ -120,6 +120,7 @@
     const first = String(p.name || '').split(' ')[0];
     return `<header><img class="logo" src="icons/logo.png" alt="Blue Cranes"><div style="flex:1;min-width:0"><div class="sub">${new Date().toLocaleDateString('en-ZA',{weekday:'long',day:'numeric',month:'long'})}</div><h1>${esc(hi)}${first ? ', ' + esc(first) : ''}</h1></div></header>
       <main>
+        ${S.admin ? `<a class="tile" href="admin/" style="grid-column:1/-1;min-height:auto;flex-direction:row;align-items:center;background:var(--navyDeep);color:#fff"><span class="ic" style="background:var(--yellow);color:var(--navyDeep)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16"/></svg></span><span style="display:flex;flex-direction:column;gap:4px"><b style="color:#fff">Admin</b><span style="color:#C9D5EA">Load jobs from Excel · export time sheets and inventories</span></span></a>` : ''}
         <div class="tiles">${TOOLS.map(t => t.gate
           ? `<div class="tile" style="opacity:.6" aria-disabled="true"><span class="ic">${t.icon}</span><b>${esc(t.name)}</b><span>${esc(t.text)}</span></div>`
           : `<a class="tile" href="${t.href}"><span class="ic">${t.icon}</span><b>${esc(t.name)}</b><span>${esc(t.text)}</span></a>`).join('')}</div>
@@ -232,8 +233,10 @@
       else { try { p = await Cloud.getItem('profile'); } catch(e){} if (p){ p.uid = u.uid; BC.cacheProfile(p); } }
       S.profile = p;
       if (!p || !p.name || !p.signature){ S.sig = p && p.signature || null; S.view = 'setup'; render(); return; }
+      try { Cloud.saveUser({ email:String(u.email || '').toLowerCase(), name:p.name || '', seen:new Date().toISOString() }); } catch(e){}
       if (!wantHome){ location.replace('timesheet/'); return; }
       S.view = 'home'; render();
+      try { S.admin = await Cloud.isAdmin(); if (S.admin) render(); } catch(e){}
     });
   })();
 })();

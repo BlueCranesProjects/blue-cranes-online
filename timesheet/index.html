@@ -151,10 +151,33 @@
   }
   function saveSched(id){
     lsWrite();
+    const ax = state.schedule[id];
+    if (ax && ax.assigned){   // loaded by the office: only send the progress back
+      const status = ax.done ? 'done' : ax.addedTo ? 'busy' : 'planned';
+      if (ax._sent !== status && window.Cloud && window.Cloud.updateJob){
+        const now = new Date().toISOString(); const f = { status, sheetDate:ax.addedTo || '', updatedAt:now };
+        if (status === 'busy' && !ax._startedSent) f.startedAt = now; if (status === 'done') f.doneAt = now;
+        window.Cloud.updateJob(ax.jobId, f); ax._sent = status; if (status === 'busy') ax._startedSent = true; lsWrite();
+      }
+      return;
+    }
     if (!db || !uid || !state.schedule[id]) return;
     const data = JSON.parse(JSON.stringify(state.schedule[id]));
     enqueue('sched-' + id, () => db.collection('data/users/' + uid).doc('sched-' + id).set({ kind:'sched', ...data }))
       .catch(e => { toast('Saved on this phone – cloud save failed' + (e && e.code ? ' (' + e.code + ')' : '')); });
+  }
+  // jobs loaded by the office for this technician (Admin → Load jobs)
+  async function loadAssigned(){
+    if (!window.Cloud || !window.Cloud.myJobs) return;
+    let list = null; try { list = await window.Cloud.myJobs(); } catch(e){}
+    if (!list) return;
+    const seen = {};
+    list.forEach(j => { const id = 'A_' + j.id; seen[id] = 1; const old = state.schedule[id] || {};
+      const x = Object.assign({}, old, { id, assigned:true, jobId:j.id, date:j.date, time:j.time || '', card:j.card || '', customer:j.customer || '', contact:j.contact || '', notes:j.notes || '' });
+      if (old._sent == null) x._sent = j.status || 'planned';
+      state.schedule[id] = x; });
+    Object.keys(state.schedule).forEach(id => { const x = state.schedule[id]; if (x.assigned && !seen[id] && !x.addedTo) delete state.schedule[id]; });
+    lsWrite(); render();
   }
   function deleteSchedRemote(id){
     lsWrite();
@@ -187,6 +210,7 @@
     if (owner && owner !== user.uid){ state.sheets = {}; state.schedule = {}; state.settings = { tech:'', assistant:'', reg:'' }; local = null; }
     try { localStorage.setItem(LS_KEY + '-owner', user.uid); } catch(e){}
     await loadCloud(user.uid, local);
+    await loadAssigned();
     state.loaded = true; render();
   }
 
@@ -304,7 +328,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 14 Nov (B)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 15 Nov (A)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -734,7 +758,7 @@
               <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(schedLabel(x))}</span>
               ${x.contact ? `<span class="hint" style="color:var(--label)">Contact: ${esc(x.contact)}</span>` : ''}
               ${x.notes ? `<span class="hint">${esc(x.notes)}</span>` : ''}</span>
-              ${x.done ? '<span class="pill ok">✓ Completed</span>' : x.addedTo ? '<span class="pill warn">On sheet</span>' : ''}</button>`).join('')
+              ${x.done ? '<span class="pill ok">✓ Completed</span>' : x.addedTo ? '<span class="pill warn">On sheet</span>' : x.assigned ? '<span class="pill" style="background:#E3EAF5;color:#0B3575">From office</span>' : ''}</button>`).join('')
             : '<span class="hint">Nothing planned</span>'}
         </section>`; }).join('')}
       <button class="btn primary" data-schedadd="${thisWeek ? tk : ws}">${ICON.plus} Schedule a job</button>
@@ -768,21 +792,23 @@
   function viewSchedJob(){
     const editing = !!(state.schedId && state.schedule[state.schedId]);
     const x = editing ? state.schedule[state.schedId] : { date: state.schedDate || todayKey(), time:'', card:'', customer:'', notes:'' };
+    const ro = x.assigned ? 'readonly' : '';
     return headerBack(editing ? 'JOB' : 'SCHEDULE JOB', state._schedBack || 'schedule') + `<main>${editing ? schedActions(x) : ''}
+      ${x.assigned ? `<div class="card" style="font-size:14px;display:flex;gap:10px;align-items:center">${ICON.cal}<span>Loaded by the office. Ask the office to change the details.</span></div>` : ''}
       <form id="schedForm" style="display:flex;flex-direction:column;gap:18px">
         <div class="grid2" style="gap:10px">
-          <div class="field"><label for="sDate">Date</label><input id="sDate" type="date" value="${esc(x.date)}" required></div>
-          <div class="field"><label for="sTime">Time (optional)</label><input id="sTime" type="time" value="${esc(x.time||'')}"></div>
+          <div class="field"><label for="sDate">Date</label><input ${ro} id="sDate" type="date" value="${esc(x.date)}" required></div>
+          <div class="field"><label for="sTime">Time (optional)</label><input ${ro} id="sTime" type="time" value="${esc(x.time||'')}"></div>
         </div>
-        <div class="field"><label for="sCard">Job card no.</label><input id="sCard" value="${esc(x.card)}"></div>
-        <div class="field"><label for="sCust">Customer</label><input id="sCust" autocomplete="organization" value="${esc(x.customer)}"></div>
-        <div class="field"><label for="sContact">Contact person</label><input id="sContact" autocomplete="name" value="${esc(x.contact||'')}" placeholder="e.g. Johan van Wyk"></div>
-        <div class="field"><label for="sNotes">Notes (optional)</label><textarea id="sNotes" rows="3" placeholder="e.g. Load test on 5 t hoist, ask for Johan">${esc(x.notes)}</textarea></div>
+        <div class="field"><label for="sCard">Job card no.</label><input ${ro} id="sCard" value="${esc(x.card)}"></div>
+        <div class="field"><label for="sCust">Customer</label><input ${ro} id="sCust" autocomplete="organization" value="${esc(x.customer)}"></div>
+        <div class="field"><label for="sContact">Contact person</label><input ${ro} id="sContact" autocomplete="name" value="${esc(x.contact||'')}" placeholder="e.g. Johan van Wyk"></div>
+        <div class="field"><label for="sNotes">Notes (optional)</label><textarea ${ro} id="sNotes" rows="3" placeholder="e.g. Load test on 5 t hoist, ask for Johan">${esc(x.notes)}</textarea></div>
         ${editing && x.addedTo ? `<div class="card" style="font-size:14px;display:flex;flex-direction:column;gap:8px"><span>Added to the time sheet for <b>${esc(niceDate(x.addedTo))}</b>.</span>
           <button type="button" class="btn secondary" style="height:44px;font-size:14px;border-width:1.5px" id="sUndone">Mark as not done</button></div>` : ''}
         <div id="schedErr" class="warn" role="alert"></div>
-        <button class="btn primary" type="button" data-submit>${editing ? 'Save changes' : 'Save to schedule'}</button>
-        ${editing ? `<button class="btn ghost" type="button" id="sDel">Delete from schedule</button>` : ''}
+        ${x.assigned ? '' : `<button class="btn primary" type="button" data-submit>${editing ? 'Save changes' : 'Save to schedule'}</button>`}
+        ${editing && !x.assigned ? `<button class="btn ghost" type="button" id="sDel">Delete from schedule</button>` : ''}
       </form></main>`;
   }
 
@@ -956,7 +982,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 14 Nov (B)</span>
+        <span class="hint">App version 15 Nov (A)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}

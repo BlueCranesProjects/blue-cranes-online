@@ -72,6 +72,28 @@ window.Cloud = api;
       try { s = await F.getDocs(q); } catch (e) { s = await F.getDocsFromCache(q); }
       return s.docs.map(d => ({ id: d.id, data: d.data() }));
     };
+    // ---- shared: jobs loaded by the office, admin role, user directory ----
+    api.email = () => String((auth.currentUser && auth.currentUser.email) || '').trim().toLowerCase();
+    api.isAdmin = async () => { try { const s = await F.getDoc(F.doc(fs, 'admins', api.email())); return s.exists(); } catch (e) { return false; } };
+    api.saveUser = data => { const u = auth.currentUser; if (!u) return Promise.resolve(); return F.setDoc(F.doc(fs, 'users', u.uid), data, { merge:true }).catch(() => {}); };
+    // a technician's jobs (null when they can't be read, e.g. rules not set up yet)
+    api.myJobs = async () => {
+      const q = F.query(F.collection(fs, 'jobs'), F.where('tech', '==', api.email())); let s;
+      try { s = await F.getDocs(q); } catch (e) { try { s = await F.getDocsFromCache(q); } catch (_) { return null; } }
+      return s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    };
+    api.updateJob = (id, fields) => { F.updateDoc(F.doc(fs, 'jobs', id), fields).catch(report); return Promise.resolve(); };
+    // admin only
+    api.allJobs = async () => (await F.getDocs(F.collection(fs, 'jobs'))).docs.map(d => Object.assign({ id: d.id }, d.data()));
+    api.putJobs = async list => {
+      for (let i = 0; i < list.length; i += 400){
+        const b = F.writeBatch(fs); list.slice(i, i + 400).forEach(j => { const { id, ...data } = j; b.set(F.doc(fs, 'jobs', id), data, { merge:true }); });
+        await b.commit();
+      }
+    };
+    api.deleteJob = id => F.deleteDoc(F.doc(fs, 'jobs', id));
+    api.listUsers = async () => (await F.getDocs(F.collection(fs, 'users'))).docs.map(d => Object.assign({ uid: d.id }, d.data()));
+    api.listKindOf = async (uid, kind) => (await F.getDocs(F.query(F.collection(fs, 'users', uid, 'items'), F.where('kind', '==', kind)))).docs.map(d => ({ id: d.id, data: d.data() }));
     api.signIn = (email, pw) => A.signInWithEmailAndPassword(auth, email, pw);
     api.signUp = (email, pw) => A.createUserWithEmailAndPassword(auth, email, pw);
     api.resetPassword = email => A.sendPasswordResetEmail(auth, email);

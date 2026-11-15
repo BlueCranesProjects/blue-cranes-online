@@ -10,7 +10,8 @@ Live: https://bluecranesprojects.github.io/blue-cranes-online/
 |---|---|
 | `timesheet/` | Daily Time Sheet – vehicle check, jobs, schedule, PDF, WhatsApp |
 | `forklift/` | Forklift Inspection / Load Test report and load test certificate |
-| `equipment/` | Equipment list per job (serial nr, description, manufacturer, SWL) and customer inventory |
+| `equipment/` | Client's inventory per job (location, serial nr, description, manufacturer, SWL, safe/unsafe) and all client inventories |
+| `admin/` | Admin: load jobs from Excel for technicians, export completed jobs / time sheets and client inventories to Excel |
 
 ## Adding a new tool
 
@@ -44,8 +45,16 @@ Live: https://bluecranesprojects.github.io/blue-cranes-online/
 Everything for a person is under `users/{uid}/items/`:
 `profile`, `settings`, `sheet-YYYY-MM-DD`, `sched-<id>` (time sheet), `fl-<doc no>` (forklift reports), `eq-<date>_<job>` (equipment lists).
 
+## Admin and shared jobs
+
+- `jobs/{id}` – jobs loaded by the office: date, time, card, customer, contact, notes, `tech` (email, lower case), status (planned / busy / done).
+- `users/{uid}` – name and email of everyone who has signed in (for the admin's technician list).
+- `admins/{email}` – an empty document whose ID is the admin's email in lower case makes that account an admin.
+- Technicians read the jobs with their email and can only change the progress fields.
+
 ## Firebase settings that must stay in place
 
 - Authentication → Sign-in method → **Email/Password** enabled
 - Authentication → Settings → Authorized domains → **bluecranesprojects.github.io**
 - Firestore → Rules → contents of `firestore.rules`
+- Firestore → `admins` collection → one document per admin, ID = email in lower case
