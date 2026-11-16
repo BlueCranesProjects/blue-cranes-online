@@ -303,15 +303,17 @@
           let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
           const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' });
           if ((g.fl || []).some(r => r.state.type === 'LOAD TEST')){ const ft = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
-            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const c = await ft.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:c.doc.output('blob'), name:c.name }); } } finally { ft.done(); } }
+            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const c = await ft.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
           const f = await t.api.mergeCerts(l, parts); if (f) files.push(f); }
+        // copy the files into this page before the hidden page is closed
+        for (const f of files) f.blob = new Blob([new Uint8Array(await f.blob.arrayBuffer())], { type:f.type || f.blob.type || 'application/pdf' });
       } finally { t.done(); }
     }
     if ((g.fl || []).length && (which === 'fl' || which === 'all')){
       const t = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
       try { const reps = g.fl.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
-        for (const r of reps){ const st = JSON.parse(JSON.stringify(r.state)); const a = await t.api.buildPdf(st); files.push({ blob:a.doc.output('blob'), name:a.name });
-          if (st.type === 'LOAD TEST' && !g.list){ const c = await t.api.buildCert(JSON.parse(JSON.stringify(r.state))); files.push({ blob:c.doc.output('blob'), name:c.name }); } }
+        for (const r of reps){ const st = JSON.parse(JSON.stringify(r.state)); const a = await t.api.buildPdf(st); files.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
+          if (st.type === 'LOAD TEST' && !g.list){ const c = await t.api.buildCert(JSON.parse(JSON.stringify(r.state))); files.push({ blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
       } finally { t.done(); }
     }
     return files;

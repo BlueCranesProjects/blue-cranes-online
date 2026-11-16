@@ -558,7 +558,7 @@
       try { const parts = await itemCertParts(l); let tools = null;
         try { tools = await forkliftTools(); const core = j => norm(j).replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
           for (const r of (await tools.api.reports()).filter(r => r && r.state && r.state.type === 'LOAD TEST' && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))){
-            const c = await tools.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:c.doc.output('blob'), name:c.name }); } }
+            const c = await tools.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
         catch(e){ console.error(e); } finally { if (tools) tools.done(); }
         if (!parts.length){ toast('No certificates yet – mark the items Safe or Unsafe first'); return; }
         const idx = parts; const f = await mergeCerts(l, parts); const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -808,8 +808,8 @@
           .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
         for (let k = 0; k < reps.length; k++){
           const st = reps[k].state; busy(`Forklift report ${k + 1} of ${reps.length} (${st.f.docno || ''})…`);
-          const a = await tools.api.buildPdf(JSON.parse(JSON.stringify(st))); files.push({ blob:a.doc.output('blob'), name:a.name });
-          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(JSON.parse(JSON.stringify(st))); flCerts.push({ no:'/' + ((/\.(\d+)$/.exec(st.f.docno || '') || [])[1] || 9999), blob:c.doc.output('blob'), name:c.name }); }
+          const a = await tools.api.buildPdf(JSON.parse(JSON.stringify(st))); files.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
+          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(JSON.parse(JSON.stringify(st))); flCerts.push({ no:'/' + ((/\.(\d+)$/.exec(st.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); }
         }
       } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
       finally { if (tools) tools.done(); }
