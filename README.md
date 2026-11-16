@@ -37,7 +37,7 @@ Live: https://bluecranesprojects.github.io/blue-cranes-online/
 | `shared/cloud.js` | Firebase sign-in and saving (works offline, syncs later) |
 | `shared/app.js` | Profile, sign-in check, share/download, signature upload, offline worker |
 | `sw.js` | Offline support. **Change `VERSION` after every update** |
-| `vendor/` | jsPDF, pdf-lib, JSZip (kept locally so PDFs work offline) |
+| `vendor/` | jsPDF, pdf-lib, JSZip, SheetJS, ExcelJS (kept locally; ExcelJS makes the styled census export) |
 | `firestore.rules` | Database rules: each person only sees their own data |
 
 ## Data in Firebase

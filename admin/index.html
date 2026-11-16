@@ -119,11 +119,25 @@
     'manufacturer':'make', 'make':'make', 'swl kg':'swl', 'swl':'swl', 'tonnage':'swl', 'capacity':'swl', 'wll':'swl', 'safe working load':'swl', 'safe working load kg':'swl', 'job nr':'job', 'job no':'job', 'job number':'job', 'job card':'job', 'job':'job' };
   const up = s => String(s == null ? '' : s).trim().toUpperCase().replace(/\s+/g, ' ');
   const cardCore = s => up(s).replace(/^C(?=\d)/, '');
-  const swlText = v => { if (v == null || v === '') return ''; if (typeof v === 'number') return String(Math.round(v * 1000) / 1000); const tn = /^(\d+(?:[.,]\d+)?)\s*(?:t|ton|tons|tonne|tonnes)\.?$/i.exec(String(v).trim()); if (tn) return String(Math.round(Number(tn[1].replace(',', '.')) * 1000)); const t = String(v).trim().replace(/\s*kgs?\.?$/i, ''); return /^[\d\s.,]+$/.test(t) ? t.replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, '').replace(',', '.') : t; };
+  // a plain number under a heading in tons ("SWL (t)", "TONNAGE") is tons, up to 100
+  const swlIn = (v, unit) => { const n = typeof v === 'number' ? v : /^\s*\d+([.,]\d+)?\s*$/.test(String(v == null ? '' : v)) ? Number(String(v).trim().replace(',', '.')) : NaN;
+    if (!isNaN(n) && unit === 't' && n <= 100) return String(Math.round(n * 1000)); return swlText(v); };
+  const swlText = v => { if (v == null || v === '') return ''; if (typeof v === 'number') return String(Math.round(v * 1000) / 1000); const tn = /^(?:swl\s*)?(\d+(?:[.,]\d+)?)\s*(?:t|ton|tons|tonne|tonnes)\.?(?:\s*swl)?$/i.exec(String(v).trim()); if (tn) return String(Math.round(Number(tn[1].replace(',', '.')) * 1000)); const t = String(v).trim().replace(/\s*kgs?\.?$/i, ''); return /^[\d\s.,]+$/.test(t) ? t.replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, '').replace(',', '.') : t; };
   const invJobs = () => { const from = keyOf(new Date(Date.now() - 864e5)); return S.jobs.filter(j => j.status !== 'done' && j.date >= from).sort((a, b) => (a.date + (a.time || '99') + a.customer).localeCompare(b.date + (b.time || '99') + b.customer)); };
   // Reads our template, an export, or a customer's own "census" sheet: the heading row may be lower down (title lines above it),
   // tonnage like "1,5 TON" / "250KG" becomes kg, and a line with only a description is a note on the item above it.
-  const hkey = k => IALIAS[String(k == null ? '' : k).trim().toLowerCase().replace(/[.:#()]/g, '').replace(/\s+/g, ' ').trim()];
+  // headings differ from client to client: exact names first, then by what the heading contains
+  const hkey = k => { const h = String(k == null ? '' : k).trim().toLowerCase().replace(/\./g, '').replace(/[:#()\/\\_-]/g, ' ').replace(/\s+/g, ' ').trim(); if (!h || h.length > 40) return undefined;
+    if (IALIAS[h]) return IALIAS[h];
+    if (/locat|area|department|dept|section|position|placement|where/.test(h)) return 'loc';
+    if (/swl|wll|safe working|working load|tonnage|capacity|rated load|max load|load limit|\bton|\bkg\b/.test(h)) return 'swl';
+    if (/serial|item ?n(o|r|um)|id ?n(o|r)|asset|tag ?n(o|r)|equip(ment)? ?n(o|r)|^ref/.test(h)) return 'serial';
+    if (/^(no|nr|number)$/.test(h)) return 'serial?';   // a plain "No." column: only if nothing better
+    if (/descr|equipment|^item$|^type$|item type|^name$/.test(h)) return 'desc';
+    if (/manuf|^make$|brand/.test(h)) return 'make';
+    if (/customer|client|company/.test(h)) return 'customer';
+    if (/^site/.test(h)) return 'site';
+    return undefined; };
   async function readInv(file){
     await xlsxReady();
     const wb = XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:false });
@@ -132,6 +146,9 @@
     let hr = -1, best = 1; for (let i = 0; i < Math.min(grid.length, 25); i++){ const n = new Set((grid[i] || []).map(hkey).filter(Boolean)).size; if (n > best){ best = n; hr = i; } }
     if (hr < 0) return { rows:[], site:'', customer:'', skipped:[], noHead:true };
     const col = {}; (grid[hr] || []).forEach((h, c) => { const f = hkey(h); if (f && col[f] == null) col[f] = c; });
+    if (col.serial == null && col['serial?'] != null) col.serial = col['serial?'];
+    const swlHead = col.swl == null ? '' : String(grid[hr][col.swl]).toLowerCase();
+    const swlUnit = /\bkg\b|kilo/.test(swlHead) ? 'kg' : /\(\s*t\s*\)|\bt\b|ton/.test(swlHead) ? 't' : '';
     let title = ''; for (let i = 0; i < hr && !title; i++) title = t((grid[i] || []).find(v => t(v)));
     const seen = {}, rows = [], skipped = []; let site = '', cust = '';
     for (let i = hr + 1; i < grid.length; i++){
@@ -140,7 +157,7 @@
       if (filled.length === 1 && col.desc != null && filled[0] !== col.serial){ const last = rows[rows.length - 1];   // a remark under an item
         if (filled[0] === col.desc && last){ last.note = (last.note ? last.note + '; ' : '') + t(g[col.desc]); continue; } }
       if (filled.length === 1 && filled[0] === col.serial && col.desc != null && /[=:]|\s\S+\s/.test(t(g[col.serial]))){ skipped.push(t(g[col.serial])); continue; }   // a footer line such as "RED = UNSAFE FOR USE"
-      const out = { line:i + 1, customer:t(get('customer')), loc:t(get('loc')), serial:t(get('serial')), desc:t(get('desc')), make:t(get('make')), swl:swlText(get('swl')), job:t(get('job')), note:'', errs:[], warns:[] };
+      const out = { line:i + 1, customer:t(get('customer')), loc:t(get('loc')), serial:t(get('serial')), desc:t(get('desc')), make:t(get('make')), swl:swlIn(get('swl'), swlUnit), job:t(get('job')), note:'', errs:[], warns:[] };
       if (!site && t(get('site'))) site = t(get('site')); if (!cust && out.customer) cust = out.customer;
       if (!(out.customer || out.loc || out.serial || out.desc || out.make || out.swl)) continue;
       if (!out.serial && !out.desc) out.errs.push('serial nr or description needed');
@@ -174,6 +191,7 @@
             <td>${r.errs.length ? `<span class="warn">${esc(r.errs.join('; '))}</span>` : r.warns.length ? `<span class="hint" style="color:var(--warn)">${esc(r.warns.join('; '))}</span>` : '<span class="pill ok">OK</span>'}</td></tr>`).join('')}
           </tbody></table></div>
           ${S.invSkip.length ? `<span class="hint">Left out (not an item): ${S.invSkip.map(x => '“' + esc(x) + '”').join(', ')}</span>` : ''}
+          <button class="btn secondary" id="icen" ${ok.length ? '' : 'disabled'}>⬇ Download this file in our census layout</button>
           <button class="btn primary" id="iload" ${ok.length && job && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : !job ? 'Choose the job first (step 2)' : `Load ${ok.length} ${ok.length === 1 ? 'item' : 'items'} for ${esc(job.customer || job.card)}`}</button>` : ''}
       </section></main>`;
   }
@@ -226,8 +244,10 @@
         <span class="hint">One Excel file with two sheets: <b>Jobs</b> (one row per job: tech, vehicle, customer, hours, odometer) and <b>Time sheets</b> (one row per tech per day: km, clock in/out, clock time, job time).</span>
         <button class="btn navy" id="expJobs">⬇ Export to Excel</button></section>
       <section class="card"><h2>Client inventories</h2>
-        <span class="hint">Every client's equipment from all jobs: location, serial nr, description, manufacturer, SWL, condition, report nr. The newest record per serial nr.</span>
-        <button class="btn navy" id="expInv">⬇ Export to Excel</button></section>
+        <span class="hint">One sheet per customer in the census layout: <b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>, grouped by location, unsafe items in red with the reason under them. The newest record per item nr.</span>
+        <button class="btn navy" id="expCen">⬇ Export to Excel</button>
+        <button class="btn secondary" id="expInv">⬇ Full list with all columns</button>
+        <span class="hint">The full list adds manufacturer, Safe/Unsafe, report nr, job nr and technician, all customers on one sheet.</span></section>
       </main>`;
   }
   function vNoAdmin(msg){ return `<header><a href="../?home=1" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a><div><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
@@ -283,6 +303,8 @@
     const ef = $('ef'), et = $('et'); if (ef){ ef.onchange = () => S.ef = ef.value; et.onchange = () => S.et = et.value; }
     const ej = $('expJobs'); if (ej) ej.onclick = () => exportJobs(ej);
     const ei = $('expInv'); if (ei) ei.onclick = () => exportInv(ei);
+    const ec = $('expCen'); if (ec) ec.onclick = () => exportCensus(ec);
+    const ic = $('icen'); if (ic) ic.onclick = () => censusFromUpload(ic);
   }
   async function refreshJobs(){ try { S.jobs = await window.Cloud.allJobs(); } catch(e){ toast('Could not read jobs – check the Firebase rules'); } }
 
@@ -306,6 +328,63 @@
       XLSX.utils.book_append_sheet(wb, sheet(jobs, [11, 22, 28, 14, 12, 8, 12, 26, 16, 10, 7, 10, 7, 30]), 'Jobs');
       XLSX.utils.book_append_sheet(wb, sheet(sheets, [11, 22, 28, 14, 12, 10, 10, 7, 8, 8, 10, 10, 6, 9, 46, 30]), 'Time sheets');
       download(wb, `Blue Cranes jobs and time sheets ${from} to ${to}.xlsx`); toast(jobs.length + ' jobs, ' + sheets.length + ' time sheets exported');
+    } catch(e){ console.error(e); toast('Export failed – check the Firebase rules'); }
+    finally { btn.disabled = false; btn.innerHTML = old; }
+  }
+  // ---------- census layout (the way Blue Cranes sends inventories) ----------
+  let exReady = null;
+  function excelJS(){ return exReady = exReady || new Promise((res, rej) => { if (window.ExcelJS) return res(window.ExcelJS); const sc = document.createElement('script'); sc.src = '../vendor/exceljs.min.js'; sc.onload = () => res(window.ExcelJS); sc.onerror = () => { exReady = null; rej(new Error('Excel tool not loaded')); }; document.head.appendChild(sc); }); }
+  const tonText = swl => { const t = String(swl == null ? '' : swl).trim(); if (!/^\d+(\.\d+)?$/.test(t)) return t.toUpperCase(); const kg = Number(t);
+    return kg >= 1000 ? String(Math.round(kg / 10) / 100).replace('.', ',') + ' TON' : String(Math.round(kg * 100) / 100).replace('.', ',') + 'KG'; };
+  const monthText = k => { const m = /^(\d{4})-(\d{2})/.exec(k || ''); return m ? new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString('en-ZA', { month:'long', year:'numeric' }).toUpperCase() : ''; };
+  // customers: [{ name, month, items:[{ serial, desc, swl, loc, unsafe, reason }] }] → one sheet each
+  async function censusBook(customers){
+    const EX = await excelJS(); const wb = new EX.Workbook(); wb.creator = 'Blue Cranes Online'; const used = {};
+    const red = { argb:'FFFF0000' }, line = { style:'thin', color:{ argb:'FF000000' } }, box = { top:line, left:line, bottom:line, right:line };
+    customers.forEach(c => {
+      let nm = (String(c.name || 'NO CUSTOMER').toUpperCase().replace(/[\[\]:*?\/\\]/g, ' ').replace(/\s+/g, ' ').trim() || 'SHEET').slice(0, 28); let n = nm, i = 2; while (used[n]) n = nm.slice(0, 26) + ' ' + i++; used[n] = 1;
+      const ws = wb.addWorksheet(n, { pageSetup:{ paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0 } });
+      ws.columns = [{ width:24 }, { width:54 }, { width:12 }, { width:26 }];
+      [String(c.name || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', c.month || ''].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 4); const cl = ws.getCell(k + 1, 1); cl.value = t; cl.font = { name:'Arial', bold:true, size:12 }; cl.alignment = { horizontal:'center' }; });
+      ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { const cl = ws.getCell(4, k + 1); cl.value = h; cl.font = { name:'Arial', bold:true }; cl.border = box; });
+      const order = []; c.items.forEach(it => { const l = it.loc || ''; if (!order.includes(l)) order.push(l); });
+      let r = 6;
+      order.forEach((l, gi) => { if (gi) r++;
+        c.items.filter(it => (it.loc || '') === l).forEach(it => {
+          [it.serial, it.desc, it.swl, it.loc].forEach((v, k) => { const cl = ws.getCell(r, k + 1); cl.value = String(v || '').toUpperCase(); cl.font = it.unsafe ? { name:'Arial', color:red } : { name:'Arial' }; cl.border = box; });
+          r++;
+          if (it.unsafe && it.reason){ const cl = ws.getCell(r, 2); cl.value = String(it.reason).toUpperCase(); cl.font = { name:'Arial', color:red }; cl.alignment = { wrapText:true }; r++; }
+        }); });
+      r++; const f = ws.getCell(r, 1); f.value = 'RED = UNSAFE FOR USE'; f.font = { name:'Arial', bold:true, color:red };
+    });
+    return wb;
+  }
+  async function saveBook(wb, name){ const buf = await wb.xlsx.writeBuffer(); const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    if (window.BC && BC.saveFile) return BC.saveFile(blob, name); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); }
+  async function censusFromUpload(btn){
+    const job = S.jobs.find(j => j.id === S.invJob); const ok = (S.inv || []).filter(r => !r.errs.length); if (!ok.length) return;
+    const name = (job && job.customer) || S.invCust || (ok.find(r => r.customer) || {}).customer || 'Customer';
+    const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Making…';
+    try { await saveBook(await censusBook([{ name, month:monthText(today()), items:ok.map(r => ({ serial:r.serial, desc:r.desc + (r.make && !/^unknown$/i.test(r.make) && !up(r.desc).includes(up(r.make)) ? ' (' + r.make + ')' : ''), swl:tonText(r.swl), loc:r.loc, unsafe:false, reason:'' })) }]), name + ' census.xlsx'); }
+    catch(e){ console.error(e); toast('Could not make the file'); }
+    finally { btn.disabled = false; btn.innerHTML = old; }
+  }
+  async function exportCensus(btn){
+    const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Collecting…';
+    try { await refreshUsers(); const by = new Map(); const lists = [];
+      await eachUser('equipment', (u, l) => lists.push(l));
+      lists.sort((a, b) => String(a.date + a.savedAt).localeCompare(String(b.date + b.savedAt)));
+      lists.forEach(l => { const cust = String(l.customer || '').trim(); const ck = up(cust) || '(NO CUSTOMER)';
+        const c = by.get(ck) || { name:cust || 'No customer', last:'', items:new Map() }; by.set(ck, c); c.name = cust || c.name;
+        (l.rows || []).forEach((r, i) => { if (!r.serial && !r.desc) return; if (l.date > c.last) c.last = l.date;
+          const make = String(r.make || '').trim(); let desc = String(r.desc || '').trim();
+          if (make && !/^unknown$/i.test(make) && !up(desc).includes(up(make))) desc += ' (' + make + ')';
+          const k = up(r.serial) || ('#' + l.id + '#' + i);
+          c.items.set(k, { serial:r.serial || '', desc, swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? (r.reason || '') : '' }); }); });
+      const customers = [...by.values()].filter(c => c.items.size).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ name:c.name, month:monthText(c.last), items:[...c.items.values()] }));
+      if (!customers.length){ toast('No client inventories yet'); return; }
+      await saveBook(await censusBook(customers), `Blue Cranes client inventories ${today()}.xlsx`);
+      toast(customers.length + (customers.length === 1 ? ' customer' : ' customers') + ' exported');
     } catch(e){ console.error(e); toast('Export failed – check the Firebase rules'); }
     finally { btn.disabled = false; btn.innerHTML = old; }
   }
