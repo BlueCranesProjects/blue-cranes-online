@@ -240,17 +240,20 @@
   // lifting machines that get a load test certificate (forklifts have their own report and certificate; tackle and harnesses get none)
   const MACHINE = /crane|gantry|beam|monorail|runway|hoist|chain\s*block|lever\s*block|lever\s*hoist|winch|tirfor|lifter|spreader|lifting\s*frame/i;
   const TACKLE = /sling|shackle|\bhook\b|eye\s*bolt|clamp|harness|lanyard|swivel|master\s*link|turnbuckle|grab|trolley(?!.*hoist)/i;
-  const isCertItem = r => { const d = r.desc || ''; if (isForklift(r)) return false; if (/spreader/i.test(d)) return true; if (TACKLE.test(d) && !/hoist|crane|gantry|block/i.test(d)) return false; return MACHINE.test(d); };
+  const isHarness = r => /harness|lanyard|fall\s*arrest|inertia\s*reel|self[\s-]*retract/i.test(r.desc || '');
+  const isCertItem = r => { const d = r.desc || ''; if (isForklift(r)) return false; if (isHarness(r)) return true; if (/spreader/i.test(d)) return true; if (TACKLE.test(d) && !/hoist|crane|gantry|block/i.test(d)) return false; return MACHINE.test(d); };
   // certificate numbers follow the item's place on the inventory (item 1 → C<job>/1); once given, a number stays with its item
   const jobCore = j => String(j || '').trim().replace(/^C(?=\d)/i, '');
   function certN(l, i){ const r = l.rows[i]; if (r.cno) return r.cno; const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let n = i + 1; if (used.has(n)) n = Math.max(...used) + 1; return n; }
   const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
-  const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
+  const techTag = () => String(((S.profile && S.profile.name) || '').trim().split(/\s+/)[0] || 'BC').toUpperCase();
+  const certNoOf = (l, i) => isHarness(l.rows[i]) ? 'BC ' + certN(l, i) + '/' + techTag() : 'C' + certJob(l) + '/' + certN(l, i);
   function certLine(l, r, i){
     if (!isCertItem(r)) return '';
-    if (r.noCert) return `<div class="certbar off"><span>📄 No load test certificate for this item</span><button type="button" class="linkbtn" style="color:var(--navy)" data-certon="${i}">Add certificate</button></div>`;
-    return `<div class="certbar"><span>📄 Load test certificate <b>${esc(certNoOf(l, i))}</b>${r.status ? '' : ' · mark Safe or Unsafe first'}</span><span class="row" style="gap:6px;flex-wrap:nowrap">
-      <button type="button" class="flb" data-certview="${i}" ${r.status ? '' : 'disabled style="opacity:.5"'}>View</button><button type="button" class="linkbtn" data-certoff="${i}">Not tested</button></span></div>`;
+    const kind = isHarness(r) ? 'inspection' : 'load test';
+    if (r.noCert) return `<div class="certbar off"><span>📄 No ${kind} certificate for this item</span><button type="button" class="linkbtn" style="color:var(--navy)" data-certon="${i}">Add certificate</button></div>`;
+    return `${isHarness(r) ? `<div class="field"><label for="dom${i}">Date of manufacture</label><input id="dom${i}" data-f="dom" value="${esc(r.dom || '')}" placeholder="e.g. 15/12/2022 – O-190"></div>` : ''}<div class="certbar"><span>📄 ${isHarness(r) ? 'Inspection' : 'Load test'} certificate <b>${esc(certNoOf(l, i))}</b>${r.status ? '' : ' · mark Safe or Unsafe first'}</span><span class="row" style="gap:6px;flex-wrap:nowrap">
+      <button type="button" class="flb" data-certview="${i}" ${r.status ? '' : 'disabled style="opacity:.5"'}>View</button><button type="button" class="linkbtn" data-certoff="${i}">${isHarness(r) ? 'No certificate' : 'Not tested'}</button></span></div>`;
   }
   const RATIOS = [600, 650, 700, 750];
   const num = v => { const n = Number(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) && String(v).trim() !== '' ? n : null; };
@@ -443,7 +446,7 @@
     app.querySelectorAll('[data-certoff]').forEach(b => b.onclick = () => { l.rows[Number(b.dataset.certoff)].noCert = true; saveList(l); render(); });
     app.querySelectorAll('[data-certon]').forEach(b => b.onclick = () => { delete l.rows[Number(b.dataset.certon)].noCert; saveList(l); render(); });
     app.querySelectorAll('[data-certview]').forEach(b => b.onclick = async () => { const i = Number(b.dataset.certview); const old = b.textContent; b.disabled = true; b.textContent = '…';
-      try { const f = await certDoc(l, [i]); if (f){ const how = await BC.saveFile(f.blob, f.name, 'application/pdf', 'Load test certificate'); if (how) toast(how === 'shared' ? 'Certificate ready to send' : 'Certificate downloaded'); } }
+      try { const f = await certDoc(l, [i]); if (f){ const how = await BC.saveFile(f.blob, f.name, 'application/pdf', 'Certificate'); if (how) toast(how === 'shared' ? 'Certificate ready to send' : 'Certificate downloaded'); } }
       catch(e){ console.error(e); toast('Could not make the certificate'); } finally { b.disabled = false; b.textContent = old; } });
     app.querySelectorAll('[data-defladd]').forEach(b => b.onclick = () => { const r = l.rows[Number(b.dataset.defladd)]; r.defl = { span:'', load:'', meas:'', ratio:600 }; saveList(l); render(); const f = document.getElementById('dsp' + b.dataset.defladd); if (f) f.focus(); });
     app.querySelectorAll('[data-deflrm]').forEach(b => b.onclick = () => { delete l.rows[Number(b.dataset.deflrm)].defl; saveList(l); render(); });
@@ -586,6 +589,26 @@
   const dmy = k => { const [y, m, d] = String(k || '').split('-'); return d ? d + '/' + m + '/' + y : ''; };
   const kgText = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').trim(); return t ? t + 'KG' : ''; };
   const mmText = v => { const n = num(v); if (n == null) return ''; const [a, b] = String(n).split('.'); return String(Number(a)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (b ? ',' + b : '') + 'mm'; };
+  // safety harnesses and lanyards: inspection certificate (Construction Regulation 10(d)), no understudy
+  function harnessPage(doc, l, r, no, tech, sigImg, dots){
+    const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 20, R = 190, U = s => String(s || '').toUpperCase(), unsafe = r.status === 'UNSAFE';
+    let y = 24; doc.setFont('times', 'bold'); doc.setTextColor(...INK); doc.setFontSize(20); doc.text('INSPECTION CERTIFICATE', 105, y, { align:'center' });
+    y += 7; doc.setFontSize(14); doc.text('Safety Harnesses', 105, y, { align:'center' });
+    y += 8; doc.setFontSize(9.5); doc.text(doc.splitTextToSize('CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993, CONSTRUCTION REGULATION 10(d).', R - L), L, y);
+    y += 13; const VX = L + 68, W = R - VX;
+    const row = (a, v, color) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); if (color) doc.setTextColor(...color);
+      const lines = doc.splitTextToSize(String(v || ''), W).slice(0, 4); doc.text(lines, VX, y); doc.setTextColor(...INK); y += 7.9 + (Math.max(1, lines.length) - 1) * 5; };
+    row('CERTIFICATE No', no); row('CUSTOMER NAME', U(l.customer)); row('SITE ADDRESS', U(l.location)); row('ITEM LOCATION', U(r.loc)); row('ITEM No', U(r.serial));
+    row('DESCRIPTION OF ITEM', U(r.desc)); row('SAFE WORKING LOAD', kgText(r.swl)); row('MANUFACTURED BY', /^unknown$/i.test(r.make || '') ? '' : U(r.make));
+    row('REMARKS', unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' + (r.reason ? ' – ' + U(r.reason) : '') : 'SAFE FOR USE AT TIME OF INSPECTION', unsafe ? RED : GREEN);
+    row('DATE OF MANUFACTURE', U(r.dom));
+    y += 10; doc.setFontSize(12.5);
+    doc.text('INSPECTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 38, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
+    y += 10; doc.text('INSPECTION DATE:', L, y); doc.text(dmy(l.date), L + 50, y);
+    doc.setFontSize(11);
+    ['1ST', '2ND', '3RD'].forEach(n => { y += 12; doc.text(n + ' INSPECTION', L, y); doc.text('DATE', L + 42, y); dots(L + 53, L + 80, y); doc.text('NAME', L + 83, y); dots(L + 96, L + 122, y); doc.text('SIGNATURE', L + 125, y); dots(L + 148, R, y);
+      y += 9; doc.text('JOB NR:', L, y); dots(L + 16, L + 46, y); doc.text('REMARKS', L + 48, y); dots(L + 68, R, y); });
+  }
   async function certDoc(l, idx){
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 15 + 5, R = 190, U = s => String(s || '').toUpperCase();
@@ -595,7 +618,8 @@
     const dots = (x1, x2, yy) => { doc.setLineDashPattern([0.4, 0.9], 0); doc.line(x1, yy + 0.6, x2, yy + 0.6); doc.setLineDashPattern([], 0); };
     let pages = 0; const nos = [];
     for (const i of idx){
-      const r = l.rows[i]; if (!r) continue; if (!r.cno){ r.cno = certN(l, i); } const no = 'C' + certJob(l) + '/' + r.cno; nos.push(no);
+      const r = l.rows[i]; if (!r) continue; if (!r.cno){ r.cno = certN(l, i); } const no = certNoOf(l, i); nos.push(no);
+      if (isHarness(r)){ if (pages++) doc.addPage(); harnessPage(doc, l, r, no, tech, sigImg, dots); continue; }
       if (pages++) doc.addPage();
       let y = 24; doc.setFont('times', 'bold'); doc.setFontSize(20); doc.setTextColor(...INK); doc.text('ANNUAL STATUTORY LOAD TEST CERTIFICATE', 105, y, { align:'center' });
       y += 7; doc.setFontSize(14); doc.text('Lifting Machinery', 105, y, { align:'center' });
@@ -621,7 +645,7 @@
       y += 14; doc.setFontSize(9.5); doc.text('LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017', L, y);
     }
     if (!pages) return null; saveList(l, true);
-    const name = idx.length === 1 ? `Load_Test_Certificate_${safe(nos[0].replace('/', '-'))}_${safe(l.customer)}${l.rows[idx[0]].serial ? '_' + safe(l.rows[idx[0]].serial) : ''}_${l.date}.pdf` : `Load_Test_Certificates_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`;
+    const name = idx.length === 1 ? `${isHarness(l.rows[idx[0]]) ? 'Inspection' : 'Load_Test'}_Certificate_${safe(nos[0].replace('/', '-'))}_${safe(l.customer)}${l.rows[idx[0]].serial ? '_' + safe(l.rows[idx[0]].serial) : ''}_${l.date}.pdf` : `Certificates_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`;
     return { blob:doc.output('blob'), name };
   }
   async function listPdf(l, btn){
@@ -649,7 +673,7 @@
       for (let i = 0; i < 50 && !window.JSZip; i++) await new Promise(r => setTimeout(r, 100));
       if (!window.JSZip) throw new Error('zip tool not loaded');
       busy("Client's inventory…"); const files = [await listDoc(l)];
-      { busy('Load test certificates…'); const idx = (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }); if (idx.length){ const c = await certDoc(l, idx); if (c) files.push(c); } }
+      { busy('Certificates…'); const idx = (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }); if (idx.length){ const c = await certDoc(l, idx); if (c) files.push(c); } }
       let reps = [], tools = null;
       try {
         busy('Finding forklift reports…'); tools = await forkliftTools();
