@@ -235,9 +235,9 @@
   }
   // gantries and load / lifting beams get a deflection test (span, test load, measured deflection, allowed = span ÷ ratio)
   const isBeam = r => /gantry|beam|monorail|runway/i.test(r.desc || '') && !/clamp|trolley/i.test(r.desc || '');
-  const RATIOS = [500, 600, 750, 800, 1000];
+  const RATIOS = [600, 650, 700, 750];
   const num = v => { const n = Number(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) && String(v).trim() !== '' ? n : null; };
-  function deflResult(d){ if (!d) return null; const span = num(d.span), meas = num(d.meas), ratio = Number(d.ratio) || 600;
+  function deflResult(d){ if (!d) return null; const span = num(d.span), meas = num(d.meas), ratio = RATIOS.includes(Number(d.ratio)) ? Number(d.ratio) : 600;
     if (!span) return null; const max = Math.round(span / ratio * 10) / 10; if (meas == null) return { max, ratio };
     return { max, ratio, meas, ok: meas <= max }; }
   const fmtMm = n => String(n).replace('.', ',');
