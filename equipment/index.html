@@ -203,7 +203,7 @@
     } catch(e){ console.error('Office inventory failed', e); }
   }
   function activeJob(){
-    try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || a.date !== today()) return null;
+    try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && a.date !== today())) return null;
       const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null');
       if (a.sched){   // opened from a scheduled job of today (before or without starting it)
         const x = ts && ts.schedule && ts.schedule[a.sched]; if (ts && (!x || x.date !== a.date)) return null;
@@ -564,10 +564,14 @@
     S.active = activeJob();
     const wantInv = /[?&]inventory=1/.test(location.search);
     if (S.active){
-      const id = listIdFor(S.active);
+      let id = listIdFor(S.active);
+      // the same scheduled job keeps one inventory, whether opened from the schedule or after starting it (even on another day)
+      const sid = S.active.sched || (() => { try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const tj = ts.sheets[S.active.date].jobs[S.active.idx]; return tj.sched || ''; } catch(e){ return ''; } })();
+      if (sid && !S.lists[id]){ const linked = Object.values(S.lists).find(v => v && v.sched === sid); if (linked) id = linked.id; }
       S.cur = S.lists[id] || { id, date:S.active.date, job:S.active.card || '', customer:S.active.customer || '', location:'', rows:[], tech:(S.profile && S.profile.name) || '' };
       if (!S.cur.rows.length && !S.lists[id]){ S.cur.rows.push({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'' }); }
       S.cur.rows.forEach(r => { if (!r.id) r.id = rowId(); });
+      if (sid && !S.cur.sched) S.cur.sched = sid;
       S.lists[id] = S.cur; lsSave();
     }
     S.view = wantInv ? 'inventory' : S.active ? 'list' : 'gate';
