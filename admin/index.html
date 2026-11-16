@@ -335,6 +335,56 @@
     const sh = m.querySelector('#pfShare'); if (sh) sh.onclick = async () => { try { await navigator.share({ files:share, title:share.length === 1 ? share[0].name : 'Blue Cranes files' }); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – use Save to Downloads'); } };
     m.querySelector('#pfDl').onclick = () => { (rest.length && share.length ? rest : files).forEach((f, i) => setTimeout(() => dlFile(f), i * 400)); toast('Saved to Downloads – open the Files app'); };
   }
+  // ---------- everything for a period: per job the inventory (PDF + Excel), one certificates PDF and the forklift reports ----------
+  async function exportEverything(btn){
+    const $ = id => document.getElementById(id);
+    const from = S.xaFrom || ($('xaFrom') || {}).value, to = S.xaTo || ($('xaTo') || {}).value, onlyUid = S.xaTech || '';
+    if (!from || !to || from > to){ toast('Choose the From and To dates'); return; }
+    const old = btn.textContent; btn.disabled = true; const say = t => { btn.textContent = t; };
+    let eq = null, fk = null;
+    try {
+      say('Collecting…'); await refreshUsers();
+      const core = c => String(c || '').trim().toUpperCase().replace(/\s+/g, '').replace(/^C(?=\d)/, '');
+      const groups = [];
+      for (const u of S.users.filter(u => !onlyUid || u.uid === onlyUid)){
+        let lists = [], reps = [], prof = {};
+        try { lists = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => d.data || {}).filter(l => l.date >= from && l.date <= to && (l.rows || []).some(r => r.serial || r.desc)); } catch(e){}
+        try { reps = (await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to); } catch(e){}
+        if (!lists.length && !reps.length) continue;
+        try { const ps = await window.Cloud.listKindOf(u.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
+        const mine = lists.map(l => ({ u, prof, l, reps:[] }));
+        reps.forEach(r => { const jc = core(r.job || r.state.f.jobno); const g = jc && mine.find(x => core(x.l.job) === jc);
+          if (g) g.reps.push(r); else { let o = mine.find(x => !x.l.rows && core(x.l.job) === jc && x.l.date === (r.state.f.date || r.date));
+            if (!o){ o = { u, prof, l:{ id:'fl', job:r.state.f.jobno || r.job || '', customer:r.state.f.customer || '', date:r.state.f.date || r.date, location:r.state.f.site || '' }, reps:[] }; mine.push(o); } o.reps.push(r); } });
+        groups.push(...mine);
+      }
+      if (!groups.length){ toast('Nothing found for those dates'); return; }
+      groups.sort((a, b) => (a.l.date + a.l.job).localeCompare(b.l.date + b.l.job));
+      say('Loading tools…');
+      eq = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
+      if (groups.some(g => g.reps.length)) fk = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
+      for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
+      const top = `Blue Cranes ${from} to ${to}`, zip = new JSZip(), root = zip.folder(top); const own = async b => new Uint8Array(await b.arrayBuffer());
+      const usedDir = {}; let nFiles = 0;
+      for (let gi = 0; gi < groups.length; gi++){
+        const g = groups[gi], l = JSON.parse(JSON.stringify(g.l)); say(`Job ${gi + 1} of ${groups.length}…`);
+        let dn = `${l.date} - Job ${String(l.job || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(l.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')} - ${g.u.name || g.u.email}`; if (usedDir[dn]) dn += ' (' + (++usedDir[dn]) + ')'; else usedDir[dn] = 1;
+        const dir = root.folder(dn); const put = async (f) => { dir.file(f.name, await own(f.blob)); nFiles++; };
+        const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '' }; const parts = [];
+        try {
+          if (l.rows){ await put(await eq.api.listDoc(l)); try { await put(await eq.api.listXlsx(l)); } catch(e){} parts.push(...(await eq.api.itemCertParts(l, tech))); }
+          for (const r of g.reps.sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
+            const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); await put({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
+            if (r.state.type === 'LOAD TEST'){ const c = await fk.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
+          if (parts.length){ const c = await eq.api.mergeCerts(l, parts); if (c) await put(c); }
+        } catch(e){ console.error(e); dir.file('PROBLEM.txt', 'Some files of this job could not be made: ' + (e && e.message || e)); }
+      }
+      say('Packing the zip…');
+      const blob = await zip.generateAsync({ type:'blob' }); if (isPhone()) phoneFiles([{ blob, name:top + '.zip', type:'application/zip' }]); else dlFile({ blob, name:top + '.zip' });
+      toast(`${groups.length} ${groups.length === 1 ? 'job' : 'jobs'}, ${nFiles} files – saved to Downloads`);
+    } catch(e){ console.error(e); toast('Export failed' + (e && e.code ? ' (' + e.code + ')' : '')); }
+    finally { if (eq) eq.done(); if (fk) fk.done(); btn.disabled = false; btn.textContent = old; }
+  }
   async function downloadJob(id, which, btn){
     const j = S.jobs.find(x => x.id === id); const old = btn.textContent; btn.disabled = true; btn.textContent = 'Working…';
     try { const files = await jobFiles(id, which);
@@ -425,6 +475,11 @@
   function vExport(){
     const d = new Date(); const first = keyOf(new Date(d.getFullYear(), d.getMonth(), 1));
     return `<main><div class="steps">
+      <section class="card"><h2>Everything for a period</h2>
+        <div class="row"><div class="field"><label for="xaFrom">From</label><input type="date" id="xaFrom" value="${esc(S.xaFrom || first)}"></div><div class="field"><label for="xaTo">To</label><input type="date" id="xaTo" value="${esc(S.xaTo || keyOf(d))}"></div></div>
+        <div class="field"><label for="xaTech">Technician</label><select id="xaTech"><option value="">All technicians</option>${S.users.map(u => `<option value="${esc(u.uid)}" ${S.xaTech === u.uid ? 'selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></div>
+        <span class="hint">One zip folder with a folder per job: the client's inventory (PDF and Excel, census layout), all certificates (load test, harness and forklift, in one PDF) and every forklift inspection and load test report. Jobs the technicians did themselves are included too.</span>
+        <button class="btn navy" id="expAll">⬇ Export everything (zip)</button></section>
       <section class="card"><h2>Client inventories</h2>
         <span class="hint">One sheet per customer in the census layout: <b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>, grouped by location, unsafe items in red with the reason under them. The newest record per item nr.</span>
         <button class="btn navy" id="expCen">⬇ Export to Excel</button>
@@ -438,7 +493,7 @@
   function render(){ app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); }
   function wire(){
     const $ = id => document.getElementById(id);
-    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); if (S.tab === 'inv' && !S.users.length) await refreshUsers(); render(); });
+    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); if ((S.tab === 'inv' || S.tab === 'export') && !S.users.length) await refreshUsers(); render(); });
     const tpl = $('tpl'); if (tpl) tpl.onclick = async () => { try { await xlsxReady();
       const wb = XLSX.utils.book_new(); const nx = new Date(Date.now() + 864e5); const ex = pad(nx.getDate()) + '/' + pad(nx.getMonth() + 1) + '/' + nx.getFullYear();
       const me = S.users[0] ? S.users[0].email : 'tech@example.com';
@@ -515,6 +570,8 @@
     const ef = $('ef'), et = $('et'); if (ef){ ef.onchange = () => S.ef = ef.value; et.onchange = () => S.et = et.value; }
     const ei = $('expInv'); if (ei) ei.onclick = () => exportInv(ei);
     const ec = $('expCen'); if (ec) ec.onclick = () => exportCensus(ec);
+    ['xaFrom', 'xaTo', 'xaTech'].forEach(k => { const el = $(k); if (el) el.onchange = () => { S[k] = el.value; }; });
+    const ea = $('expAll'); if (ea) ea.onclick = () => exportEverything(ea);
     const ic = $('icen'); if (ic) ic.onclick = () => censusFromUpload(ic);
   }
   async function refreshJobs(){ try { S.jobs = await window.Cloud.allJobs(); } catch(e){ toast('Could not read jobs – check the Firebase rules'); } }
