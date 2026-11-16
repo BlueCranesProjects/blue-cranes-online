@@ -75,7 +75,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export'].includes(t) ? t : 'jobs'; } catch(e){ return 'jobs'; } })();
+  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
   const S = { tab:savedTab, users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
@@ -225,7 +225,7 @@
   // ---------- views ----------
   function head(){ return `<header><a href="../?home=1" aria-label="Back to profile"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
       <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
-      <nav class="seg" aria-label="Admin sections">${[['jobs','Jobs'],['inv','Inventory'],['export','Export']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
+      <nav class="seg" aria-label="Admin sections">${[['inv','Import jobs'],['jobs','Schedule jobs'],['export','Export jobs']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
     return `<main><div class="steps">
@@ -339,19 +339,12 @@
   // ---------- everything for a period: per job the inventory (PDF + Excel), one certificates PDF and the forklift reports ----------
   function exportBox(html){ let m = document.querySelector('.xbox'); if (!m){ m = document.createElement('div'); m.className = 'xbox'; m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px'; document.body.appendChild(m); }
     m.innerHTML = `<div class="card" style="max-width:480px;width:100%;gap:12px">${html}</div>`; return m; }
-  async function exportEverything(btn){
-    const $ = id => document.getElementById(id);
-    const from = S.xaFrom || ($('xaFrom') || {}).value, to = S.xaTo || ($('xaTo') || {}).value, onlyUid = S.xaTech || '';
-    if (!from || !to || from > to){ toast('Choose the From and To dates'); return; }
-    const old = btn.textContent; btn.disabled = true; let box = null;
-    const say = t => { btn.textContent = t; box = exportBox(`<h2>Exporting…</h2><span class="hint" style="font-size:14px">${esc(t)}<br>Keep this page open.</span>`); try { sessionStorage.setItem('bco-admin-export', from + ' to ' + to + ', ' + t); } catch(e){} };
-    const end = () => { try { sessionStorage.removeItem('bco-admin-export'); } catch(e){} };
-    let eq = null, fk = null;
-    try {
-      say('Collecting…'); await refreshUsers();
+  // every job in a period, from all technicians' synced inventories and forklift reports
+  async function collectGroups(from, to){
+    await refreshUsers();
       const core = c => String(c || '').trim().toUpperCase().replace(/\s+/g, '').replace(/^C(?=\d)/, '');
       const groups = [];
-      for (const u of S.users.filter(u => !onlyUid || u.uid === onlyUid)){
+      for (const u of S.users){
         let lists = [], reps = [], prof = {};
         try { lists = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => d.data || {}).filter(l => l.date >= from && l.date <= to && (l.rows || []).some(r => r.serial || r.desc)); } catch(e){}
         try { reps = (await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to); } catch(e){}
@@ -363,13 +356,28 @@
             if (!o){ o = { u, prof, l:{ id:'fl', job:r.state.f.jobno || r.job || '', customer:r.state.f.customer || '', date:r.state.f.date || r.date, location:r.state.f.site || '' }, reps:[] }; mine.push(o); } o.reps.push(r); } });
         groups.push(...mine);
       }
+    groups.sort((a, b) => (a.l.date + a.l.job).localeCompare(b.l.date + b.l.job));
+    return groups;
+  }
+  // search text: client's name, technician or job number
+  function matchGroups(groups, q){ const t = String(q || '').trim().toLowerCase(); if (!t) return groups; const core = c => String(c || '').toLowerCase().replace(/\s+/g, '').replace(/^c(?=\d)/, '');
+    return groups.filter(g => String(g.l.customer || '').toLowerCase().includes(t) || String(g.u.name || '').toLowerCase().includes(t) || String(g.u.email || '').toLowerCase().includes(t) || (core(g.l.job) && core(g.l.job).includes(core(t)))); }
+  async function exportEverything(btn, pre, label){
+    const $ = id => document.getElementById(id);
+    const from = S.xaFrom || ($('xaFrom') || {}).value, to = S.xaTo || ($('xaTo') || {}).value;
+    if (!from || !to || from > to){ toast('Choose the From and To dates'); return; }
+    const old = btn.textContent; btn.disabled = true; let box = null;
+    const say = t => { btn.textContent = t; box = exportBox(`<h2>Exporting…</h2><span class="hint" style="font-size:14px">${esc(t)}<br>Keep this page open.</span>`); try { sessionStorage.setItem('bco-admin-export', from + ' to ' + to + ', ' + t); } catch(e){} };
+    const end = () => { try { sessionStorage.removeItem('bco-admin-export'); } catch(e){} };
+    let eq = null, fk = null;
+    try {
+      say('Collecting…'); const groups = pre || await collectGroups(from, to);
       if (!groups.length){ end(); if (box) box.remove(); toast('Nothing found for those dates'); return; }
-      groups.sort((a, b) => (a.l.date + a.l.job).localeCompare(b.l.date + b.l.job));
       say('Loading tools…');
       eq = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
       if (groups.some(g => g.reps.length)) fk = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
       for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
-      const top = `Blue Cranes ${from} to ${to}`, zip = new JSZip(), root = zip.folder(top); const own = async b => new Uint8Array(await b.arrayBuffer());
+      const top = label || `Blue Cranes ${from} to ${to}`, zip = new JSZip(), root = zip.folder(top); const own = async b => new Uint8Array(await b.arrayBuffer());
       const usedDir = {}; let nFiles = 0;
       for (let gi = 0; gi < groups.length; gi++){
         const g = groups[gi], l = JSON.parse(JSON.stringify(g.l)); say(`Job ${gi + 1} of ${groups.length}…`);
@@ -445,7 +453,7 @@
         <div class="field"><label for="edCon">Contact</label><input id="edCon" data-ed="contact" value="${esc(e.contact)}"></div></div>
       <div class="field"><label for="edNotes">Notes</label><input id="edNotes" data-ed="notes" value="${esc(e.notes)}"></div>
       <div class="row"><button class="btn primary" id="edSave" style="flex:1">${S.busy ? 'Saving…' : isNew ? 'Schedule the job' : 'Save changes'}</button><button class="btn secondary" id="edCancel" style="flex:1">Cancel</button></div>
-      <span class="hint">${isNew ? 'The technician sees the job on their schedule the next time they open the app. To add a client\'s inventory, use the <b>Inventory</b> tab.' : 'The technician sees the change the next time they open the app. Inventory items and progress stay with the job.'}</span></section>`;
+      <span class="hint">${isNew ? 'The technician sees the job on their schedule the next time they open the app. To add a client\'s inventory, use the <b>Import jobs</b> tab.' : 'The technician sees the change the next time they open the app. Inventory items and progress stay with the job.'}</span></section>`;
   }
   // remove jobs (one or many) after asking on the page
   function removeJobs(ids){
@@ -482,14 +490,28 @@
       </tbody></table></div>` : '<div class="empty">No jobs loaded for this period.</div>'}
     </section></main>`;
   }
+  function exportResults(){
+    const x = S.xg; if (!x) return '';
+    if (x.busy) return '<div class="empty">Searching…</div>';
+    const list = matchGroups(x.groups, S.xaQ); S.xfound = list;
+    if (!list.length) return `<div class="empty">Nothing found${S.xaQ ? ' for “' + esc(S.xaQ) + '”' : ''} between ${esc(niceDate(x.from))} and ${esc(niceDate(x.to))}.</div>`;
+    return `<div class="row" style="justify-content:space-between"><b>${list.length} ${list.length === 1 ? 'job' : 'jobs'} found</b><button class="btn navy" id="expAll" style="width:auto">⬇ Export ${list.length === 1 ? 'this job' : 'all ' + list.length} (zip)</button></div>
+      <div class="scroll"><table><thead><tr><th>Date</th><th>Job nr</th><th>Client</th><th>Technician</th><th>Has</th><th></th></tr></thead><tbody>
+      ${list.map((g, i) => { const n = (g.l.rows || []).filter(r => r.serial || r.desc).length;
+        return `<tr><td style="white-space:nowrap">${esc(niceDate(g.l.date))}</td><td>${esc(g.l.job || '–')}</td><td><b>${esc(g.l.customer || '–')}</b></td><td>${esc(g.u.name || g.u.email)}</td>
+          <td>${[n ? n + ' inventory items' : '', g.reps.length ? g.reps.length + ' forklift ' + (g.reps.length === 1 ? 'report' : 'reports') : ''].filter(Boolean).join(' · ')}</td>
+          <td><button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-xone="${i}">⬇ Export</button></td></tr>`; }).join('')}
+      </tbody></table></div>`;
+  }
   function vExport(){
     const d = new Date(); const first = keyOf(new Date(d.getFullYear(), d.getMonth(), 1));
     return `<main><div class="steps">
-      <section class="card"><h2>Everything for a period</h2>
-        <div class="row"><div class="field"><label for="xaFrom">From</label><input type="date" id="xaFrom" value="${esc(S.xaFrom || first)}"></div><div class="field"><label for="xaTo">To</label><input type="date" id="xaTo" value="${esc(S.xaTo || keyOf(d))}"></div></div>
-        <div class="field"><label for="xaTech">Technician</label><select id="xaTech"><option value="">All technicians</option>${S.users.map(u => `<option value="${esc(u.uid)}" ${S.xaTech === u.uid ? 'selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></div>
-        <span class="hint">One zip folder with a folder per job: the client's inventory (PDF and Excel, census layout), all certificates (load test, harness and forklift, in one PDF) and every forklift inspection and load test report. Jobs the technicians did themselves are included too.</span>
-        <button class="btn navy" id="expAll">⬇ Export everything (zip)</button></section>
+      <section class="card wide"><h2>Find jobs to export</h2>
+        <div class="row"><div class="field"><label for="xaFrom">From</label><input type="date" id="xaFrom" value="${esc(S.xaFrom || first)}"></div><div class="field"><label for="xaTo">To</label><input type="date" id="xaTo" value="${esc(S.xaTo || keyOf(d))}"></div>
+          <div class="field" style="flex:2"><label for="xaQ">Search – client's name, technician or job number</label><input id="xaQ" type="search" value="${esc(S.xaQ || '')}" placeholder="e.g. Goosebumps, Tiaan or 124688 (empty = everything)"></div>
+          <button class="btn primary" id="xaSearch" style="width:auto;align-self:flex-end">🔍 Search</button></div>
+        ${exportResults()}
+        <span class="hint">Each job exports as a folder with the client's inventory (PDF and Excel, census layout), all certificates in one PDF (load test, harness and forklift) and every forklift inspection and load test report. Jobs the technicians did themselves are included too.</span></section>
       <section class="card"><h2>Client inventories</h2>
         <span class="hint">One sheet per customer in the census layout: <b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>, grouped by location, unsafe items in red with the reason under them. The newest record per item nr.</span>
         <button class="btn navy" id="expCen">⬇ Export to Excel</button>
@@ -583,8 +605,16 @@
     const ef = $('ef'), et = $('et'); if (ef){ ef.onchange = () => S.ef = ef.value; et.onchange = () => S.et = et.value; }
     const ei = $('expInv'); if (ei) ei.onclick = () => exportInv(ei);
     const ec = $('expCen'); if (ec) ec.onclick = () => exportCensus(ec);
-    ['xaFrom', 'xaTo', 'xaTech'].forEach(k => { const el = $(k); if (el) el.onchange = () => { S[k] = el.value; }; });
-    const ea = $('expAll'); if (ea) ea.onclick = () => exportEverything(ea);
+    ['xaFrom', 'xaTo'].forEach(k => { const el = $(k); if (el) el.onchange = () => { S[k] = el.value; }; });
+    const xq = $('xaQ'); const doSearch = async () => { S.xaQ = xq.value; const from = $('xaFrom').value, to = $('xaTo').value; S.xaFrom = from; S.xaTo = to;
+      if (!from || !to || from > to){ toast('Choose the From and To dates'); return; }
+      if (S.xg && !S.xg.busy && S.xg.from === from && S.xg.to === to && Date.now() - S.xg.at < 120000){ render(); return; }   // same period: just filter
+      S.xg = { busy:true }; render();
+      try { S.xg = { from, to, at:Date.now(), groups:await collectGroups(from, to) }; } catch(e){ console.error(e); S.xg = null; toast('Search failed – check the Firebase rules'); }
+      render(); };
+    if (xq){ xq.onkeydown = e => { if (e.key === 'Enter') doSearch(); }; $('xaSearch').onclick = doSearch; }
+    const ea = $('expAll'); if (ea) ea.onclick = () => exportEverything(ea, S.xfound, `Blue Cranes ${S.xg.from} to ${S.xg.to}${S.xaQ ? ' - ' + S.xaQ.replace(/[\\/:*?"<>|]+/g, '-') : ''}`);
+    app.querySelectorAll('[data-xone]').forEach(b => b.onclick = () => { const g = (S.xfound || [])[Number(b.dataset.xone)]; if (g) exportEverything(b, [g], `Blue Cranes ${g.l.date} - Job ${String(g.l.job || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(g.l.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')}`); });
     const ic = $('icen'); if (ic) ic.onclick = () => censusFromUpload(ic);
   }
   async function refreshJobs(){ try { S.jobs = await window.Cloud.allJobs(); } catch(e){ toast('Could not read jobs – check the Firebase rules'); } }
