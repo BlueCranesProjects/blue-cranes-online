@@ -882,7 +882,7 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
   if(!it||!ACTIVE||EMBED||Date.now()-(it.at||0)>15*60000)return;
   const N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," ");FIELDS.forEach(f=>state.f[f]=$(f).value);
   const fill=()=>{if(it.serial)state.f.serial=String(it.serial).toUpperCase();if(it.make&&!state.f.make)state.f.make=it.make;if(it.swl&&!state.f.swl)state.f.swl=String(it.swl).replace(/[^\d.]/g,"");if(it.loc&&!state.f.location)state.f.location=it.loc;if(it.site&&!state.f.site)state.f.site=it.site;};
-  const startNew=()=>{if(state.f.serial||state.f.make||state.f.model)recordDoc();fresh();state.type=it.type||state.type;fill();applyState();save();window.scrollTo(0,0);toast("New "+(state.type==="LOAD TEST"?"load test":"inspection")+(it.serial?" for "+N(it.serial):"")+" · "+state.f.docno);};
+  const startNew=()=>{if(state.f.serial||state.f.make||state.f.model)recordDoc();fresh();state.type=it.type||state.type;fill();if(it.no&&state.f.jobno)state.f.docno="F"+jobCore(state.f.jobno)+"."+it.no;applyState();save();window.scrollTo(0,0);toast("New "+(state.type==="LOAD TEST"?"load test":"inspection")+(it.serial?" for "+N(it.serial):"")+" · "+state.f.docno);};
   const same=it.serial&&N(state.f.serial)===N(it.serial);
   const busy=!!(state.f.serial||state.f.make||state.f.model);
   if(same){fill();applyState();save();return;}

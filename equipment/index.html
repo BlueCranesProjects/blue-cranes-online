@@ -81,6 +81,8 @@
   .flb{height:38px;border-radius:9px;border:0;background:var(--navyDeep);color:#fff;font-weight:800;font-size:13px;font-family:inherit;padding:0 12px;cursor:pointer}
   .defl{display:flex;flex-direction:column;gap:10px;background:#F2F5FA;border:1.5px solid var(--line);border-radius:12px;padding:10px}
   .linkbtn{border:0;background:none;color:var(--bad);font-weight:700;font-size:13px;font-family:inherit;cursor:pointer;padding:4px}
+  .certbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:#FFF8DC;border:1.5px solid var(--yellowDark,#F5B826);border-radius:10px;padding:8px 10px;font-size:13px;color:var(--navyDeep)}
+  .certbar.off{background:#F2F4F7;border-color:var(--line);color:var(--muted)}
 </style>
 </head>
 <body>
@@ -228,13 +230,28 @@
         <div class="hint" style="font-size:14px">Forklift inspection and load test reports open once the job is started. Start the job, then come back to this forklift.</div>
         <a class="btn primary" href="../timesheet/${sid ? '?job=' + encodeURIComponent(sid) : ''}">Go to the job</a><button class="btn secondary" type="button" id="flNo">Cancel</button></div>`;
       document.body.appendChild(m); m.querySelector('#flNo').onclick = () => m.remove(); m.onclick = e => { if (e.target === m) m.remove(); }; return; }
-    saveList(l, true);
+    if (!r.cno) r.cno = certN(l, i); saveList(l, true);
     try { localStorage.setItem('bco-active-job', JSON.stringify({ date:st.k, idx:st.i, card:st.j.card || '', customer:st.j.customer || st.j.desc || '', contact:st.j.contact || '', at:new Date().toISOString() }));
-      localStorage.setItem('bco-fl-item', JSON.stringify({ serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', type, at:Date.now() })); } catch(e){}
+      localStorage.setItem('bco-fl-item', JSON.stringify({ serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', no:r.cno, type, at:Date.now() })); } catch(e){}
     location.href = '../forklift/?type=' + encodeURIComponent(type);
   }
   // gantries and load / lifting beams get a deflection test (span, test load, measured deflection, allowed = span ÷ ratio)
-  const isBeam = r => /gantry|beam|monorail|runway/i.test(r.desc || '') && !/clamp|trolley/i.test(r.desc || '');
+  const isBeam = r => /gantry|beam|monorail|runway|crane/i.test(r.desc || '') && !/clamp|trolley|spreader/i.test(r.desc || '');
+  // lifting machines that get a load test certificate (forklifts have their own report and certificate; tackle and harnesses get none)
+  const MACHINE = /crane|gantry|beam|monorail|runway|hoist|chain\s*block|lever\s*block|lever\s*hoist|winch|tirfor|lifter|spreader|lifting\s*frame/i;
+  const TACKLE = /sling|shackle|\bhook\b|eye\s*bolt|clamp|harness|lanyard|swivel|master\s*link|turnbuckle|grab|trolley(?!.*hoist)/i;
+  const isCertItem = r => { const d = r.desc || ''; if (isForklift(r)) return false; if (/spreader/i.test(d)) return true; if (TACKLE.test(d) && !/hoist|crane|gantry|block/i.test(d)) return false; return MACHINE.test(d); };
+  // certificate numbers follow the item's place on the inventory (item 1 → C<job>/1); once given, a number stays with its item
+  const jobCore = j => String(j || '').trim().replace(/^C(?=\d)/i, '');
+  function certN(l, i){ const r = l.rows[i]; if (r.cno) return r.cno; const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let n = i + 1; if (used.has(n)) n = Math.max(...used) + 1; return n; }
+  const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
+  const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
+  function certLine(l, r, i){
+    if (!isCertItem(r)) return '';
+    if (r.noCert) return `<div class="certbar off"><span>📄 No load test certificate for this item</span><button type="button" class="linkbtn" style="color:var(--navy)" data-certon="${i}">Add certificate</button></div>`;
+    return `<div class="certbar"><span>📄 Load test certificate <b>${esc(certNoOf(l, i))}</b>${r.status ? '' : ' · mark Safe or Unsafe first'}</span><span class="row" style="gap:6px;flex-wrap:nowrap">
+      <button type="button" class="flb" data-certview="${i}" ${r.status ? '' : 'disabled style="opacity:.5"'}>View</button><button type="button" class="linkbtn" data-certoff="${i}">Not tested</button></span></div>`;
+  }
   const RATIOS = [600, 650, 700, 750];
   const num = v => { const n = Number(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) && String(v).trim() !== '' ? n : null; };
   function deflResult(d){ if (!d) return null; const span = num(d.span), meas = num(d.meas), ratio = RATIOS.includes(Number(d.ratio)) ? Number(d.ratio) : 600;
@@ -339,6 +356,7 @@
             <div class="field"><label for="w${i}">SWL (kg)</label><div style="position:relative"><input id="w${i}" data-f="swl" value="${esc(r.swl)}" inputmode="decimal" placeholder="e.g. 2000" style="padding-right:40px" ${ro}><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">kg</span></div></div>
           </div>
           ${isBeam(r) ? deflBox(r, i) : ''}
+          ${certLine(l, r, i)}
           <div class="field"><span style="font-size:12.5px;font-weight:600;color:var(--label)" id="stl${i}">Condition</span>
             <div class="row" role="group" aria-labelledby="stl${i}">
               <button type="button" class="st${r.status === 'SAFE' ? ' on-safe' : ''}" data-st="${i}" data-v="SAFE" aria-pressed="${r.status === 'SAFE'}">✓ Safe</button>
@@ -422,6 +440,11 @@
     const $ = id => document.getElementById(id);
     const ti = $('toInv'); if (ti) ti.onclick = () => { S.view = 'inventory'; render(); };
     const tl = $('toList'); if (tl) tl.onclick = () => { S.view = 'list'; render(); };
+    app.querySelectorAll('[data-certoff]').forEach(b => b.onclick = () => { l.rows[Number(b.dataset.certoff)].noCert = true; saveList(l); render(); });
+    app.querySelectorAll('[data-certon]').forEach(b => b.onclick = () => { delete l.rows[Number(b.dataset.certon)].noCert; saveList(l); render(); });
+    app.querySelectorAll('[data-certview]').forEach(b => b.onclick = async () => { const i = Number(b.dataset.certview); const old = b.textContent; b.disabled = true; b.textContent = '…';
+      try { const f = await certDoc(l, [i]); if (f){ const how = await BC.saveFile(f.blob, f.name, 'application/pdf', 'Load test certificate'); if (how) toast(how === 'shared' ? 'Certificate ready to send' : 'Certificate downloaded'); } }
+      catch(e){ console.error(e); toast('Could not make the certificate'); } finally { b.disabled = false; b.textContent = old; } });
     app.querySelectorAll('[data-defladd]').forEach(b => b.onclick = () => { const r = l.rows[Number(b.dataset.defladd)]; r.defl = { span:'', load:'', meas:'', ratio:600 }; saveList(l); render(); const f = document.getElementById('dsp' + b.dataset.defladd); if (f) f.focus(); });
     app.querySelectorAll('[data-deflrm]').forEach(b => b.onclick = () => { delete l.rows[Number(b.dataset.deflrm)].defl; saveList(l); render(); });
     app.querySelectorAll('[data-df]').forEach(inp => { inp.oninput = inp.onchange = () => { const i = Number(inp.dataset.di); const d = l.rows[i].defl || (l.rows[i].defl = {});
@@ -549,12 +572,57 @@
   async function ensurePdf(){ for (let i = 0; i < 50 && !(window.jspdf && window.jspdf.jsPDF); i++) await new Promise(r => setTimeout(r, 100)); if (!(window.jspdf && window.jspdf.jsPDF)) throw new Error('PDF maker not loaded'); }
   async function listDoc(l){
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { desc: (r.desc || '') + (deflText(r.defl) ? '\n' + deflText(r.defl) : ''), swl: swlText(r.swl), rep: repText(r), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
+      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { desc: (r.desc || '') + (deflText(r.defl) ? '\n' + deflText(r.defl) : ''), swl: swlText(r.swl), rep: repText(r) || (isCertItem(r) && !r.noCert && r.status ? 'Cert ' + certNoOf(l, (l.rows || []).indexOf(r)) : ''), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
       await table(doc, "Client's inventory", [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Site:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
         grouped(rows, locsOf(l)), [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:38 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL (kg)', k:'swl', w:22 }, { t:'Condition', k:'cond', w:24, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:36 }],
         (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items' + (rows.some(r => r.status === 'UNSAFE') ? ' · unsafe items with reasons and photos on the next page' : ''));
       await unsafePages(doc, l, rows);
       return { blob: doc.output('blob'), name: `Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
+  }
+  // ---------- load test certificates (same layout as the forklift certificate) ----------
+  const imgDims = src => new Promise(res => { const im = new Image(); im.onload = () => res({ w:im.naturalWidth || 1, h:im.naturalHeight || 1 }); im.onerror = () => res(null); im.src = src; });
+  const addMonths = (k, n) => { const [y, m, d] = k.split('-').map(Number); const t = new Date(y, m - 1 + n, Math.min(d, 28)); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+  const monthYear = k => { const [y, m] = k.split('-').map(Number); return ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'][m - 1] + ' ' + y; };
+  const dmy = k => { const [y, m, d] = String(k || '').split('-'); return d ? d + '/' + m + '/' + y : ''; };
+  const kgText = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').trim(); return t ? t + 'KG' : ''; };
+  const mmText = v => { const n = num(v); if (n == null) return ''; const [a, b] = String(n).split('.'); return String(Number(a)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (b ? ',' + b : '') + 'mm'; };
+  async function certDoc(l, idx){
+    await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
+    const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 15 + 5, R = 190, U = s => String(s || '').toUpperCase();
+    const tech = S.profile || {}; let ut = {}; try { ut = JSON.parse(localStorage.getItem('bc-forklift-understudy') || '{}') || {}; } catch(e){}
+    const dims = {}; for (const im of [tech.signature, ut.sig]) if (im) dims[im] = await imgDims(im);
+    const sigImg = (img, x, base) => { if (!img) return; try { const d = dims[img] || { w:44, h:12.5 }, sc = Math.min(42 / d.w, 14 / d.h), w = d.w * sc, h = d.h * sc; doc.addImage(img, 'PNG', x + (42 - w) / 2, base - h + 1, w, h, undefined, 'FAST'); } catch(e){} };
+    const dots = (x1, x2, yy) => { doc.setLineDashPattern([0.4, 0.9], 0); doc.line(x1, yy + 0.6, x2, yy + 0.6); doc.setLineDashPattern([], 0); };
+    let pages = 0; const nos = [];
+    for (const i of idx){
+      const r = l.rows[i]; if (!r) continue; if (!r.cno){ r.cno = certN(l, i); } const no = 'C' + certJob(l) + '/' + r.cno; nos.push(no);
+      if (pages++) doc.addPage();
+      let y = 24; doc.setFont('times', 'bold'); doc.setFontSize(20); doc.setTextColor(...INK); doc.text('ANNUAL STATUTORY LOAD TEST CERTIFICATE', 105, y, { align:'center' });
+      y += 7; doc.setFontSize(14); doc.text('Lifting Machinery', 105, y, { align:'center' });
+      y += 8; doc.setFontSize(9.5); doc.text(doc.splitTextToSize('CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993 DRIVEN MACHINERY REGULATION 18(5).', R - L), L, y);
+      y += 13; const VX = L + 68, unsafe = r.status === 'UNSAFE';
+      const swl = num(String(r.swl || '').replace(/\s/g, '')); const rows = [['CERTIFICATE No', no], ['CUSTOMER NAME', U(l.customer)], ['SITE ADDRESS', U(l.location)], ['ITEM LOCATION', U(r.loc)], ['ITEM No', U(r.serial)], ['DESCRIPTION OF ITEM', U(r.desc)],
+        ['SAFE WORKING LOAD', kgText(r.swl)], ['OVERLOAD APPLIED', '10%'], ['TEST LOAD', swl ? kgText(String(Math.round(swl * 1.1 * 100) / 100)) : '']];
+      if (isBeam(r) && r.defl){ const x = deflResult(r.defl); rows.push(['SPAN', mmText(r.defl.span)], ['DEFLECTION MEASURED', mmText(r.defl.meas)], ['ALLOWED DEFLECTION', x ? mmText(x.max) : '']); }
+      rows.push(['MANUFACTURED BY', /^unknown$/i.test(r.make || '') ? '' : U(r.make)]);
+      rows.forEach(([a, v]) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); doc.text(doc.splitTextToSize(String(v || ''), R - VX)[0] || '', VX, y); y += 7.9; });
+      doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN)); doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF TEST' : 'SAFE FOR USE AT TIME OF TEST', VX, y);
+      if (unsafe && r.reason){ doc.setFontSize(10.5); doc.text(doc.splitTextToSize(U(r.reason), R - VX).slice(0, 2), VX, y + 6); }
+      doc.setTextColor(...INK); y += 22; doc.setFontSize(12.5);
+      doc.text('TESTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
+      y += 18; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
+      if (ut.lmi){ doc.setFontSize(8.5); doc.text('LMI : ' + ut.lmi, L + 58, y + 4.5); doc.setFontSize(12.5); }
+      y += 15; doc.text('TEST DATE', L, y); doc.text(dmy(l.date), L + 44, y);
+      y += 12; doc.text('PREVIOUS TEST DATE:  ', L, y); doc.text('NEXT TEST DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(l.date, 12))), R, y, { align:'right' });
+      y += 12; doc.text('6 MONTHLY THOROUGH INSPECTION DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(l.date, 6))), L, y);
+      y += 15; doc.setFontSize(11);
+      doc.text('THOROUGH INSPECTION', L, y); doc.text('DATE', L + 50, y); dots(L + 62, L + 84, y); doc.text('NAME', L + 87, y); dots(L + 100, L + 124, y); doc.text('SIGNATURE', L + 127, y); dots(L + 150, R, y);
+      y += 12; doc.text('REMARKS', L, y); dots(L + 20, R, y);
+      y += 14; doc.setFontSize(9.5); doc.text('LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017', L, y);
+    }
+    if (!pages) return null; saveList(l, true);
+    const name = idx.length === 1 ? `Load_Test_Certificate_${safe(nos[0].replace('/', '-'))}_${safe(l.customer)}${l.rows[idx[0]].serial ? '_' + safe(l.rows[idx[0]].serial) : ''}_${l.date}.pdf` : `Load_Test_Certificates_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`;
+    return { blob:doc.output('blob'), name };
   }
   async function listPdf(l, btn){
     if (!l) return; const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
@@ -581,6 +649,7 @@
       for (let i = 0; i < 50 && !window.JSZip; i++) await new Promise(r => setTimeout(r, 100));
       if (!window.JSZip) throw new Error('zip tool not loaded');
       busy("Client's inventory…"); const files = [await listDoc(l)];
+      { busy('Load test certificates…'); const idx = (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }); if (idx.length){ const c = await certDoc(l, idx); if (c) files.push(c); } }
       let reps = [], tools = null;
       try {
         busy('Finding forklift reports…'); tools = await forkliftTools();
