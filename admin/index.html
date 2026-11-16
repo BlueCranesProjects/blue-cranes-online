@@ -290,6 +290,14 @@
     });
   }
   const dlFile = f => { const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); };
+  // the understudy for a technician's certificates: the job's own, else the one saved in their account, else their latest forklift load test
+  async function utFor(uid, l, reps){
+    if (l && l.ut && (l.ut.name || l.ut.sig)) return l.ut;
+    try { const u = (await window.Cloud.listKindOf(uid, 'understudy')).map(d => d.data || {})[0]; if (u && (u.name || u.sig)) return u; } catch(e){}
+    let rs = reps; if (!rs){ try { rs = (await window.Cloud.listKindOf(uid, 'forklift')).map(d => d.data || {}); } catch(e){ rs = []; } }
+    const r = (rs || []).filter(r => r && r.state && r.state.f && (r.state.f.utName || (r.state.sig && r.state.sig.sigUt))).sort((a, b) => String(b.state.f.date || '').localeCompare(String(a.state.f.date || '')))[0];
+    return r ? { name:r.state.f.utName || '', lmi:r.state.f.utLmi || '', sig:(r.state.sig && r.state.sig.sigUt) || '' } : null;
+  }
   // which = 'inv' | 'certs' | 'fl' | 'all'
   async function jobFiles(id, which){
     const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return [];
@@ -301,7 +309,7 @@
         if (which === 'all'){ try { files.push(await t.api.listXlsx(l)); } catch(e){} }
         if (which === 'certs' || which === 'all'){
           let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
-          const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' });
+          const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, await utFor(g.uid, l, null));
           if ((g.fl || []).some(r => r.state.type === 'LOAD TEST')){ const ft = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
             try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const c = await ft.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
           const f = await t.api.mergeCerts(l, parts); if (f) files.push(f); }
@@ -384,7 +392,7 @@
         const dir = root.folder(dn); const put = async (f) => { dir.file(f.name, await own(f.blob)); nFiles++; };
         const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '' }; const parts = [];
         try {
-          if (l.rows){ await put(await eq.api.listDoc(l)); try { await put(await eq.api.listXlsx(l)); } catch(e){} parts.push(...(await eq.api.itemCertParts(l, tech))); }
+          if (l.rows){ await put(await eq.api.listDoc(l)); try { await put(await eq.api.listXlsx(l)); } catch(e){} parts.push(...(await eq.api.itemCertParts(l, tech, await utFor(g.u.uid, l, null)))); }
           for (const r of g.reps.sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
             const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); await put({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
             if (r.state.type === 'LOAD TEST'){ const c = await fk.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }

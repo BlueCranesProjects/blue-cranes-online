@@ -280,7 +280,9 @@
   const utLocal = () => { try { return JSON.parse(localStorage.getItem(UTK) || '{}') || {}; } catch(e){ return {}; } };
   const needsUt = l => (l.rows || []).some(r => (isCertItem(r) && !isHarness(r)) || isForklift(r));
   function utOf(l){ if (!l.ut){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
-  function utSave(l, p){ l.ut = Object.assign(utOf(l), p); saveList(l); try { localStorage.setItem(UTK, JSON.stringify(Object.assign(utLocal(), { name:l.ut.name, lmi:l.ut.lmi, sig:l.ut.sig || null }))); } catch(e){} }
+  let utCloudT;
+  function utSave(l, p){ l.ut = Object.assign(utOf(l), p); saveList(l); try { localStorage.setItem(UTK, JSON.stringify(Object.assign(utLocal(), { name:l.ut.name, lmi:l.ut.lmi, sig:l.ut.sig || null }))); } catch(e){}
+    clearTimeout(utCloudT); utCloudT = setTimeout(() => { try { if (cloudOK()) Cloud.putItem('understudy', { kind:'understudy', name:l.ut.name || '', lmi:l.ut.lmi || '', sig:l.ut.sig || '', updated:new Date().toISOString() }); } catch(e){} }, 1000); }
   function utCard(l){
     if (!needsUt(l)) return '';
     const u = utOf(l), open = S.utOpen || !(u.name && u.sig);
@@ -321,7 +323,8 @@
     return { blob:new Blob([await out.save()], { type:'application/pdf' }), name:`Certificates_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
   }
   // inventory items → one part per certificate (so they can be put in number order with the forklift ones)
-  async function itemCertParts(l, opts){ const parts = [];
+  async function itemCertParts(l, opts){ const parts = []; opts = opts || {};
+    if (opts.ut === undefined){ const u = utOf(l); if (u && (u.name || u.sig)) opts.ut = u; }
     for (const i of (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; })){
       const f = await certDoc(l, [i], opts); if (f) parts.push({ no:certNoOf(l, i), blob:f.blob, name:f.name }); }
     return parts; }
@@ -863,7 +866,7 @@
   if (new URLSearchParams(location.search).get('embed') === '1'){
     window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }),
       certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l),
-      itemCertParts: (l, tech) => itemCertParts(l, { tech, noSave:true }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
+      itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
   (async function start(){
     lsLoad(); S.profile = BC.cachedProfile();
