@@ -76,6 +76,9 @@
   .item.sel{outline:3px solid var(--navyDeep)}
   .locrow{background:#E6EAF2;border-radius:10px;padding:8px 12px;font-weight:800;color:var(--navyDeep);font-size:14px;display:flex;justify-content:space-between}
   input[type=search]{height:46px;border-radius:10px;border:1.5px solid var(--field);padding:0 12px;font-size:16px;font-family:inherit;width:100%}
+  .flbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:#E8EEF8;border-radius:10px;padding:8px 10px;font-size:13px;font-weight:700;color:var(--navyDeep)}
+  .flbar span{display:flex;align-items:center;gap:6px}
+  .flb{height:38px;border-radius:9px;border:0;background:var(--navyDeep);color:#fff;font-weight:800;font-size:13px;font-family:inherit;padding:0 12px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -202,6 +205,32 @@
       saveList(l, true); if (n){ if (S.view === 'list') render(); toast(n + (n === 1 ? ' item' : ' items') + ' loaded by the office'); }
     } catch(e){ console.error('Office inventory failed', e); }
   }
+  // forklifts and forklift machinery (not attachments / lifting gear used with them)
+  const FLRX = /fork\s*-?\s*lift|reach\s*truck|reach\s*stacker|\bstacker\b|order\s*picker|telehandler|lift\s*truck|counter\s*balance|side\s*loader|\bfork\s*truck/i;
+  const NOTFL = /jib|attachment|spreader|sling|hook|shackle|chain|extension|tine|fork\s*arm|clamp|bucket|cage|platform|basket/i;
+  const isForklift = r => { const t = (r.desc || '') + ' ' + (r.make || ''); return !!(r.fl || (FLRX.test(t) && !NOTFL.test(r.desc || ''))); };
+  // the started time-sheet job this inventory belongs to (forklift reports need a started job)
+  function startedJob(){
+    try { const a = S.active; if (!a) return null; const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); if (!ts) return null;
+      if (a.idx != null && !a.sched){ const j = ts.sheets[a.date] && ts.sheets[a.date].jobs[a.idx]; return j && !j.done && a.date === today() ? { k:a.date, i:a.idx, j } : null; }
+      const sid = a.sched || (S.cur && S.cur.sched); const sh = ts.sheets[today()]; if (!sid || !sh) return null;
+      const i = (sh.jobs || []).findIndex(j => j.sched === sid && !j.done); return i >= 0 ? { k:today(), i, j:sh.jobs[i] } : null;
+    } catch(e){ return null; } }
+  function openForklift(i, type){
+    const l = S.cur; const r = l && l.rows[i]; if (!r) return;
+    const st = startedJob();
+    if (!st){
+      const sid = (S.active && S.active.sched) || (l && l.sched) || '';
+      const m = document.createElement('div'); m.className = 'modal-bg';
+      m.innerHTML = `<div class="modal"><div style="font-size:16px;font-weight:700">Start the job first</div>
+        <div class="hint" style="font-size:14px">Forklift inspection and load test reports open once the job is started. Start the job, then come back to this forklift.</div>
+        <a class="btn primary" href="../timesheet/${sid ? '?job=' + encodeURIComponent(sid) : ''}">Go to the job</a><button class="btn secondary" type="button" id="flNo">Cancel</button></div>`;
+      document.body.appendChild(m); m.querySelector('#flNo').onclick = () => m.remove(); m.onclick = e => { if (e.target === m) m.remove(); }; return; }
+    saveList(l, true);
+    try { localStorage.setItem('bco-active-job', JSON.stringify({ date:st.k, idx:st.i, card:st.j.card || '', customer:st.j.customer || st.j.desc || '', contact:st.j.contact || '', at:new Date().toISOString() }));
+      localStorage.setItem('bco-fl-item', JSON.stringify({ serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', type, at:Date.now() })); } catch(e){}
+    location.href = '../forklift/?type=' + encodeURIComponent(type);
+  }
   function activeJob(){
     try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && a.date !== today())) return null;
       const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null');
@@ -269,6 +298,7 @@
           ${sel ? `<label class="pick"><input type="checkbox" data-pick="${i}" ${on ? 'checked' : ''}> Select item ${i + 1}${r.desc ? ' – ' + esc(r.desc) : ''}</label>` : ''}
           ${r.office && !r.status ? `<div class="from" style="background:#FFF3B0;color:var(--navyDeep)"><span>Loaded by the office – check it and mark <b>Safe</b> or <b>Unsafe</b></span></div>` : ''}
           ${r.note ? `<span class="hint"><b>Office note:</b> ${esc(r.note)}</span>` : ''}
+          ${isForklift(r) ? `<div class="flbar"><span>${FL} Forklift – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
           <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
@@ -366,6 +396,7 @@
     const $ = id => document.getElementById(id);
     const ti = $('toInv'); if (ti) ti.onclick = () => { S.view = 'inventory'; render(); };
     const tl = $('toList'); if (tl) tl.onclick = () => { S.view = 'list'; render(); };
+    app.querySelectorAll('[data-flopen]').forEach(b => b.onclick = () => openForklift(Number(b.dataset.flopen), b.dataset.type));
     app.querySelectorAll('[data-cust]').forEach(b => b.onclick = () => { S.cust = b.dataset.cust; S.view = 'customer'; render(); });
     const q = $('q'); if (q){ q.oninput = () => { S.q = q.value; const pos = q.selectionStart; render(); const n = $('q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch(e){} }; }
     app.querySelectorAll('[data-listpdf]').forEach(b => b.onclick = () => listPdf(S.lists[b.dataset.listpdf], b));

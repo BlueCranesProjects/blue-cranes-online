@@ -691,8 +691,10 @@ async function syncReports(){if(!cloudOK())return;try{const remote=await window.
 function toEquipment(st){
   const f=st.f||{};if(!f.serial&&!f.make&&!f.model)return;
   const date=f.date||today(),job=String(f.jobno||"").trim(),cust=String(f.customer||"").trim();
-  const id=(date+"_"+(job||cust||"job")).replace(/[^\w\-]+/g,"_");
+  let id=(date+"_"+(job||cust||"job")).replace(/[^\w\-]+/g,"_");
   let all={};try{all=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){}
+  if(!all[id]){try{const a=JSON.parse(load("bco-active-job")||"null");const ts=JSON.parse(load("dts-v1")||"null");const sj=a&&ts&&ts.sheets&&ts.sheets[a.date]&&ts.sheets[a.date].jobs&&ts.sheets[a.date].jobs[a.idx];const sid=(a&&a.sched)||(sj&&sj.sched);
+    const linked=sid&&Object.values(all).find(v=>v&&v.sched===sid&&(v.job||"")===job);if(linked)id=linked.id;}catch(e){}}
   const l=all[id]||{id,date,job,customer:cust,location:f.site||"",rows:[],tech:(PROFILE&&PROFILE.name)||f.engName||""};
   l.rows=(l.rows||[]).filter(r=>r.serial||r.desc||r.make||r.swl||r.fl);
   const N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," ");
@@ -870,6 +872,19 @@ if(!ACTIVE&&!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showRep
 $("repClose").onclick=()=>{$("repPanel").classList.remove("show");if(!ACTIVE){if(WANT_REPORTS)location.href="../timesheet/";else showGate();}};
 if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
 {const wt=new URLSearchParams(location.search).get("type");if(ACTIVE&&(wt==="INSPECTION"||wt==="LOAD TEST")&&state.type!==wt){state.type=wt;applyState();save();}}
+// opened from a forklift in the client's inventory: a report for that forklift, with its details filled in
+(function(){let it=null;try{it=JSON.parse(load("bco-fl-item")||"null");localStorage.removeItem("bco-fl-item");}catch(e){}
+  if(!it||!ACTIVE||EMBED||Date.now()-(it.at||0)>15*60000)return;
+  const N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," ");FIELDS.forEach(f=>state.f[f]=$(f).value);
+  const fill=()=>{if(it.serial)state.f.serial=String(it.serial).toUpperCase();if(it.make&&!state.f.make)state.f.make=it.make;if(it.swl&&!state.f.swl)state.f.swl=String(it.swl).replace(/[^\d.]/g,"");if(it.loc&&!state.f.location)state.f.location=it.loc;if(it.site&&!state.f.site)state.f.site=it.site;};
+  const startNew=()=>{if(state.f.serial||state.f.make||state.f.model)recordDoc();fresh();state.type=it.type||state.type;fill();applyState();save();window.scrollTo(0,0);toast("New "+(state.type==="LOAD TEST"?"load test":"inspection")+(it.serial?" for "+N(it.serial):"")+" · "+state.f.docno);};
+  const same=it.serial&&N(state.f.serial)===N(it.serial);
+  const busy=!!(state.f.serial||state.f.make||state.f.model);
+  if(same){fill();applyState();save();return;}
+  if(!busy){startNew();return;}
+  modal(`<h3 style="margin:0 0 8px">Start a report for ${esc(N(it.serial)||"this forklift")}?</h3><p style="margin:0 0 12px">The report on screen is for ${esc(N(state.f.serial)||"another forklift")} and is not finished. Save it as PDF first if you still need it.</p>
+    <div class="btns"><button class="secondary" id="mNo">Keep the open report</button><button class="primary" id="mYes">New report</button></div>`);
+  $("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();startNew();};})();
 BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");window.BCF_READY=syncReports().then(renumberOld);});
 </script>
 </body>
