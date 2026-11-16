@@ -28,7 +28,8 @@ window.Cloud = api;
     ]);
     const app = initializeApp(cfg);
     const auth = A.getAuth(app);
-    await A.setPersistence(auth, A.browserLocalPersistence).catch(() => {});
+    // hidden helper pages (used by Admin to make PDFs) must not touch the sign-in storage: that can sign the main page out for a moment
+    if (!/[?&]embed=1/.test(location.search)) await A.setPersistence(auth, A.browserLocalPersistence).catch(() => {});
     let fs;
     try { fs = F.initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
     catch (e) { fs = F.getFirestore(app); }

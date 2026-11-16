@@ -22,6 +22,8 @@
     if (!on){ resolve({ user:null, profile: cached || { name:'' } }); return; }   // cloud not set up: work on the phone
     let done = false;
     window.Cloud.onAuth(async u => {
+      if (!u && done){   // already signed in on this page: a short sign-in hiccup (e.g. another frame starting up) is not a sign-out
+        await new Promise(r => setTimeout(r, 3000)); if (window.Cloud.user && window.Cloud.user()) return; }
       if (!u){ BC.cacheProfile(null); const f = location.href.startsWith(BC.home) ? location.href.slice(BC.home.length).split(/[?#]/)[0].replace(/index\.html$/, '') : '';
         BC.goHome(/^[a-z]+\/$/.test(f) ? '?next=' + f.slice(0, -1) : ''); return; }   // come back here after signing in
       if (done) return; done = true;
