@@ -381,6 +381,7 @@
     `<div class="bar" style="flex-direction:column;align-items:center;gap:4px"><button class="btn navy" id="pdf">${ICON.pdf} Save PDF – whole job</button>
       <div style="display:flex;gap:18px"><button type="button" id="pdfZip" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Download as zip folder</button>
       <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory PDF only</button>
+      <button type="button" id="certOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Certificates PDF</button>
       <button type="button" id="xlsOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory Excel</button></div></div>`}`;
   }
 
@@ -500,6 +501,13 @@
     app.querySelectorAll('img[data-pid]').forEach(im => photoGet(im.dataset.pid).then(d => { if (d) im.src = d; else im.alt = 'Photo not on this phone yet'; }));
     if (!$('pdf')) return;
     $('pdfOnly').onclick = () => { saveList(l, true); listPdf(l, $('pdfOnly')); };
+    $('certOnly').onclick = async () => { const b = $('certOnly'), old = b.textContent; saveList(l, true);
+      const idx = (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; });
+      if (!idx.length){ toast('No certificates yet – mark the items Safe or Unsafe first'); return; }
+      b.disabled = true; b.textContent = 'Working…';
+      try { const f = await certDoc(l, idx); const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
+        toast(idx.length + (idx.length === 1 ? ' certificate' : ' certificates') + ' saved in Downloads'); }
+      catch(e){ console.error(e); toast('Could not make the certificates'); } finally { b.disabled = false; b.textContent = old; } };
     $('xlsOnly').onclick = async () => { const b = $('xlsOnly'), old = b.textContent; b.disabled = true; b.textContent = 'Working…'; saveList(l, true);
       try { const f = await listXlsx(l); const how = await BC.saveFile(f.blob, f.name, f.type, 'Client\'s inventory'); if (how) toast(how === 'shared' ? 'Excel ready to send' : 'Excel downloaded'); } catch(e){ console.error(e); toast('Could not make the Excel file'); } finally { b.disabled = false; b.textContent = old; } };
     $('pdfZip').onclick = () => { saveList(l, true); jobPack(l, $('pdfZip'), true); };
