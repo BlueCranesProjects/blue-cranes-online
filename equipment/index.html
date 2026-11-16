@@ -346,9 +346,21 @@
         <button class="btn secondary" id="toInv">All client inventories</button></section></main>`;
   }
 
+  // keep the place on the page: the same screen stays where it was, and going back to a screen returns to where you left it
+  // (also after the phone reloads the page, e.g. after taking a photo)
+  const posKey = v => 'bco-eq-pos:' + v + ':' + (v === 'list' && S.cur ? S.cur.id : v === 'customer' ? S.cust || '' : '');
+  const savePos = () => { if (!lastView) return; try { sessionStorage.setItem(posKey(lastView), String(Math.round(window.scrollY))); } catch(e){} };
+  let lastView = null, posT;
+  window.addEventListener('scroll', () => { clearTimeout(posT); posT = setTimeout(savePos, 150); }, { passive:true });
+  window.addEventListener('pagehide', savePos);
   function render(){
+    const same = lastView === S.view, y = window.scrollY;
+    if (!same) savePos();
     app.innerHTML = S.view === 'inventory' ? vInventory() : S.view === 'customer' ? vCustomer() : S.view === 'gate' ? vGate() : vList();
-    window.scrollTo(0, 0); wire();
+    let to = 0;
+    if (same) to = y; else { try { to = Number(sessionStorage.getItem(posKey(S.view))) || 0; } catch(e){} }
+    lastView = S.view; window.scrollTo(0, to); wire();
+    if (!same && to > 0) [150, 500].forEach(ms => setTimeout(() => { if (lastView === S.view && Math.abs(window.scrollY - to) > 40) window.scrollTo(0, to); }, ms));
   }
   function wire(){
     const $ = id => document.getElementById(id);
