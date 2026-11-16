@@ -182,7 +182,7 @@
   }
   // a job made here, from the inventory tab, for one technician
   function newJob(){ const n = S.nj; const tech = String(n.tech || '').trim().toLowerCase(); const customer = String(n.customer || S.invCust || '').trim();
-    const j = { date:n.date || keyOf(new Date(Date.now() + 864e5)), time:String(n.time || '').trim(), card:String(n.card || '').trim(), customer, contact:String(n.contact || '').trim(), notes:String(n.notes || '').trim(), tech };
+    const j = { date:n.date || keyOf(new Date()), time:String(n.time || '').trim(), card:String(n.card || '').trim(), customer, contact:String(n.contact || '').trim(), notes:String(n.notes || '').trim(), tech };
     j.ready = !!(j.date && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(tech) && customer); j.id = jobId(j); return j; }
   function newJobForm(){ const j = newJob();
     return `<div class="row"><div class="field"><label for="njDate">Date</label><input type="date" id="njDate" data-nj="date" value="${esc(j.date)}"></div>
@@ -193,32 +193,31 @@
         <div class="field"><label for="njCon">Contact</label><input id="njCon" data-nj="contact" value="${esc(j.contact)}"></div></div>
       <div class="field"><label for="njNotes">Notes</label><input id="njNotes" data-nj="notes" value="${esc(j.notes)}"></div>
       <span class="hint">Technicians show here once they have signed in to the app.</span>`; }
+  const schedLabel = (job, n) => !job.ready ? 'Fill in the date, technician and customer' : `Schedule the job for ${nameOf(job.tech) || job.tech}${n ? ' with ' + n + (n === 1 ? ' item' : ' items') : ''}`;
   function vInv(){
-    const jobs = invJobs(); const job = S.invJob === '__new' ? newJob() : jobs.find(j => j.id === S.invJob); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
-    const other = job && p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
+    S.invJob = '__new'; const job = newJob(); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
+    const other = p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
     return `<main><div class="steps">
-      <section class="card"><h2>1. Get the Excel template</h2>
-        <span class="hint">Your census layout: customer name on the first line, then <b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>, one row per item. Tonnage like <b>1,5 TON</b> or <b>250KG</b> is changed to kg. ${job ? 'The template is made out for <b>' + esc(job.customer || job.card) + '</b>.' : 'Choose the job first (step 2) to have the customer filled in.'}</span>
-        <button class="btn secondary" id="itpl">⬇ Download census template (.xlsx)</button>
-        <span class="hint">Our own columns (${ICOLS.join(' · ')}) and a sheet from <b>Export → Client inventories</b> also load.</span></section>
-      <section class="card"><h2>2. Choose the job</h2>
-        ${jobs.length || true ? `<div class="field"><label for="ij">Load the items for this job</label><select id="ij"><option value="">Choose a job…</option><option value="__new" ${S.invJob === '__new' ? 'selected' : ''}>＋ New job – schedule it for a technician</option>${jobs.map(j => `<option value="${esc(j.id)}" ${j.id === S.invJob ? 'selected' : ''}>${esc(niceDate(j.date))} · ${esc(j.customer || '–')}${j.card ? ' · ' + esc(j.card) : ''} · ${esc(nameOf(j.tech) || j.tech)}${(j.inv || []).length ? ' (' + j.inv.length + ' items loaded)' : ''}</option>`).join('')}</select></div>
-          ${S.invJob === '__new' ? newJobForm() : `<span class="hint">Pick an open job, or <b>＋ New job</b> to schedule one for a technician here. The technician sees the job on their schedule, starts it, marks each item Safe or Unsafe in <b>Client's inventory</b>, and taps <b>Finish job</b> to submit it.</span>`}
-          ${job && (job.inv || []).length ? `<span class="hint" style="color:var(--warn)">This job already has ${job.inv.length} items loaded. Loading a new file replaces that list (items the technician already has on the phone stay).</span>` : ''}`
-          : '<div class="empty">No open jobs.</div>'}</section>
-      <section class="card"><h2>3. Load your file</h2>
-        <label class="drop" for="ifile"><b>Choose Excel file</b><br><span class="hint">.xlsx, .xls or .csv${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
+      <section class="card"><h2>Add new job</h2>
+        <b style="font-size:14px">1. Import the client's Excel file</b>
+        <label class="drop" for="ifile"><b>${S.invFile ? 'Choose another file' : 'Choose Excel file'}</b><br><span class="hint">.xlsx, .xls or .csv${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
         <input type="file" id="ifile" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none">
-        </section></div>
+        <span class="hint">The client's inventory in your census layout (<b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>). Other layouts are read too. No file? You can still schedule the job without an inventory.</span>
+        <button class="btn secondary" id="itpl">⬇ Download census template (.xlsx)</button></section>
+      <section class="card"><h2>Schedule it</h2>
+        <b style="font-size:14px">2. Who does the job, and when</b>
+        ${newJobForm()}</section></div>
       ${p ? `<section class="card wide"><div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} items ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All items OK</span>'}</div>
-          ${other.length ? `<span class="warn">The file says customer <b>${esc(other.join(', '))}</b> but the job is for <b>${esc(job.customer)}</b>. Check that you chose the right job.</span>` : ''}
+          ${other.length && job.customer ? `<span class="warn">The file says customer <b>${esc(other.join(', '))}</b> but you typed <b>${esc(job.customer)}</b>. Check the customer name.</span>` : ''}
           <div class="scroll"><table><thead><tr><th>Row</th><th>Location</th><th>Serial nr</th><th>Description</th><th>Manufacturer</th><th>SWL</th><th>Check</th></tr></thead><tbody>
           ${p.map(r => `<tr class="${r.errs.length ? 'err' : ''}"><td>${r.line}</td><td>${esc(r.loc)}</td><td>${esc(r.serial)}</td><td>${esc(r.desc)}${r.note ? `<div class="hint">Note: ${esc(r.note)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(r.swl)}${/^\d+(\.\d+)?$/.test(r.swl) ? ' kg' : ''}</td>
             <td>${r.errs.length ? `<span class="warn">${esc(r.errs.join('; '))}</span>` : r.warns.length ? `<span class="hint" style="color:var(--warn)">${esc(r.warns.join('; '))}</span>` : '<span class="pill ok">OK</span>'}</td></tr>`).join('')}
           </tbody></table></div>
           ${S.invSkip.length ? `<span class="hint">Left out (not an item): ${S.invSkip.map(x => '“' + esc(x) + '”').join(', ')}</span>` : ''}
           <button class="btn secondary" id="icen" ${ok.length ? '' : 'disabled'}>⬇ Download this file in our census layout</button>
-          <button class="btn primary" id="iload" ${ok.length && job && (S.invJob !== '__new' || job.ready) && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : !job ? 'Choose the job first (step 2)' : S.invJob === '__new' ? (job.ready ? `Schedule the job for ${esc(nameOf(job.tech) || job.tech)} with ${ok.length} ${ok.length === 1 ? 'item' : 'items'}` : 'Fill in date, technician and customer (step 2)') : `Load ${ok.length} ${ok.length === 1 ? 'item' : 'items'} for ${esc(job.customer || job.card)}`}</button></section>` : ''}
+          </section>` : ''}
+      <section class="card wide"><button class="btn primary" id="iload" ${job.ready && !S.busy ? '' : 'disabled'}>${S.busy ? 'Scheduling…' : esc(schedLabel(job, ok.length))}</button>
+        <span class="hint">The technician sees the job on their schedule, starts it, marks each item Safe or Unsafe in <b>Client's inventory</b>, and taps <b>Finish job</b> to submit it.</span></section>
       </main>`;
   }
 
@@ -546,7 +545,7 @@
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
     const it = $('itpl'); if (it) it.onclick = async () => { try { await xlsxReady(); const wb = XLSX.utils.book_new();
-      const job = S.jobs.find(j => j.id === S.invJob); const cust = String((job && job.customer) || 'CUSTOMER NAME').toUpperCase();
+      const job = newJob(); const cust = String((job && job.customer) || 'CUSTOMER NAME').toUpperCase();
       const mon = new Date().toLocaleDateString('en-ZA', { month:'long', year:'numeric' }).toUpperCase();
       const ws = XLSX.utils.aoa_to_sheet([[cust], ['CENSUS OF LIFTING EQUIPMENT'], [mon], ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'], []]);
       ws['!merges'] = [0, 1, 2].map(r => ({ s:{ r, c:0 }, e:{ r, c:3 } })); ws['!cols'] = [22, 44, 12, 26].map(w => ({ wch:w }));
@@ -558,19 +557,19 @@
     app.querySelectorAll('[data-allpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.allpdf, 'all', b));
     if (S.tab === 'jobs') loadProgress();
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
-    app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b && S.inv){ const j = newJob(); const n = S.inv.filter(r => !r.errs.length).length; b.disabled = !(j.ready && n && !S.busy); b.textContent = j.ready ? `Schedule the job for ${nameOf(j.tech) || j.tech} with ${n} ${n === 1 ? 'item' : 'items'}` : 'Fill in date, technician and customer (step 2)'; } };
+    app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b){ const j = newJob(); const n = (S.inv || []).filter(r => !r.errs.length).length; b.disabled = !(j.ready && !S.busy); b.textContent = schedLabel(j, n); } };
       el.oninput = upd; el.onchange = upd; });
     const fi = $('ifile'); if (fi) fi.onchange = async () => { const file = fi.files && fi.files[0]; fi.value = ''; if (!file) return;
       try { const r = await readInv(file); S.invFile = file.name; S.inv = r.rows; S.invSite = r.site; S.invCust = r.customer || ''; S.invSkip = r.skipped || [];
         if (!S.inv.length) toast(r.noHead ? 'Could not find the headings (Serial nr / Item no, Description…)' : 'No items found in the first sheet');
-        if (!S.invJob){ const nrs = [...new Set(S.inv.map(x => cardCore(x.job)).filter(Boolean))]; const hit = nrs.length === 1 ? invJobs().filter(j => cardCore(j.card) === nrs[0]) : []; if (hit.length === 1) S.invJob = hit[0].id; else if (!nrs.length && S.invCust){ const hc = invJobs().filter(j => up(j.customer) === up(S.invCust)); if (hc.length === 1) S.invJob = hc[0].id; } }
+        { const nrs = [...new Set(S.inv.map(x => String(x.job || '').trim()).filter(Boolean))]; if (nrs.length === 1 && !S.nj.card) S.nj.card = nrs[0]; if (S.invCust && !S.nj.customer) S.nj.customer = S.invCust; }
         render(); }
       catch(e){ console.error(e); toast('Could not read that file – save it as .xlsx and try again'); } };
     const il = $('iload'); if (il) il.onclick = async () => {
-      const isNew = S.invJob === '__new'; const job = isNew ? newJob() : S.jobs.find(j => j.id === S.invJob); if (!job || !S.inv || (isNew && !job.ready)) return; const ok = S.inv.filter(r => !r.errs.length); S.busy = true; render();
+      const isNew = true; const job = newJob(); if (!job.ready) return; const ok = (S.inv || []).filter(r => !r.errs.length); S.busy = true; render();
       try { const now = new Date().toISOString(); const base = !isNew ? {} : Object.assign({ date:job.date, time:job.time, card:job.card, customer:job.customer, contact:job.contact, notes:job.notes, tech:job.tech, loadedBy:window.Cloud.email() }, S.jobs.some(x => x.id === job.id) ? {} : { status:'planned', createdAt:now });
-        await window.Cloud.putJobs([{ ...base, id:job.id, inv:ok.map(r => { const o = { serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc }; if (r.note) o.note = r.note; return o; }), invSite:S.invSite || '', invAt:now, updatedAt:now }]);
-        toast(isNew ? 'Job scheduled for ' + (nameOf(job.tech) || job.tech) + ' with ' + ok.length + ' items' : ok.length + ' items loaded for ' + (job.customer || job.card)); if (isNew){ S.nj = {}; S.invJob = ''; S.tab = 'jobs'; } S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
+        await window.Cloud.putJobs([Object.assign({ ...base, id:job.id, updatedAt:now }, ok.length ? { inv:ok.map(r => { const o = { serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc }; if (r.note) o.note = r.note; return o; }), invSite:S.invSite || '', invAt:now } : {})]);
+        toast(isNew ? 'Job scheduled for ' + (nameOf(job.tech) || job.tech) + (ok.length ? ' with ' + ok.length + ' items' : '') : ok.length + ' items loaded for ' + (job.customer || job.card)); if (isNew){ S.nj = {}; S.invJob = ''; S.tab = 'jobs'; } S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
     const tf = $('tf'); if (tf) tf.onchange = () => { S.techFilter = tf.value; render(); };
