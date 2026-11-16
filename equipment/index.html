@@ -700,6 +700,19 @@
     finally { if (btn){ btn.disabled = false; btn.innerHTML = old; } }
   }
   // the forklift app, loaded out of sight, builds the job's report and certificate PDFs
+  // the day's time sheet (vehicle inspection, odometer, jobs) for the job pack
+  function sheetTools(){
+    return new Promise((res, rej) => {
+      const fr = document.createElement('iframe'); fr.src = '../timesheet/?embed=1'; fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
+      fr.style.cssText = 'position:fixed;left:-9999px;top:0;width:400px;height:800px;border:0;visibility:hidden'; document.body.appendChild(fr);
+      let n = 0; const t = setInterval(() => { n++; const w = fr.contentWindow;
+        if (w && w.BCT){ clearInterval(t); res({ api:w.BCT, done:() => fr.remove() }); }
+        else if (n > 150){ clearInterval(t); fr.remove(); rej(new Error('time sheet did not load')); } }, 100);
+    });
+  }
+  function sheetDateOf(l){ try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); if (!ts) return null;
+      for (const [k, sh] of Object.entries(ts.sheets || {})) if ((sh.jobs || []).some(j => (l.sched && j.sched === l.sched) || (k === l.date && jobCore(j.card) === jobCore(l.job) && (j.card || l.job)))) return k;
+      return ts.sheets && ts.sheets[l.date] ? l.date : null; } catch(e){ return null; } }
   function forkliftTools(){
     return new Promise((res, rej) => {
       const fr = document.createElement('iframe'); fr.src = '../forklift/?embed=1'; fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
@@ -719,6 +732,7 @@
       if (!window.JSZip) throw new Error('zip tool not loaded');
       busy("Client's inventory…"); const files = [await listDoc(l)];
       try { busy('Inventory Excel…'); files.push(await listXlsx(l)); } catch(e){ console.error(e); }
+      { const sk = sheetDateOf(l); if (sk){ let st = null; try { busy('Time sheet…'); st = await sheetTools(); const f = await st.api.sheetPdf(sk); if (f) files.push(f); } catch(e){ console.error(e); } finally { if (st) st.done(); } } }
       { busy('Certificates…'); const idx = (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }); if (idx.length){ const c = await certDoc(l, idx); if (c) files.push(c); } }
       let reps = [], tools = null;
       try {

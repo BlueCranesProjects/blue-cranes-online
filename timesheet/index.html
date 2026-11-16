@@ -331,7 +331,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (U)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (V)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -1036,7 +1036,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 16 Nov (U)</span>
+        <span class="hint">App version 16 Nov (V)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -1074,7 +1074,7 @@
     m.querySelector('#mClose').onclick = () => m.remove();
   }
 
-  async function makePdf(k, btn){
+  async function makePdf(k, btn, asBlob){
     const s = state.sheets[k]; if (!s) return;
     const old = btn ? btn.innerHTML : ''; if (btn){ btn.disabled = true; btn.textContent = 'Making PDF…'; }
     let stage = 'loading the PDF maker';
@@ -1161,11 +1161,14 @@
       const blob = doc.output('blob');
       stage = 'saving the file';
       const fname = `Time sheet ${s.reg || ''} ${k}.pdf`.replace(/\s+/g,' ');
+      if (asBlob) return { blob, name:fname };
       try { const how = await saveFile(blob, fname, 'application/pdf', 'Time sheet ' + niceDate(k, true)); if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded'); return !!how; }
       catch(e){ pdfProblem('The PDF was made but could not be saved.', e); return false; }
-    } catch(e){ pdfProblem('Something went wrong while ' + stage + '.', e); return false; }
+    } catch(e){ if (asBlob) throw e; pdfProblem('Something went wrong while ' + stage + '.', e); return false; }
     finally { if (btn){ btn.disabled = false; btn.innerHTML = old; } }
   }
+  // for the job pack in the inventory tool: the day's time sheet as a PDF file
+  window.BCT = { sheetPdf: k => state.sheets[k] ? makePdf(k, null, true) : null, hasSheet: k => !!state.sheets[k] };
 
   function modal(html){
     const bg = document.createElement('div'); bg.className='modal-bg';
