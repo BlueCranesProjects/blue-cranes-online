@@ -328,7 +328,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (G)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (H)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -774,6 +774,11 @@
   function sheetReady(k){ const sh = state.sheets[k]; return !!(sh && sh.status !== 'submitted' && checkDone(sh) && sh.firstOdo !== '' && sh.firstOdo != null && sh.tech); }
   function sheetJobFor(id){ const x = state.schedule[id]; if (!x || !x.addedTo) return null; const sh = state.sheets[x.addedTo]; if (!sh) return null;
     const i = (sh.jobs || []).findIndex(j => j.sched === id); return i < 0 ? null : { k:x.addedTo, i, j:sh.jobs[i] }; }
+  // client's inventory of a job (kept on the phone by the inventory tool): how many items still need a Safe / Unsafe mark
+  function invLeft(k, i){ try { const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j) return {};
+      const id = (k + '_' + (j.card || j.customer || j.desc || 'job')).replace(/[^\w\-]+/g, '_');
+      const l = (JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {})[id]; const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
+      return { total:rows.length, open:rows.filter(r => !r.status).length }; } catch(e){ return {}; } }
   function openReport(k, i, type){
     const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || j.done) return;
     try { localStorage.setItem('bco-active-job', JSON.stringify({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() })); } catch(e){}
@@ -982,7 +987,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 16 Nov (G)</span>
+        <span class="hint">App version 16 Nov (H)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -1223,7 +1228,9 @@
     app.querySelectorAll('[data-editjob]').forEach(b => b.onclick = () => { const i = Number(b.dataset.editjob); const sh = state.sheets[curKey()]; const j = sh && sh.jobs[i];
       if (j && !j.done) go('jobpage', { jobIdx:i, _finishing:false }); else go('job', { jobIdx:i, _finishing:false }); });
     app.querySelectorAll('[data-jobedit]').forEach(b => b.onclick = () => go('job', { jobIdx:Number(b.dataset.jobedit), _finishing:false }));
-    app.querySelectorAll('[data-jobfinish]').forEach(b => b.onclick = () => go('job', { jobIdx:Number(b.dataset.jobfinish), _finishing:true }));
+    app.querySelectorAll('[data-jobfinish]').forEach(b => b.onclick = () => { const i = Number(b.dataset.jobfinish); const fin = () => go('job', { jobIdx:i, _finishing:true });
+      const left = invLeft(curKey(), i); if (!left.total || !left.open) return fin();
+      confirmBox(left.open + ' of ' + left.total + ' inventory items are not marked Safe or Unsafe yet. Finish the job anyway?', 'Finish anyway', fin); });
     app.querySelectorAll('[data-finishk]').forEach(b => b.onclick = () => { const k = b.dataset.finishk; state.activeDate = k === todayKey() ? null : k; go('job', { jobIdx:Number(b.dataset.finishi), _finishing:true, schedId:null }); });
     app.querySelectorAll('[data-detail]').forEach(b => b.onclick = () => go('detail', { detailKey:b.dataset.detail }));
     app.querySelectorAll('[data-reopen]').forEach(b => b.onclick = () => {

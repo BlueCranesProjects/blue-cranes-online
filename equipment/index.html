@@ -160,9 +160,12 @@
   let saveT;
   function saveList(l, now){
     l.savedAt = Date.now(); S.lists[l.id] = l; lsSave();
-    clearTimeout(saveT); const push = () => { if (cloudOK()) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); };
-    if (now) push(); else saveT = setTimeout(push, 1200);
+    clearTimeout(saveT); const push = () => { pending = null; if (cloudOK()) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); };
+    if (now) push(); else { pending = push; saveT = setTimeout(push, 1200); }
   }
+  // leaving the page (back to the job, app closed) sends the last change straight away
+  let pending = null; const flush = () => { if (pending){ clearTimeout(saveT); pending(); } };
+  window.addEventListener('pagehide', flush); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   async function syncCloud(){
     if (!cloudOK()) return;
     try {

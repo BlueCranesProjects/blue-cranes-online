@@ -75,7 +75,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[] };
+  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
   // ---------- Excel helpers ----------
@@ -179,8 +179,21 @@
     if (/^customer name$/i.test(title)) title = '';
     return { rows, site, customer:cust || (col.customer == null ? title : ''), skipped };
   }
+  // a job made here, from the inventory tab, for one technician
+  function newJob(){ const n = S.nj; const tech = String(n.tech || '').trim().toLowerCase(); const customer = String(n.customer || S.invCust || '').trim();
+    const j = { date:n.date || keyOf(new Date(Date.now() + 864e5)), time:String(n.time || '').trim(), card:String(n.card || '').trim(), customer, contact:String(n.contact || '').trim(), notes:String(n.notes || '').trim(), tech };
+    j.ready = !!(j.date && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(tech) && customer); j.id = jobId(j); return j; }
+  function newJobForm(){ const j = newJob();
+    return `<div class="row"><div class="field"><label for="njDate">Date</label><input type="date" id="njDate" data-nj="date" value="${esc(j.date)}"></div>
+        <div class="field"><label for="njTime">Time</label><input type="time" id="njTime" data-nj="time" value="${esc(j.time)}"></div></div>
+      <div class="field"><label for="njTech">Technician</label><select id="njTech" data-nj="tech"><option value="">Choose the technician…</option>${S.users.map(u => `<option value="${esc(u.email)}" ${u.email === j.tech ? 'selected' : ''}>${esc(u.name || u.email)} – ${esc(u.email)}</option>`).join('')}</select></div>
+      <div class="field"><label for="njCust">Customer</label><input id="njCust" data-nj="customer" value="${esc(j.customer)}" placeholder="Filled in from the file"></div>
+      <div class="row"><div class="field"><label for="njCard">Job card</label><input id="njCard" data-nj="card" value="${esc(j.card)}"></div>
+        <div class="field"><label for="njCon">Contact</label><input id="njCon" data-nj="contact" value="${esc(j.contact)}"></div></div>
+      <div class="field"><label for="njNotes">Notes</label><input id="njNotes" data-nj="notes" value="${esc(j.notes)}"></div>
+      <span class="hint">Technicians show here once they have signed in to the app.</span>`; }
   function vInv(){
-    const jobs = invJobs(); const job = jobs.find(j => j.id === S.invJob); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
+    const jobs = invJobs(); const job = S.invJob === '__new' ? newJob() : jobs.find(j => j.id === S.invJob); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
     const other = job && p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
     return `<main><div class="steps">
       <section class="card"><h2>1. Get the Excel template</h2>
@@ -188,8 +201,8 @@
         <button class="btn secondary" id="itpl">⬇ Download census template (.xlsx)</button>
         <span class="hint">Our own columns (${ICOLS.join(' · ')}) and a sheet from <b>Export → Client inventories</b> also load.</span></section>
       <section class="card"><h2>2. Choose the job</h2>
-        ${jobs.length ? `<div class="field"><label for="ij">Load the items for this job</label><select id="ij"><option value="">Choose a job…</option>${jobs.map(j => `<option value="${esc(j.id)}" ${j.id === S.invJob ? 'selected' : ''}>${esc(niceDate(j.date))} · ${esc(j.customer || '–')}${j.card ? ' · ' + esc(j.card) : ''} · ${esc(nameOf(j.tech) || j.tech)}${(j.inv || []).length ? ' (' + j.inv.length + ' items loaded)' : ''}</option>`).join('')}</select></div>
-          <span class="hint">Only jobs loaded with <b>Load jobs</b> that are not finished yet. The technician sees the items in <b>Client's inventory</b> when they start the job, and marks each one Safe or Unsafe on site.</span>
+        ${jobs.length || true ? `<div class="field"><label for="ij">Load the items for this job</label><select id="ij"><option value="">Choose a job…</option><option value="__new" ${S.invJob === '__new' ? 'selected' : ''}>＋ New job – schedule it for a technician</option>${jobs.map(j => `<option value="${esc(j.id)}" ${j.id === S.invJob ? 'selected' : ''}>${esc(niceDate(j.date))} · ${esc(j.customer || '–')}${j.card ? ' · ' + esc(j.card) : ''} · ${esc(nameOf(j.tech) || j.tech)}${(j.inv || []).length ? ' (' + j.inv.length + ' items loaded)' : ''}</option>`).join('')}</select></div>
+          ${S.invJob === '__new' ? newJobForm() : `<span class="hint">Pick a job loaded with <b>Load jobs</b>, or <b>＋ New job</b> to schedule one for a technician here. The technician sees the job on their schedule, starts it, marks each item Safe or Unsafe in <b>Client's inventory</b>, and taps <b>Finish job</b> to submit it.</span>`}
           ${job && (job.inv || []).length ? `<span class="hint" style="color:var(--warn)">This job already has ${job.inv.length} items loaded. Loading a new file replaces that list (items the technician already has on the phone stay).</span>` : ''}`
           : '<div class="empty">No open jobs. Load the job first with <b>Load jobs</b>.</div>'}</section>
       <section class="card"><h2>3. Load your file</h2>
@@ -204,7 +217,7 @@
           </tbody></table></div>
           ${S.invSkip.length ? `<span class="hint">Left out (not an item): ${S.invSkip.map(x => '“' + esc(x) + '”').join(', ')}</span>` : ''}
           <button class="btn secondary" id="icen" ${ok.length ? '' : 'disabled'}>⬇ Download this file in our census layout</button>
-          <button class="btn primary" id="iload" ${ok.length && job && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : !job ? 'Choose the job first (step 2)' : `Load ${ok.length} ${ok.length === 1 ? 'item' : 'items'} for ${esc(job.customer || job.card)}`}</button></section>` : ''}
+          <button class="btn primary" id="iload" ${ok.length && job && (S.invJob !== '__new' || job.ready) && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : !job ? 'Choose the job first (step 2)' : S.invJob === '__new' ? (job.ready ? `Schedule the job for ${esc(nameOf(job.tech) || job.tech)} with ${ok.length} ${ok.length === 1 ? 'item' : 'items'}` : 'Fill in date, technician and customer (step 2)') : `Load ${ok.length} ${ok.length === 1 ? 'item' : 'items'} for ${esc(job.customer || job.card)}`}</button></section>` : ''}
       </main>`;
   }
 
@@ -232,6 +245,34 @@
           <button class="btn primary" id="load" ${ok.length && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : `Load ${ok.length} ${ok.length === 1 ? 'job' : 'jobs'} to the technicians`}</button></section>` : ''}
       </main>`;
   }
+  // what the technician has done with the job's inventory (read from their phone's synced lists)
+  const listIdOf = (date, j) => (date + '_' + (j.card || j.customer || 'job')).replace(/[^\w\-]+/g, '_');
+  function progLine(j){ const g = S.invProg[j.id]; if (!g) return '';
+    return `<div class="row" style="gap:8px;margin-top:4px"><span class="pill ${g.open ? 'warn' : 'ok'}">Inventory ${g.done} of ${g.total} checked</span>${g.unsafe ? `<span class="pill bad">${g.unsafe} unsafe</span>` : ''}
+      <button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-cen="${esc(j.id)}">⬇ Census</button></div>`; }
+  let progBusy = false, progAt = 0;
+  async function loadProgress(){
+    if (progBusy || Date.now() - progAt < 20000) return; progBusy = true; progAt = Date.now(); const cache = {}; let changed = false;
+    try { if (!S.users.length) await refreshUsers();
+      for (const j of S.jobs){ if (!j.sheetDate || !(j.status === 'busy' || j.status === 'done')) continue;
+        const u = S.users.find(x => x.email === j.tech); if (!u) continue;
+        if (!cache[u.uid]){ try { cache[u.uid] = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => d.data || {}); } catch(e){ cache[u.uid] = []; } }
+        const l = cache[u.uid].find(x => x.id === listIdOf(j.sheetDate, j)); if (!l) continue;
+        const rows = (l.rows || []).filter(r => r.serial || r.desc); if (!rows.length) continue;
+        const g = { total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l }; g.open = g.total - g.done;
+        const o = S.invProg[j.id]; if (!o || o.done !== g.done || o.total !== g.total || o.unsafe !== g.unsafe) changed = true; S.invProg[j.id] = g; }
+    } finally { progBusy = false; }
+    if (changed && S.tab === 'jobs') render();
+  }
+  async function censusOfJob(id, btn){ const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return; const l = g.list;
+    const old = btn.textContent; btn.disabled = true; btn.textContent = '…';
+    try { const items = (l.rows || []).filter(r => r.serial || r.desc).map(r => { const make = String(r.make || '').trim(); let desc = String(r.desc || '').trim();
+        if (make && !/^unknown$/i.test(make) && !up(desc).includes(up(make))) desc += ' (' + make + ')';
+        return { serial:r.serial || '', desc, swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? (r.reason || '') : '' }; });
+      const name = l.customer || j.customer || 'Customer';
+      await saveBook(await censusBook([{ name, month:monthText(l.date || j.sheetDate), items }]), name + ' census ' + (l.date || j.sheetDate) + '.xlsx'); }
+    catch(e){ console.error(e); toast('Could not make the file'); }
+    finally { btn.disabled = false; btn.textContent = old; } }
   function vJobs(){
     const from = keyOf(new Date(Date.now() - 7 * 864e5));
     const techs = [...new Set(S.jobs.map(j => j.tech))].sort();
@@ -241,10 +282,10 @@
     return `<main><section class="card">
       <div class="row"><div class="field"><label for="tf">Technician</label><select id="tf"><option value="">Everyone</option>${techs.map(t => `<option value="${esc(t)}" ${S.techFilter === t ? 'selected' : ''}>${esc(nameOf(t) || t)}</option>`).join('')}</select></div>
         <button class="btn secondary" id="refresh" style="width:auto;align-self:flex-end">↻ Refresh</button></div>
-      <span class="hint">Jobs from a week ago onwards. Status updates when the technician starts and finishes the job.</span>
+      <span class="hint">Jobs from a week ago onwards. Status updates when the technician starts and finishes the job. For jobs with an inventory you see how many items they checked, and <b>⬇ Census</b> gives you their results in the census layout.</span>
       ${list.length ? `<div class="scroll"><table><thead><tr><th>Time</th><th>Job</th><th>Technician</th><th>Status</th><th></th></tr></thead><tbody>
         ${list.map(j => { const h = j.date !== lastDate ? `<tr><td colspan="5" style="background:#E6EAF2;font-weight:800;color:var(--navyDeep)">${esc(niceDate(j.date))}</td></tr>` : ''; lastDate = j.date;
-          return h + `<tr><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact, (j.inv || []).length ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div></td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
+          return h + `<tr><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact, (j.inv || []).length && !S.invProg[j.id] ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div>${progLine(j)}</td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
             <td>${j.status === 'planned' || !j.status ? `<button class="x" data-del="${esc(j.id)}" aria-label="Delete job">✕</button>` : ''}</td></tr>`; }).join('')}
       </tbody></table></div>` : '<div class="empty">No jobs loaded for this period.</div>'}
     </section></main>`;
@@ -269,7 +310,7 @@
   function render(){ app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); }
   function wire(){
     const $ = id => document.getElementById(id);
-    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); render(); });
+    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); if (S.tab === 'inv' && !S.users.length) await refreshUsers(); render(); });
     const tpl = $('tpl'); if (tpl) tpl.onclick = async () => { try { await xlsxReady();
       const wb = XLSX.utils.book_new(); const nx = new Date(Date.now() + 864e5); const ex = pad(nx.getDate()) + '/' + pad(nx.getMonth() + 1) + '/' + nx.getFullYear();
       const me = S.users[0] ? S.users[0].email : 'tech@example.com';
@@ -295,7 +336,11 @@
       const ws = XLSX.utils.aoa_to_sheet([[cust], ['CENSUS OF LIFTING EQUIPMENT'], [mon], ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'], []]);
       ws['!merges'] = [0, 1, 2].map(r => ({ s:{ r, c:0 }, e:{ r, c:3 } })); ws['!cols'] = [22, 44, 12, 26].map(w => ({ wch:w }));
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1'); download(wb, (job ? (job.customer || job.card) + ' ' : '') + 'census template.xlsx'); } catch(e){ toast('Could not make the template'); } };
+    app.querySelectorAll('[data-cen]').forEach(b => b.onclick = () => censusOfJob(b.dataset.cen, b));
+    if (S.tab === 'jobs') loadProgress();
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
+    app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b && S.inv){ const j = newJob(); const n = S.inv.filter(r => !r.errs.length).length; b.disabled = !(j.ready && n && !S.busy); b.textContent = j.ready ? `Schedule the job for ${nameOf(j.tech) || j.tech} with ${n} ${n === 1 ? 'item' : 'items'}` : 'Fill in date, technician and customer (step 2)'; } };
+      el.oninput = upd; el.onchange = upd; });
     const fi = $('ifile'); if (fi) fi.onchange = async () => { const file = fi.files && fi.files[0]; fi.value = ''; if (!file) return;
       try { const r = await readInv(file); S.invFile = file.name; S.inv = r.rows; S.invSite = r.site; S.invCust = r.customer || ''; S.invSkip = r.skipped || [];
         if (!S.inv.length) toast(r.noHead ? 'Could not find the headings (Serial nr / Item no, Description…)' : 'No items found in the first sheet');
@@ -303,14 +348,14 @@
         render(); }
       catch(e){ console.error(e); toast('Could not read that file – save it as .xlsx and try again'); } };
     const il = $('iload'); if (il) il.onclick = async () => {
-      const job = S.jobs.find(j => j.id === S.invJob); if (!job || !S.inv) return; const ok = S.inv.filter(r => !r.errs.length); S.busy = true; render();
-      try { const now = new Date().toISOString();
-        await window.Cloud.putJobs([{ id:job.id, inv:ok.map(r => { const o = { serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc }; if (r.note) o.note = r.note; return o; }), invSite:S.invSite || '', invAt:now, updatedAt:now }]);
-        toast(ok.length + ' items loaded for ' + (job.customer || job.card)); S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
+      const isNew = S.invJob === '__new'; const job = isNew ? newJob() : S.jobs.find(j => j.id === S.invJob); if (!job || !S.inv || (isNew && !job.ready)) return; const ok = S.inv.filter(r => !r.errs.length); S.busy = true; render();
+      try { const now = new Date().toISOString(); const base = !isNew ? {} : Object.assign({ date:job.date, time:job.time, card:job.card, customer:job.customer, contact:job.contact, notes:job.notes, tech:job.tech, loadedBy:window.Cloud.email() }, S.jobs.some(x => x.id === job.id) ? {} : { status:'planned', createdAt:now });
+        await window.Cloud.putJobs([{ ...base, id:job.id, inv:ok.map(r => { const o = { serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc }; if (r.note) o.note = r.note; return o; }), invSite:S.invSite || '', invAt:now, updatedAt:now }]);
+        toast(isNew ? 'Job scheduled for ' + (nameOf(job.tech) || job.tech) + ' with ' + ok.length + ' items' : ok.length + ' items loaded for ' + (job.customer || job.card)); if (isNew){ S.nj = {}; S.invJob = ''; S.tab = 'jobs'; } S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
     const tf = $('tf'); if (tf) tf.onchange = () => { S.techFilter = tf.value; render(); };
-    const rf = $('refresh'); if (rf) rf.onclick = async () => { await refreshJobs(); render(); toast('Updated'); };
+    const rf = $('refresh'); if (rf) rf.onclick = async () => { await refreshJobs(); progAt = 0; render(); toast('Updated'); };
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const j = S.jobs.find(x => x.id === b.dataset.del); if (!j || !confirm(`Delete ${j.customer || j.card} on ${niceDate(j.date)} for ${nameOf(j.tech) || j.tech}?`)) return;
       try { await window.Cloud.deleteJob(j.id); S.jobs = S.jobs.filter(x => x.id !== j.id); render(); toast('Job deleted'); } catch(e){ toast('Could not delete'); } });
     const ef = $('ef'), et = $('et'); if (ef){ ef.onchange = () => S.ef = ef.value; et.onchange = () => S.et = et.value; }
