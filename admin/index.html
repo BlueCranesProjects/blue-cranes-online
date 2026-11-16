@@ -75,7 +75,8 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
+  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['load','jobs','inv','export'].includes(t) ? t : 'load'; } catch(e){ return 'load'; } })();
+  const S = { tab:savedTab, users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
   // ---------- Excel helpers ----------
@@ -336,11 +337,15 @@
     m.querySelector('#pfDl').onclick = () => { (rest.length && share.length ? rest : files).forEach((f, i) => setTimeout(() => dlFile(f), i * 400)); toast('Saved to Downloads – open the Files app'); };
   }
   // ---------- everything for a period: per job the inventory (PDF + Excel), one certificates PDF and the forklift reports ----------
+  function exportBox(html){ let m = document.querySelector('.xbox'); if (!m){ m = document.createElement('div'); m.className = 'xbox'; m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px'; document.body.appendChild(m); }
+    m.innerHTML = `<div class="card" style="max-width:480px;width:100%;gap:12px">${html}</div>`; return m; }
   async function exportEverything(btn){
     const $ = id => document.getElementById(id);
     const from = S.xaFrom || ($('xaFrom') || {}).value, to = S.xaTo || ($('xaTo') || {}).value, onlyUid = S.xaTech || '';
     if (!from || !to || from > to){ toast('Choose the From and To dates'); return; }
-    const old = btn.textContent; btn.disabled = true; const say = t => { btn.textContent = t; };
+    const old = btn.textContent; btn.disabled = true; let box = null;
+    const say = t => { btn.textContent = t; box = exportBox(`<h2>Exporting…</h2><span class="hint" style="font-size:14px">${esc(t)}<br>Keep this page open.</span>`); try { sessionStorage.setItem('bco-admin-export', from + ' to ' + to + ', ' + t); } catch(e){} };
+    const end = () => { try { sessionStorage.removeItem('bco-admin-export'); } catch(e){} };
     let eq = null, fk = null;
     try {
       say('Collecting…'); await refreshUsers();
@@ -358,7 +363,7 @@
             if (!o){ o = { u, prof, l:{ id:'fl', job:r.state.f.jobno || r.job || '', customer:r.state.f.customer || '', date:r.state.f.date || r.date, location:r.state.f.site || '' }, reps:[] }; mine.push(o); } o.reps.push(r); } });
         groups.push(...mine);
       }
-      if (!groups.length){ toast('Nothing found for those dates'); return; }
+      if (!groups.length){ end(); if (box) box.remove(); toast('Nothing found for those dates'); return; }
       groups.sort((a, b) => (a.l.date + a.l.job).localeCompare(b.l.date + b.l.job));
       say('Loading tools…');
       eq = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
@@ -380,9 +385,13 @@
         } catch(e){ console.error(e); dir.file('PROBLEM.txt', 'Some files of this job could not be made: ' + (e && e.message || e)); }
       }
       say('Packing the zip…');
-      const blob = await zip.generateAsync({ type:'blob' }); if (isPhone()) phoneFiles([{ blob, name:top + '.zip', type:'application/zip' }]); else dlFile({ blob, name:top + '.zip' });
-      toast(`${groups.length} ${groups.length === 1 ? 'job' : 'jobs'}, ${nFiles} files – saved to Downloads`);
-    } catch(e){ console.error(e); toast('Export failed' + (e && e.code ? ' (' + e.code + ')' : '')); }
+      const blob = await zip.generateAsync({ type:'blob', streamFiles:true }); end();
+      // a fresh tap saves the file, so the browser never blocks it or leaves the page
+      const m = exportBox(`<h2>Export ready</h2><div style="font-size:14px;line-height:1.5"><b>${groups.length} ${groups.length === 1 ? 'job' : 'jobs'}, ${nFiles} files</b><br>${esc(top)}.zip · ${(blob.size / 1048576).toFixed(1)} MB</div>
+        <button class="btn primary" id="xbSave">⬇ Save the zip folder</button><button class="btn secondary" id="xbClose">Close</button>`);
+      m.querySelector('#xbSave').onclick = () => { dlFile({ blob, name:top + '.zip' }); toast('Saved to Downloads'); };
+      m.querySelector('#xbClose').onclick = () => m.remove();
+    } catch(e){ console.error(e); end(); const m = exportBox(`<h2>Export failed</h2><span class="hint" style="font-size:14px">${esc((e && (e.code || e.message)) || String(e))}</span><button class="btn secondary" id="xbClose">Close</button>`); m.querySelector('#xbClose').onclick = () => m.remove(); }
     finally { if (eq) eq.done(); if (fk) fk.done(); btn.disabled = false; btn.textContent = old; }
   }
   async function downloadJob(id, which, btn){
@@ -493,7 +502,7 @@
   function render(){ app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); }
   function wire(){
     const $ = id => document.getElementById(id);
-    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); if ((S.tab === 'inv' || S.tab === 'export') && !S.users.length) await refreshUsers(); render(); });
+    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; try { sessionStorage.setItem('bco-admin-tab', S.tab); } catch(e){} if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); if ((S.tab === 'inv' || S.tab === 'export') && !S.users.length) await refreshUsers(); render(); });
     const tpl = $('tpl'); if (tpl) tpl.onclick = async () => { try { await xlsxReady();
       const wb = XLSX.utils.book_new(); const nx = new Date(Date.now() + 864e5); const ex = pad(nx.getDate()) + '/' + pad(nx.getMonth() + 1) + '/' + nx.getFullYear();
       const me = S.users[0] ? S.users[0].email : 'tech@example.com';
@@ -685,6 +694,8 @@
     if (!w.user){ S.noAdmin = 'Cloud saving must be set up to use the admin page.'; render(); return; }
     if (!(await window.Cloud.isAdmin())){ S.noAdmin = `This page is for the office. Your account (${esc(window.Cloud.email())}) is not an admin.<br><br>To make an account an admin: in Firebase → Firestore → start a collection called <b>admins</b> and add a document whose ID is the email address (lower case).`; render(); return; }
     await refreshUsers(); await refreshJobs(); render();
+    try { const x = sessionStorage.getItem('bco-admin-export'); if (x){ sessionStorage.removeItem('bco-admin-export');
+      exportBox(`<h2>The export stopped</h2><span class="hint" style="font-size:14px">The page restarted while the export was busy (${esc(x)}). This happens when a phone runs out of memory. Try a shorter period or one technician, or do the export on the computer.</span><button class="btn secondary" id="xbClose">Close</button>`).querySelector('#xbClose').onclick = e => e.target.closest('.xbox').remove(); } } catch(e){}
   })();
 })();
 </script>
