@@ -318,10 +318,28 @@
     }
     return files;
   }
+  // phones (also the installed app): a plain download often goes nowhere, so offer the share menu (open with a PDF viewer, WhatsApp, email, Drive, Files)
+  const isPhone = () => { try { return !!(navigator.canShare && navigator.share && navigator.canShare({ files:[new File(['x'], 'x.pdf', { type:'application/pdf' })] })) && (matchMedia('(pointer:coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent)); } catch(e){ return false; } };
+  function phoneFiles(files){
+    const list = files.map(f => new File([f.blob], f.name, { type:f.type || f.blob.type || 'application/pdf' }));
+    const can = x => { try { return navigator.canShare({ files:x }); } catch(e){ return false; } };
+    const share = can(list) ? list : list.filter(f => can([f])); const rest = files.filter(f => !share.some(x => x.name === f.name));
+    const m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center;padding:16px';
+    m.innerHTML = `<div class="card" style="max-width:480px;width:100%;gap:10px"><h2>${files.length === 1 ? 'File ready' : files.length + ' files ready'}</h2>
+      <div class="hint" style="font-size:13.5px;line-height:1.5">${files.map(f => esc(f.name)).join('<br>')}</div>
+      ${share.length ? `<button class="btn primary" id="pfShare">Open / share ${share.length === 1 ? 'the PDF' : share.length + ' files'} – WhatsApp, email, Drive, Files…</button>` : ''}
+      <button class="btn secondary" id="pfDl">⬇ Save to Downloads${rest.length && share.length ? ' (' + rest.map(f => esc(f.name.replace(/^.*\./, '').toUpperCase())).join(', ') + ')' : ''}</button>
+      <button class="btn secondary" id="pfNo">Close</button></div>`;
+    document.body.appendChild(m);
+    m.querySelector('#pfNo').onclick = () => m.remove();
+    const sh = m.querySelector('#pfShare'); if (sh) sh.onclick = async () => { try { await navigator.share({ files:share, title:share.length === 1 ? share[0].name : 'Blue Cranes files' }); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – use Save to Downloads'); } };
+    m.querySelector('#pfDl').onclick = () => { (rest.length && share.length ? rest : files).forEach((f, i) => setTimeout(() => dlFile(f), i * 400)); toast('Saved to Downloads – open the Files app'); };
+  }
   async function downloadJob(id, which, btn){
     const j = S.jobs.find(x => x.id === id); const old = btn.textContent; btn.disabled = true; btn.textContent = 'Working…';
     try { const files = await jobFiles(id, which);
       if (!files.length){ toast(which === 'certs' ? 'No certificates yet – the technician has not marked the items Safe or Unsafe' : 'Nothing to download yet'); return; }
+      if (isPhone()){ btn.disabled = false; btn.textContent = old; return phoneFiles(files); }
       if (which === 'all'){ await xlsxReady(); for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
         const folder = `Job ${String(j.card || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(j.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')} - ${j.sheetDate || j.date}`;
         const zip = new JSZip(), dir = zip.folder(folder); const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.(pdf|xlsx)$/, `_${++used[n]}.$1`); else used[n] = 1; dir.file(n, f.blob); });
