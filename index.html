@@ -236,7 +236,7 @@
       S.profile = p;
       if (!p || !p.name || !p.signature){ S.sig = p && p.signature || null; S.view = 'setup'; render(); return; }
       try { Cloud.saveUser({ email:String(u.email || '').toLowerCase(), name:p.name || '', seen:new Date().toISOString() }); } catch(e){}
-      if (!wantHome){ location.replace(NEXT); return; }
+      if (!wantHome){ let to = NEXT; if (!/[?&]next=/.test(location.search)){ try { if (await Promise.race([Cloud.isAdmin(), new Promise(r => setTimeout(() => r(false), 4000))])) to = 'admin/'; } catch(e){} } location.replace(to); return; }
       S.view = 'home'; render();
       try { S.admin = await Cloud.isAdmin(); if (S.admin) render(); } catch(e){}
     });
