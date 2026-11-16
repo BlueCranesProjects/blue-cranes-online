@@ -16,7 +16,7 @@
   :root{--ink:#2B2C30;--ground:#EEF2F7;--card:#fff;--line:#D9E0EA;--field:#AEB8C7;--navy:#21457F;--navyDeep:#0B3575;--yellow:#FBD220;--yellowDark:#F5B826;--muted:#566070;--label:#343A44;--ok:#15703D;--bad:#A12A1F;--warn:#8A5A00}
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--ground);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-text-size-adjust:100%}
-  .app{max-width:1100px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+  .app{width:100%;min-height:100vh;display:flex;flex-direction:column}
   header{position:sticky;top:0;z-index:5;background:var(--navyDeep);color:#fff;border-bottom:4px solid var(--yellow);padding:calc(12px + env(safe-area-inset-top)) 14px 12px;display:flex;align-items:center;gap:10px}
   header a{width:44px;height:44px;border-radius:10px;background:rgba(255,255,255,.12);color:#fff;display:flex;align-items:center;justify-content:center;text-decoration:none;flex-shrink:0}
   .sub{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#C9D5EA}
@@ -26,6 +26,7 @@
   nav.seg button{flex:1;height:44px;border-radius:10px;border:1.5px solid var(--navy);background:#fff;color:var(--navyDeep);font-weight:800;font-size:14px;font-family:inherit;cursor:pointer}
   nav.seg button[aria-current="page"]{background:var(--navyDeep);color:#fff}
   main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
+  .steps{display:flex;flex-direction:column;gap:12px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
   .hint{font-size:12.5px;color:var(--muted);line-height:1.45} .warn{font-size:13px;color:var(--bad);font-weight:600}
   .btn{height:48px;border-radius:12px;border:0;font-weight:700;font-size:15px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;width:100%;padding:0 12px;text-decoration:none}
@@ -48,6 +49,16 @@
   .empty{text-align:center;color:var(--muted);padding:26px 10px;font-size:14px}
   .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--navyDeep);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:600;z-index:30;max-width:90%}
   .x{border:1.5px solid var(--bad);color:var(--bad);background:#fff;border-radius:8px;height:34px;padding:0 10px;font-weight:700;font-family:inherit;cursor:pointer}
+  /* computer screens: use the whole window; small cards sit side by side, cards with a table take the full width */
+  @media (min-width:900px){
+    header,nav.seg{padding-left:clamp(14px,2.5vw,40px);padding-right:clamp(14px,2.5vw,40px)}
+    main{padding:16px clamp(14px,2.5vw,40px) 40px;gap:16px}
+    .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:stretch}
+    nav.seg{max-width:900px}
+    .btn{max-width:520px}
+    table{font-size:14px} td,th{padding:8px 8px}
+  }
+  @media (min-width:1600px){ table{font-size:15px} .hint{font-size:13.5px} }
 </style>
 </head>
 <body>
@@ -171,7 +182,7 @@
   function vInv(){
     const jobs = invJobs(); const job = jobs.find(j => j.id === S.invJob); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
     const other = job && p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
-    return `<main>
+    return `<main><div class="steps">
       <section class="card"><h2>1. Get the Excel template</h2>
         <span class="hint">Your census layout: customer name on the first line, then <b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>, one row per item. Tonnage like <b>1,5 TON</b> or <b>250KG</b> is changed to kg. ${job ? 'The template is made out for <b>' + esc(job.customer || job.card) + '</b>.' : 'Choose the job first (step 2) to have the customer filled in.'}</span>
         <button class="btn secondary" id="itpl">⬇ Download census template (.xlsx)</button>
@@ -184,7 +195,8 @@
       <section class="card"><h2>3. Load your file</h2>
         <label class="drop" for="ifile"><b>Choose Excel file</b><br><span class="hint">.xlsx, .xls or .csv${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
         <input type="file" id="ifile" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none">
-        ${p ? `<div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} items ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All items OK</span>'}</div>
+        </section></div>
+      ${p ? `<section class="card wide"><div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} items ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All items OK</span>'}</div>
           ${other.length ? `<span class="warn">The file says customer <b>${esc(other.join(', '))}</b> but the job is for <b>${esc(job.customer)}</b>. Check that you chose the right job.</span>` : ''}
           <div class="scroll"><table><thead><tr><th>Row</th><th>Location</th><th>Serial nr</th><th>Description</th><th>Manufacturer</th><th>SWL</th><th>Check</th></tr></thead><tbody>
           ${p.map(r => `<tr class="${r.errs.length ? 'err' : ''}"><td>${r.line}</td><td>${esc(r.loc)}</td><td>${esc(r.serial)}</td><td>${esc(r.desc)}${r.note ? `<div class="hint">Note: ${esc(r.note)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(r.swl)}${/^\d+(\.\d+)?$/.test(r.swl) ? ' kg' : ''}</td>
@@ -192,8 +204,8 @@
           </tbody></table></div>
           ${S.invSkip.length ? `<span class="hint">Left out (not an item): ${S.invSkip.map(x => '“' + esc(x) + '”').join(', ')}</span>` : ''}
           <button class="btn secondary" id="icen" ${ok.length ? '' : 'disabled'}>⬇ Download this file in our census layout</button>
-          <button class="btn primary" id="iload" ${ok.length && job && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : !job ? 'Choose the job first (step 2)' : `Load ${ok.length} ${ok.length === 1 ? 'item' : 'items'} for ${esc(job.customer || job.card)}`}</button>` : ''}
-      </section></main>`;
+          <button class="btn primary" id="iload" ${ok.length && job && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : !job ? 'Choose the job first (step 2)' : `Load ${ok.length} ${ok.length === 1 ? 'item' : 'items'} for ${esc(job.customer || job.card)}`}</button></section>` : ''}
+      </main>`;
   }
 
   // ---------- views ----------
@@ -202,7 +214,7 @@
       <nav class="seg" aria-label="Admin sections">${[['load','Load jobs'],['jobs','Loaded jobs'],['inv','Inventory'],['export','Export']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
-    return `<main>
+    return `<main><div class="steps">
       <section class="card"><h2>1. Get the Excel template</h2>
         <span class="hint">Columns: <b>${COLS.join(' · ')}</b>. One row per job. Dates like 16/11/2026 or 2026-11-16. The technician email is the email they sign in with.</span>
         <button class="btn secondary" id="tpl">⬇ Download template (.xlsx)</button>
@@ -210,14 +222,15 @@
       <section class="card"><h2>2. Load your file</h2>
         <label class="drop" for="file"><b>Choose Excel file</b><br><span class="hint">.xlsx, .xls or .csv${S.fileName ? ' · ' + esc(S.fileName) : ''}</span></label>
         <input type="file" id="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none">
-        ${p ? `<div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} rows ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All rows OK</span>'}</div>
+        </section></div>
+      ${p ? `<section class="card wide"><div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} rows ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All rows OK</span>'}</div>
           <div class="scroll"><table><thead><tr><th>Row</th><th>Date</th><th>Time</th><th>Job card</th><th>Customer</th><th>Contact</th><th>Technician</th><th>Check</th></tr></thead><tbody>
           ${p.map(r => `<tr class="${r.errs.length ? 'err' : ''}"><td>${r.line}</td><td style="white-space:nowrap">${esc(r.date ? niceDate(r.date) : '–')}</td><td>${esc(r.time)}</td><td>${esc(r.card)}</td><td>${esc(r.customer)}</td><td>${esc(r.contact)}</td>
             <td>${esc(nameOf(r.tech) || r.tech)}${nameOf(r.tech) ? `<div class="hint">${esc(r.tech)}</div>` : ''}</td>
             <td>${r.errs.length ? `<span class="warn">${esc(r.errs.join('; '))}</span>` : r.warns.length ? `<span class="hint" style="color:var(--warn)">${esc(r.warns.join('; '))}</span>` : '<span class="pill ok">OK</span>'}</td></tr>`).join('')}
           </tbody></table></div>
-          <button class="btn primary" id="load" ${ok.length && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : `Load ${ok.length} ${ok.length === 1 ? 'job' : 'jobs'} to the technicians`}</button>` : ''}
-      </section></main>`;
+          <button class="btn primary" id="load" ${ok.length && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : `Load ${ok.length} ${ok.length === 1 ? 'job' : 'jobs'} to the technicians`}</button></section>` : ''}
+      </main>`;
   }
   function vJobs(){
     const from = keyOf(new Date(Date.now() - 7 * 864e5));
@@ -238,7 +251,7 @@
   }
   function vExport(){
     const d = new Date(); const first = keyOf(new Date(d.getFullYear(), d.getMonth(), 1));
-    return `<main>
+    return `<main><div class="steps">
       <section class="card"><h2>Completed jobs &amp; time sheets</h2>
         <div class="row"><div class="field"><label for="ef">From</label><input type="date" id="ef" value="${S.ef || first}"></div><div class="field"><label for="et">To</label><input type="date" id="et" value="${S.et || today()}"></div></div>
         <span class="hint">One Excel file with two sheets: <b>Jobs</b> (one row per job: tech, vehicle, customer, hours, odometer) and <b>Time sheets</b> (one row per tech per day: km, clock in/out, clock time, job time).</span>
@@ -248,7 +261,7 @@
         <button class="btn navy" id="expCen">⬇ Export to Excel</button>
         <button class="btn secondary" id="expInv">⬇ Full list with all columns</button>
         <span class="hint">The full list adds manufacturer, Safe/Unsafe, report nr, job nr and technician, all customers on one sheet.</span></section>
-      </main>`;
+      </div></main>`;
   }
   function vNoAdmin(msg){ return `<header><a href="../?home=1" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a><div><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
     <main><section class="card"><h2>Admin only</h2><span class="hint" style="font-size:14px">${msg}</span><a class="btn secondary" href="../?home=1">Back</a></section></main>`; }
