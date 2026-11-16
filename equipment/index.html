@@ -246,8 +246,7 @@
   const jobCore = j => String(j || '').trim().replace(/^C(?=\d)/i, '');
   function certN(l, i){ const r = l.rows[i]; if (r.cno) return r.cno; const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let n = i + 1; if (used.has(n)) n = Math.max(...used) + 1; return n; }
   const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
-  const techTag = () => String(((S.profile && S.profile.name) || '').trim().split(/\s+/)[0] || 'BC').toUpperCase();
-  const certNoOf = (l, i) => isHarness(l.rows[i]) ? 'BC ' + certN(l, i) + '/' + techTag() : 'C' + certJob(l) + '/' + certN(l, i);
+  const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
   function certLine(l, r, i){
     if (!isCertItem(r)) return '';
     const kind = isHarness(r) ? 'inspection' : 'load test';
