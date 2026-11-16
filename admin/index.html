@@ -222,8 +222,8 @@
   }
 
   // ---------- views ----------
-  function head(){ return `<header><a href="../?home=1" aria-label="Back to profile"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
-      <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
+  function head(){ return `<header><img src="../icons/logo.png" alt="Blue Cranes" style="width:44px;height:44px;border-radius:50%;background:#fff;object-fit:contain">
+      <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div><button type="button" id="admOut" style="border:1.5px solid rgba(255,255,255,.6);background:none;color:#fff;border-radius:10px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer">Sign out</button></header>
       <nav class="seg" aria-label="Admin sections">${[['inv','Import jobs'],['jobs','Schedule jobs'],['export','Export jobs']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
@@ -578,6 +578,9 @@
       if (!S.users.length) await refreshUsers();
       S.editJob = j.id; S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', notes:j.notes || '' }; render(); window.scrollTo(0, 0); });
     app.querySelectorAll('[data-ed]').forEach(el => { el.oninput = el.onchange = () => { S.ed[el.dataset.ed] = el.value; }; });
+    const ao = $('admOut'); if (ao) ao.onclick = () => { const m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px';
+      m.innerHTML = '<div class="card" style="max-width:380px;width:100%;gap:12px"><h2>Sign out?</h2><div class="row"><button class="btn primary" id="soYes" style="flex:1">Sign out</button><button class="btn secondary" id="soNo" style="flex:1">Cancel</button></div></div>'; document.body.appendChild(m);
+      m.querySelector('#soNo').onclick = () => m.remove(); m.querySelector('#soYes').onclick = async () => { BC.cacheProfile(null); try { await window.Cloud.signOut(); } catch(e){} location.href = '../'; }; };
     const nb = $('newJob'); if (nb) nb.onclick = async () => { if (!S.users.length) await refreshUsers(); S.editJob = '__new'; S.ed = { date:keyOf(new Date()), time:'', tech:'', customer:'', card:'', contact:'', notes:'' }; render(); window.scrollTo(0, 0); };
     const edc = $('edCancel'); if (edc) edc.onclick = () => { S.editJob = null; render(); };
     const es = $('edSave'); if (es) es.onclick = async () => {

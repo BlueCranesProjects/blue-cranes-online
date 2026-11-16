@@ -123,9 +123,9 @@
     return `<header><img class="logo" src="icons/logo.png" alt="Blue Cranes"><div style="flex:1;min-width:0"><div class="sub">${new Date().toLocaleDateString('en-ZA',{weekday:'long',day:'numeric',month:'long'})}</div><h1>${esc(hi)}${first ? ', ' + esc(first) : ''}</h1></div></header>
       <main>
         ${S.admin ? `<a class="tile" href="admin/" style="grid-column:1/-1;min-height:auto;flex-direction:row;align-items:center;background:var(--navyDeep);color:#fff"><span class="ic" style="background:var(--yellow);color:var(--navyDeep)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16"/></svg></span><span style="display:flex;flex-direction:column;gap:4px"><b style="color:#fff">Admin</b><span style="color:#C9D5EA">Load jobs from Excel · export time sheets and inventories</span></span></a>` : ''}
-        <div class="tiles">${TOOLS.map(t => t.gate
+        ${S.admin ? '' : `<div class="tiles">${TOOLS.map(t => t.gate
           ? `<div class="tile" style="opacity:.6" aria-disabled="true"><span class="ic">${t.icon}</span><b>${esc(t.name)}</b><span>${esc(t.text)}</span></div>`
-          : `<a class="tile" href="${t.href}"><span class="ic">${t.icon}</span><b>${esc(t.name)}</b><span>${esc(t.text)}</span></a>`).join('')}</div>
+          : `<a class="tile" href="${t.href}"><span class="ic">${t.icon}</span><b>${esc(t.name)}</b><span>${esc(t.text)}</span></a>`).join('')}</div>`}
         <section class="card" style="gap:10px">
           <div style="display:flex;justify-content:space-between;align-items:center"><h2>My profile</h2><button class="link" id="editProf" style="padding:6px">Edit</button></div>
           <div class="me">${p.signature ? `<img src="${esc(p.signature)}" alt="Your signature">` : ''}<div style="min-width:0"><div style="font-weight:700">${esc(p.name)}</div><div class="hint" style="word-break:break-all">${esc(S.user ? S.user.email : '')}${p.phone ? ' · ' + esc(p.phone) : ''}</div></div></div>

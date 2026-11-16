@@ -29,6 +29,7 @@
       if (p && p.name){ p.uid = u.uid; BC.cacheProfile(p); }
       else if (cached && cached.uid === u.uid) p = cached;
       else { BC.goHome('?profile=1'); return; }
+      if (!/[?&]embed=1/.test(location.search) && !/\/admin\/?/.test(location.pathname) && window.Cloud.isAdmin){ try { if (await window.Cloud.isAdmin()){ location.replace(BC.home + 'admin/'); return; } } catch(e){} }
       try { if (window.Cloud.saveUser) window.Cloud.saveUser({ email:String(u.email || '').toLowerCase(), name:(p && p.name) || '', seen:new Date().toISOString() }); } catch(e){}
       resolve({ user:u, profile:p });
     });
