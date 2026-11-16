@@ -662,10 +662,12 @@
     ['1ST', '2ND', '3RD'].forEach(n => { y += 12; doc.text(n + ' INSPECTION', L, y); doc.text('DATE', L + 42, y); dots(L + 53, L + 80, y); doc.text('NAME', L + 83, y); dots(L + 96, L + 122, y); doc.text('SIGNATURE', L + 125, y); dots(L + 148, R, y);
       y += 9; doc.text('JOB NR:', L, y); dots(L + 16, L + 46, y); doc.text('REMARKS', L + 48, y); dots(L + 68, R, y); });
   }
-  async function certDoc(l, idx){
+  async function certDoc(l, idx, opts){ opts = opts || {};
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 15 + 5, R = 190, U = s => String(s || '').toUpperCase();
-    const tech = S.profile || {}; let ut = {}; try { ut = JSON.parse(localStorage.getItem('bc-forklift-understudy') || '{}') || {}; } catch(e){}
+    const tech = opts.tech || S.profile || {}; let ut = {}; try { ut = JSON.parse(localStorage.getItem('bc-forklift-understudy') || '{}') || {}; } catch(e){}
+    if (opts.ut !== undefined) ut = opts.ut || {};
+    else if (ut && ut.name){ l.ut = { name:ut.name || '', lmi:ut.lmi || '', sig:ut.sig || '' }; }   // kept with the job, so the office can make the same certificates
     const dims = {}; for (const im of [tech.signature, ut.sig]) if (im) dims[im] = await imgDims(im);
     const sigImg = (img, x, base) => { if (!img) return; try { const d = dims[img] || { w:44, h:12.5 }, sc = Math.min(42 / d.w, 14 / d.h), w = d.w * sc, h = d.h * sc; doc.addImage(img, 'PNG', x + (42 - w) / 2, base - h + 1, w, h, undefined, 'FAST'); } catch(e){} };
     const dots = (x1, x2, yy) => { doc.setLineDashPattern([0.4, 0.9], 0); doc.line(x1, yy + 0.6, x2, yy + 0.6); doc.setLineDashPattern([], 0); };
@@ -697,7 +699,7 @@
       y += 12; doc.text('REMARKS', L, y); dots(L + 20, R, y);
       y += 14; doc.setFontSize(9.5); doc.text('LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017', L, y);
     }
-    if (!pages) return null; saveList(l, true);
+    if (!pages) return null; if (!opts.noSave) saveList(l, true);
     const name = idx.length === 1 ? `${isHarness(l.rows[idx[0]]) ? 'Inspection' : 'Load_Test'}_Certificate_${safe(nos[0].replace('/', '-'))}_${safe(l.customer)}${l.rows[idx[0]].serial ? '_' + safe(l.rows[idx[0]].serial) : ''}_${l.date}.pdf` : `Certificates_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`;
     return { blob:doc.output('blob'), name };
   }
@@ -800,6 +802,11 @@
   }
 
   // ---------- start ----------
+  // opened hidden by the Admin page: only offer the certificate maker
+  if (new URLSearchParams(location.search).get('embed') === '1'){
+    window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }),
+      certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }) };
+  } else
   (async function start(){
     lsLoad(); S.profile = BC.cachedProfile();
     if (!S.profile && window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey){ BC.goHome(); return; }

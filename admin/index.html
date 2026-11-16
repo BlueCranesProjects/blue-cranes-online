@@ -249,7 +249,8 @@
   const listIdOf = (date, j) => (date + '_' + (j.card || j.customer || 'job')).replace(/[^\w\-]+/g, '_');
   function progLine(j){ const g = S.invProg[j.id]; if (!g) return '';
     return `<div class="row" style="gap:8px;margin-top:4px"><span class="pill ${g.open ? 'warn' : 'ok'}">Inventory ${g.done} of ${g.total} checked</span>${g.unsafe ? `<span class="pill bad">${g.unsafe} unsafe</span>` : ''}
-      <button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-cen="${esc(j.id)}">⬇ Census</button></div>`; }
+      <button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-cen="${esc(j.id)}">⬇ Census</button>
+      <button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-certs="${esc(j.id)}">⬇ Certificates</button></div>`; }
   let progBusy = false, progAt = 0;
   async function loadProgress(){
     if (progBusy || Date.now() - progAt < 20000) return; progBusy = true; progAt = Date.now(); const cache = {}; let changed = false;
@@ -259,10 +260,34 @@
         if (!cache[u.uid]){ try { cache[u.uid] = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => d.data || {}); } catch(e){ cache[u.uid] = []; } }
         const l = cache[u.uid].find(x => x.sched === 'A_' + j.id) || (j.sheetDate ? cache[u.uid].find(x => x.id === listIdOf(j.sheetDate, j)) : null); if (!l) continue;
         const rows = (l.rows || []).filter(r => r.serial || r.desc); if (!rows.length) continue;
-        const g = { total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l }; g.open = g.total - g.done;
+        const g = { total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
         const o = S.invProg[j.id]; if (!o || o.done !== g.done || o.total !== g.total || o.unsafe !== g.unsafe) changed = true; S.invProg[j.id] = g; }
     } finally { progBusy = false; }
     if (changed && S.tab === 'jobs') render();
+  }
+  // the job's certificates, made by the inventory tool (hidden) from the technician's synced inventory
+  function certTool(){
+    return new Promise((res, rej) => {
+      const fr = document.createElement('iframe'); fr.src = '../equipment/?embed=1'; fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
+      fr.style.cssText = 'position:fixed;left:-9999px;top:0;width:400px;height:800px;border:0;visibility:hidden'; document.body.appendChild(fr);
+      let n = 0; const t = setInterval(() => { n++; const w = fr.contentWindow;
+        if (w && w.BCE && w.jspdf){ clearInterval(t); res({ api:w.BCE, done:() => fr.remove() }); }
+        else if (n > 200){ clearInterval(t); fr.remove(); rej(new Error('certificate tool did not load')); } }, 100);
+    });
+  }
+  async function certsOfJob(id, btn){
+    const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return;
+    const old = btn.textContent; btn.disabled = true; btn.textContent = '…'; let tool = null;
+    try {
+      let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
+      tool = await certTool(); const l = JSON.parse(JSON.stringify(g.list)); const idx = tool.api.certIdx(l);
+      if (!idx.length){ toast('No certificates yet – the technician has not marked the items Safe or Unsafe'); return; }
+      const f = await tool.api.certDoc(l, idx, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, l.ut || null);
+      if (!f) return toast('No certificates for this job');
+      const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
+      toast(idx.length + (idx.length === 1 ? ' certificate' : ' certificates') + ' downloaded');
+    } catch(e){ console.error(e); toast('Could not make the certificates'); }
+    finally { if (tool) tool.done(); btn.disabled = false; btn.textContent = old; }
   }
   async function censusOfJob(id, btn){ const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return; const l = g.list;
     const old = btn.textContent; btn.disabled = true; btn.textContent = '…';
@@ -371,6 +396,7 @@
       ws['!merges'] = [0, 1, 2].map(r => ({ s:{ r, c:0 }, e:{ r, c:3 } })); ws['!cols'] = [22, 44, 12, 26].map(w => ({ wch:w }));
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1'); download(wb, (job ? (job.customer || job.card) + ' ' : '') + 'census template.xlsx'); } catch(e){ toast('Could not make the template'); } };
     app.querySelectorAll('[data-cen]').forEach(b => b.onclick = () => censusOfJob(b.dataset.cen, b));
+    app.querySelectorAll('[data-certs]').forEach(b => b.onclick = () => certsOfJob(b.dataset.certs, b));
     if (S.tab === 'jobs') loadProgress();
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
     app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b && S.inv){ const j = newJob(); const n = S.inv.filter(r => !r.errs.length).length; b.disabled = !(j.ready && n && !S.busy); b.textContent = j.ready ? `Schedule the job for ${nameOf(j.tech) || j.tech} with ${n} ${n === 1 ? 'item' : 'items'}` : 'Fill in date, technician and customer (step 2)'; } };
