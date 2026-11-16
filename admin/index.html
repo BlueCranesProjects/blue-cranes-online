@@ -75,7 +75,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['load','jobs','inv','export'].includes(t) ? t : 'load'; } catch(e){ return 'load'; } })();
+  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export'].includes(t) ? t : 'jobs'; } catch(e){ return 'jobs'; } })();
   const S = { tab:savedTab, users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
@@ -203,9 +203,9 @@
         <span class="hint">Our own columns (${ICOLS.join(' · ')}) and a sheet from <b>Export → Client inventories</b> also load.</span></section>
       <section class="card"><h2>2. Choose the job</h2>
         ${jobs.length || true ? `<div class="field"><label for="ij">Load the items for this job</label><select id="ij"><option value="">Choose a job…</option><option value="__new" ${S.invJob === '__new' ? 'selected' : ''}>＋ New job – schedule it for a technician</option>${jobs.map(j => `<option value="${esc(j.id)}" ${j.id === S.invJob ? 'selected' : ''}>${esc(niceDate(j.date))} · ${esc(j.customer || '–')}${j.card ? ' · ' + esc(j.card) : ''} · ${esc(nameOf(j.tech) || j.tech)}${(j.inv || []).length ? ' (' + j.inv.length + ' items loaded)' : ''}</option>`).join('')}</select></div>
-          ${S.invJob === '__new' ? newJobForm() : `<span class="hint">Pick a job loaded with <b>Load jobs</b>, or <b>＋ New job</b> to schedule one for a technician here. The technician sees the job on their schedule, starts it, marks each item Safe or Unsafe in <b>Client's inventory</b>, and taps <b>Finish job</b> to submit it.</span>`}
+          ${S.invJob === '__new' ? newJobForm() : `<span class="hint">Pick an open job, or <b>＋ New job</b> to schedule one for a technician here. The technician sees the job on their schedule, starts it, marks each item Safe or Unsafe in <b>Client's inventory</b>, and taps <b>Finish job</b> to submit it.</span>`}
           ${job && (job.inv || []).length ? `<span class="hint" style="color:var(--warn)">This job already has ${job.inv.length} items loaded. Loading a new file replaces that list (items the technician already has on the phone stay).</span>` : ''}`
-          : '<div class="empty">No open jobs. Load the job first with <b>Load jobs</b>.</div>'}</section>
+          : '<div class="empty">No open jobs.</div>'}</section>
       <section class="card"><h2>3. Load your file</h2>
         <label class="drop" for="ifile"><b>Choose Excel file</b><br><span class="hint">.xlsx, .xls or .csv${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
         <input type="file" id="ifile" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none">
@@ -225,7 +225,7 @@
   // ---------- views ----------
   function head(){ return `<header><a href="../?home=1" aria-label="Back to profile"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
       <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
-      <nav class="seg" aria-label="Admin sections">${[['load','Load jobs'],['jobs','Loaded jobs'],['inv','Inventory'],['export','Export']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
+      <nav class="seg" aria-label="Admin sections">${[['jobs','Jobs'],['inv','Inventory'],['export','Export']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
     return `<main><div class="steps">
@@ -432,20 +432,20 @@
     finally { btn.disabled = false; btn.textContent = old; } }
   // change a planned or busy job; the technician's phone picks it up the next time the app opens
   function editCard(){
-    const j = S.jobs.find(x => x.id === S.editJob); if (!j) return '';
+    const isNew = S.editJob === '__new'; const j = isNew ? { status:'planned' } : S.jobs.find(x => x.id === S.editJob); if (!j) return '';
     const e = S.ed; const busy = j.status === 'busy';
     const techs = S.users.slice(); if (e.tech && !techs.some(u => u.email === e.tech)) techs.unshift({ email:e.tech, name:'' });
-    return `<section class="card wide" style="border:2px solid var(--yellowDark)"><h2>Change job</h2>
+    return `<section class="card wide" style="border:2px solid var(--yellowDark)"><h2>${isNew ? 'New job' : 'Change job'}</h2>
       ${busy ? '<span class="hint" style="color:var(--warn)">The technician has started this job. The technician can not be changed now.</span>' : ''}
       <div class="row"><div class="field"><label for="edDate">Date</label><input type="date" id="edDate" data-ed="date" value="${esc(e.date)}"></div>
         <div class="field"><label for="edTime">Time</label><input type="time" id="edTime" data-ed="time" value="${esc(e.time)}"></div>
-        <div class="field"><label for="edTech">Technician</label><select id="edTech" data-ed="tech" ${busy ? 'disabled' : ''}>${techs.map(u => `<option value="${esc(u.email)}" ${u.email === e.tech ? 'selected' : ''}>${esc(u.name ? u.name + ' – ' + u.email : u.email)}</option>`).join('')}</select></div></div>
+        <div class="field"><label for="edTech">Technician</label><select id="edTech" data-ed="tech" ${busy ? 'disabled' : ''}>${isNew ? '<option value="">Choose the technician…</option>' : ''}${techs.map(u => `<option value="${esc(u.email)}" ${u.email === e.tech ? 'selected' : ''}>${esc(u.name ? u.name + ' – ' + u.email : u.email)}</option>`).join('')}</select></div></div>
       <div class="row"><div class="field"><label for="edCust">Customer</label><input id="edCust" data-ed="customer" value="${esc(e.customer)}"></div>
         <div class="field"><label for="edCard">Job card</label><input id="edCard" data-ed="card" value="${esc(e.card)}"></div>
         <div class="field"><label for="edCon">Contact</label><input id="edCon" data-ed="contact" value="${esc(e.contact)}"></div></div>
       <div class="field"><label for="edNotes">Notes</label><input id="edNotes" data-ed="notes" value="${esc(e.notes)}"></div>
-      <div class="row"><button class="btn primary" id="edSave" style="flex:1">${S.busy ? 'Saving…' : 'Save changes'}</button><button class="btn secondary" id="edCancel" style="flex:1">Cancel</button></div>
-      <span class="hint">The technician sees the change the next time they open the app. Inventory items and progress stay with the job.</span></section>`;
+      <div class="row"><button class="btn primary" id="edSave" style="flex:1">${S.busy ? 'Saving…' : isNew ? 'Schedule the job' : 'Save changes'}</button><button class="btn secondary" id="edCancel" style="flex:1">Cancel</button></div>
+      <span class="hint">${isNew ? 'The technician sees the job on their schedule the next time they open the app. To add a client\'s inventory, use the <b>Inventory</b> tab.' : 'The technician sees the change the next time they open the app. Inventory items and progress stay with the job.'}</span></section>`;
   }
   // remove jobs (one or many) after asking on the page
   function removeJobs(ids){
@@ -471,7 +471,8 @@
     return `<main>${editCard()}<section class="card">
       <div class="row"><div class="field"><label for="tf">Technician</label><select id="tf"><option value="">Everyone</option>${techs.map(t => `<option value="${esc(t)}" ${S.techFilter === t ? 'selected' : ''}>${esc(nameOf(t) || t)}</option>`).join('')}</select></div>
         <div class="field"><label for="per">Show</label><select id="per"><option value="">From a week ago</option><option value="all" ${S.allJobs ? 'selected' : ''}>All jobs, also older</option></select></div>
-        <button class="btn secondary" id="refresh" style="width:auto;align-self:flex-end">↻ Refresh</button></div>
+        <button class="btn secondary" id="refresh" style="width:auto;align-self:flex-end">↻ Refresh</button>
+        <button class="btn primary" id="newJob" style="width:auto;align-self:flex-end">＋ New job</button></div>
       ${S.sel.size ? `<div class="row" style="background:#FDF3F2;border-radius:10px;padding:8px 10px"><b style="flex:1">${S.sel.size} selected</b><button class="x" id="selNone" style="border-color:var(--navy);color:var(--navyDeep)">Clear</button><button class="x" id="selDel" style="background:var(--bad);color:#fff">🗑 Remove ${S.sel.size} ${S.sel.size === 1 ? 'job' : 'jobs'}</button></div>` : ''}
       <span class="hint">${S.allJobs ? 'All jobs.' : 'Jobs from a week ago onwards.'} Status updates when the technician starts and finishes the job. For jobs with an inventory you see how many items they checked, and <b>⬇ Census</b> gives you their results in the census layout.</span>
       ${list.length ? `<div class="scroll"><table><thead><tr><th style="width:28px"><input type="checkbox" id="selAll" aria-label="Select all shown jobs" ${list.length && list.every(j => S.sel.has(j.id)) ? 'checked' : ''}></th><th>Time</th><th>Job</th><th>Technician</th><th>Status</th><th></th></tr></thead><tbody>
@@ -556,18 +557,21 @@
       if (!S.users.length) await refreshUsers();
       S.editJob = j.id; S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', notes:j.notes || '' }; render(); window.scrollTo(0, 0); });
     app.querySelectorAll('[data-ed]').forEach(el => { el.oninput = el.onchange = () => { S.ed[el.dataset.ed] = el.value; }; });
+    const nb = $('newJob'); if (nb) nb.onclick = async () => { if (!S.users.length) await refreshUsers(); S.editJob = '__new'; S.ed = { date:keyOf(new Date()), time:'', tech:'', customer:'', card:'', contact:'', notes:'' }; render(); window.scrollTo(0, 0); };
     const edc = $('edCancel'); if (edc) edc.onclick = () => { S.editJob = null; render(); };
     const es = $('edSave'); if (es) es.onclick = async () => {
-      const j = S.jobs.find(x => x.id === S.editJob); if (!j) return; const e = S.ed;
+      const isNew = S.editJob === '__new'; const j = isNew ? { status:'planned' } : S.jobs.find(x => x.id === S.editJob); if (!j) return; const e = S.ed;
       const tech = String(e.tech || '').trim().toLowerCase();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date)) return toast('Fill in the date');
       if (!String(e.customer || '').trim() && !String(e.card || '').trim()) return toast('Fill in the customer or the job card');
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(tech)) return toast('Choose the technician');
       S.busy = true; render();
       try { const now = new Date().toISOString();
+        if (isNew){ j.id = jobId({ date:e.date, card:String(e.card || '').trim(), customer:String(e.customer || '').trim(), tech }); }
         const upd = { id:j.id, date:e.date, time:String(e.time || '').trim(), customer:String(e.customer || '').trim(), card:String(e.card || '').trim(), contact:String(e.contact || '').trim(), notes:String(e.notes || '').trim(), updatedAt:now, changedBy:window.Cloud.email() };
         if (j.status !== 'busy') upd.tech = tech;
-        await window.Cloud.putJobs([upd]); toast('Job changed'); S.editJob = null; await refreshJobs();
+        if (isNew && !S.jobs.some(x => x.id === j.id)) Object.assign(upd, { status:'planned', createdAt:now, loadedBy:window.Cloud.email() });
+        await window.Cloud.putJobs([upd]); toast(isNew ? 'Job scheduled' : 'Job changed'); S.editJob = null; await refreshJobs();
       } catch(err){ console.error(err); toast('Saving failed' + (err && err.code ? ' (' + err.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeJobs([b.dataset.del]));
