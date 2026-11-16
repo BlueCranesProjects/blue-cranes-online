@@ -331,7 +331,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (T)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (U)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -605,15 +605,32 @@
   }
 
   function hoursSince(iso){ const t = Date.parse(iso || ''); if (isNaN(t)) return 1; return Math.min(24, Math.max(0.5, Math.round((Date.now() - t) / 1800000) / 2)); }
+  // odometer when arriving at a job's site, so the km between sites add up
+  function askOdo(k, title, onOk){
+    const sh = state.sheets[k]; const last = lastOdo(sh);
+    const m = modal(`<div style="font-size:17px;font-weight:700">${esc(title)}</div>
+      <div class="field"><label for="arrOdo">Odometer on arrival at the site (km)</label><input id="arrOdo" class="num" inputmode="numeric" placeholder="${isNaN(last) ? '' : esc(fmtKm(last))}"></div>
+      <div class="hint" id="arrInfo">${isNaN(last) ? '' : 'Last reading today: ' + esc(fmtKm(last)) + ' km'}</div><div class="err" id="arrErr" style="color:var(--bad);font-size:13.5px"></div>
+      <button class="btn primary" id="mYes">Start job</button><button class="btn secondary" id="mNo">Cancel</button>`);
+    const inp = m.querySelector('#arrOdo'), info = m.querySelector('#arrInfo'), er = m.querySelector('#arrErr');
+    inp.oninput = () => { const v = parseNum(inp.value); info.textContent = !isNaN(v) && !isNaN(last) && v >= last ? fmtKm(v - last) + ' km since the last reading' : (isNaN(last) ? '' : 'Last reading today: ' + fmtKm(last) + ' km'); };
+    setTimeout(() => inp.focus(), 50);
+    m.querySelector('#mNo').onclick = () => m.remove();
+    m.querySelector('#mYes').onclick = () => { const v = parseNum(inp.value);
+      if (isNaN(v)){ er.textContent = 'Enter the odometer reading.'; return; }
+      if (!isNaN(Number(sh.firstOdo)) && v < Number(sh.firstOdo)){ er.textContent = 'That is lower than this morning\'s first reading (' + fmtKm(sh.firstOdo) + ' km). Check the number.'; return; }
+      m.remove(); onOk(v); };
+  }
   function startScheduled(id){
     const k = todayKey(); const sh = state.sheets[k]; const x = state.schedule[id]; if (!x) return;
     if (!sheetReady(k)){ toast('Do the vehicle inspection and start the sheet first'); state.activeDate = null; go('today', { schedId:null }); return; }
     const had = (sh.jobs || []).findIndex(j => j.sched === id);
     if (had >= 0){ state.activeDate = null; go('jobpage', { jobIdx:had, schedId:null }); return; }
-    sh.jobs = sh.jobs || [];
-    sh.jobs.push({ sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', odo:'', hrs:0, notes:x.notes || '', done:false, startedAt:new Date().toISOString() });
-    x.addedTo = k; saveSched(id); saveSheet(k);
-    state.activeDate = null; toast('Job started'); go('jobpage', { jobIdx:sh.jobs.length - 1, schedId:null, prefill:null });
+    askOdo(k, 'Start ' + ([x.card, x.customer].filter(Boolean).join(' · ') || 'job'), odo => {
+      sh.jobs = sh.jobs || [];
+      sh.jobs.push({ sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', odo, arrOdo:odo, hrs:0, notes:x.notes || '', done:false, startedAt:new Date().toISOString() });
+      x.addedTo = k; saveSched(id); saveSheet(k);
+      state.activeDate = null; toast('Job started'); go('jobpage', { jobIdx:sh.jobs.length - 1, schedId:null, prefill:null }); });
   }
   // a started job: only the report sheets, plus finish
   function viewJobPage(){
@@ -660,7 +677,7 @@
         ${!locked ? `<div class="field"><label for="contactIn">Contact person (optional)</label><input id="contactIn" autocomplete="name" value="${esc(j.contact || '')}"></div>` : ''}
         </div>
         <div ${hide}>
-        <div class="field"><label for="odo">${finishing ? 'Odometer now (km)' : 'Odometer at this job (km)'}</label><input id="odo" class="num" inputmode="numeric" value="${esc(j.odo)}" required>
+        <div class="field"><label for="odo">Odometer at this job (km)</label><input id="odo" class="num" inputmode="numeric" value="${esc(j.odo)}" required>
           <span class="hint" id="odoHint">Previous reading ${fmtKm(prevOdo)} km</span></div>
         <div class="field"><span class="lab" id="hrsLab">${finishing ? 'Time on this job' : 'Hours on job'}</span>
           <div class="stepper" role="group" aria-labelledby="hrsLab">
@@ -1019,7 +1036,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 16 Nov (T)</span>
+        <span class="hint">App version 16 Nov (U)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -1435,9 +1452,11 @@
         if (!jf.card.value.trim() && !jf.customer.value.trim()){ err.textContent = 'Add a job card no. or a customer.'; return; }
         const cIn = document.getElementById('contactIn');
         if (state.jobIdx == null && !state.prefill){   // Add job → start it straight away, no odometer or hours yet
-          sh.jobs = sh.jobs || [];
-          sh.jobs.push({ card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '', odo:'', hrs:0, notes:'', done:false, startedAt:new Date().toISOString() });
-          saveSheet(k); toast('Job started'); go('jobpage', { jobIdx:sh.jobs.length - 1, prefill:null, _finishing:false }); return;
+          const nj = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '' };
+          askOdo(k, 'Start ' + ([nj.card, nj.customer].filter(Boolean).join(' · ') || 'job'), odo => {
+            sh.jobs = sh.jobs || [];
+            sh.jobs.push(Object.assign(nj, { odo, arrOdo:odo, hrs:0, notes:'', done:false, startedAt:new Date().toISOString() }));
+            saveSheet(k); toast('Job started'); go('jobpage', { jobIdx:sh.jobs.length - 1, prefill:null, _finishing:false }); }); return;
         }
         const finishing = !!state._finishing; if (finishing) state._done = true;
         const needOdo = finishing || state._done || jf.odo.value.trim() !== '';

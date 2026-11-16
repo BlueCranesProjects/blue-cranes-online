@@ -380,7 +380,8 @@
         <button class="btn primary" id="selSet" ${sel.size ? '' : 'disabled'}>📍 Set location for ${sel.size} ${sel.size === 1 ? 'item' : 'items'}</button></div></div>` :
     `<div class="bar" style="flex-direction:column;align-items:center;gap:4px"><button class="btn navy" id="pdf">${ICON.pdf} Save PDF – whole job</button>
       <div style="display:flex;gap:18px"><button type="button" id="pdfZip" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Download as zip folder</button>
-      <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory PDF only</button></div></div>`}`;
+      <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory PDF only</button>
+      <button type="button" id="xlsOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory Excel</button></div></div>`}`;
   }
 
   function vInventory(){
@@ -499,6 +500,8 @@
     app.querySelectorAll('img[data-pid]').forEach(im => photoGet(im.dataset.pid).then(d => { if (d) im.src = d; else im.alt = 'Photo not on this phone yet'; }));
     if (!$('pdf')) return;
     $('pdfOnly').onclick = () => { saveList(l, true); listPdf(l, $('pdfOnly')); };
+    $('xlsOnly').onclick = async () => { const b = $('xlsOnly'), old = b.textContent; b.disabled = true; b.textContent = 'Working…'; saveList(l, true);
+      try { const f = await listXlsx(l); const how = await BC.saveFile(f.blob, f.name, f.type, 'Client\'s inventory'); if (how) toast(how === 'shared' ? 'Excel ready to send' : 'Excel downloaded'); } catch(e){ console.error(e); toast('Could not make the Excel file'); } finally { b.disabled = false; b.textContent = old; } };
     $('pdfZip').onclick = () => { saveList(l, true); jobPack(l, $('pdfZip'), true); };
     $('pdf').onclick = () => {
       const used = (l.rows || []).map((r, i) => ({ r, i })).filter(x => x.r.serial || x.r.desc);
@@ -572,14 +575,57 @@
     }
   }
   async function ensurePdf(){ for (let i = 0; i < 50 && !(window.jspdf && window.jspdf.jsPDF); i++) await new Promise(r => setTimeout(r, 100)); if (!(window.jspdf && window.jspdf.jsPDF)) throw new Error('PDF maker not loaded'); }
+  // ---------- the client's inventory in the census layout (as the Excel sheets Blue Cranes uses) ----------
+  const tonText = swl => { const t = String(swl == null ? '' : swl).trim().replace(/\s*kg$/i, '').replace(/\s/g, '').replace(',', '.'); if (!/^\d+(\.\d+)?$/.test(t)) return String(swl || '').toUpperCase(); const kg = Number(t);
+    return kg >= 1000 ? String(Math.round(kg / 10) / 100).replace('.', ',') + ' TON' : String(Math.round(kg * 100) / 100).replace('.', ',') + 'KG'; };
+  const monthOf = k => { const [y, m] = String(k || '').split('-').map(Number); return m ? ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'][m - 1] + ' ' + y : ''; };
+  function censusItems(l){
+    const rows = (l.rows || []).filter(r => r.serial || r.desc);
+    const items = rows.map(r => { const make = String(r.make || '').trim(); let desc = String(r.desc || '').trim();
+      if (make && !/^unknown$/i.test(make) && !norm(desc).includes(norm(make))) desc += ' (' + make + ')';
+      return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), ton:tonText(r.swl), loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? String(r.reason || '').toUpperCase() : '' }; });
+    const order = []; items.forEach(it => { if (!order.includes(it.loc)) order.push(it.loc); });
+    return order.map(loc => items.filter(it => it.loc === loc));
+  }
   async function listDoc(l){
-      await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { desc: (r.desc || '') + (deflText(r.defl) ? '\n' + deflText(r.defl) : ''), swl: swlText(r.swl), rep: repText(r) || (isCertItem(r) && !r.noCert && r.status ? 'Cert ' + certNoOf(l, (l.rows || []).indexOf(r)) : ''), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
-      await table(doc, "Client's inventory", [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Site:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
-        grouped(rows, locsOf(l)), [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:38 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL (kg)', k:'swl', w:22 }, { t:'Condition', k:'cond', w:24, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:36 }],
-        (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items' + (rows.some(r => r.status === 'UNSAFE') ? ' · unsafe items with reasons and photos on the next page' : ''));
-      await unsafePages(doc, l, rows);
-      return { blob: doc.output('blob'), name: `Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
+    await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
+    const L = 15, W = [40, 78, 24, 38], X = [L, L + 40, L + 118, L + 142], R = L + 180, INK = [0, 0, 0], RED = [220, 0, 0], PH = 287;
+    let y = 18;
+    const head = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK);
+      [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach(t => { doc.text(t, 105, y, { align:'center' }); y += 6; });
+      y += 2; colHead(); };
+    const colHead = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...INK); doc.setDrawColor(0); doc.setLineWidth(0.2);
+      ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { doc.rect(X[k], y, W[k], 7); doc.text(h, X[k] + 1.5, y + 4.8); }); y += 7 + 4; };
+    const cell = (vals, color) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color);
+      const lines = vals.map((v, k) => doc.splitTextToSize(String(v || ''), W[k] - 3)); const h = Math.max(6, ...lines.map(x => x.length * 4 + 2));
+      if (y + h > PH - 12){ doc.addPage(); y = 15; colHead(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color); }
+      lines.forEach((ls, k) => { doc.setDrawColor(0); doc.rect(X[k], y, W[k], h); doc.text(ls, X[k] + 1.5, y + 4.2); }); y += h; };
+    head();
+    censusItems(l).forEach((grp, gi) => { if (gi) y += 5;
+      grp.forEach(it => { cell([it.serial, it.desc, it.ton, it.loc], it.unsafe ? RED : INK);
+        if (it.unsafe && it.reason){ doc.setTextColor(...RED); const ls = doc.splitTextToSize(it.reason, W[1] - 3); if (y + ls.length * 4 + 3 > PH - 12){ doc.addPage(); y = 15; colHead(); } doc.setFontSize(9); doc.text(ls, X[1] + 1.5, y + 4); y += ls.length * 4 + 2; } }); });
+    y += 8; if (y > PH - 12){ doc.addPage(); y = 20; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...RED); doc.text('RED = UNSAFE FOR USE', L, y);
+    const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl);
+    await unsafePages(doc, l, rows);
+    return { blob: doc.output('blob'), name: `Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
+  }
+  // the same layout as an Excel file (red text for unsafe items)
+  let exReady = null;
+  function excelJS(){ return exReady = exReady || new Promise((res, rej) => { if (window.ExcelJS) return res(window.ExcelJS); const sc = document.createElement('script'); sc.src = '../vendor/exceljs.min.js'; sc.onload = () => res(window.ExcelJS); sc.onerror = () => { exReady = null; rej(new Error('Excel tool not loaded')); }; document.head.appendChild(sc); }); }
+  async function listXlsx(l){
+    const EX = await excelJS(); const wb = new EX.Workbook(); wb.creator = 'Blue Cranes Online';
+    const ws = wb.addWorksheet(String(l.customer || 'Inventory').toUpperCase().replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 28) || 'INVENTORY', { pageSetup:{ paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0 } });
+    ws.columns = [{ width:24 }, { width:54 }, { width:12 }, { width:26 }];
+    const red = { argb:'FFFF0000' }, line = { style:'thin', color:{ argb:'FF000000' } }, box = { top:line, left:line, bottom:line, right:line };
+    [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 4); const c = ws.getCell(k + 1, 1); c.value = t; c.font = { name:'Arial', bold:true, size:12 }; c.alignment = { horizontal:'center' }; });
+    ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { const c = ws.getCell(4, k + 1); c.value = h; c.font = { name:'Arial', bold:true }; c.border = box; });
+    let r = 6;
+    censusItems(l).forEach((grp, gi) => { if (gi) r++;
+      grp.forEach(it => { [it.serial, it.desc, it.ton, it.loc].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : { name:'Arial' }; c.border = box; }); r++;
+        if (it.unsafe && it.reason){ const c = ws.getCell(r, 2); c.value = it.reason; c.font = { name:'Arial', color:red }; c.alignment = { wrapText:true }; r++; } }); });
+    r++; const f = ws.getCell(r, 1); f.value = 'RED = UNSAFE FOR USE'; f.font = { name:'Arial', bold:true, color:red };
+    const buf = await wb.xlsx.writeBuffer();
+    return { blob:new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name:`Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.xlsx`, type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
   }
   // ---------- load test certificates (same layout as the forklift certificate) ----------
   const imgDims = src => new Promise(res => { const im = new Image(); im.onload = () => res({ w:im.naturalWidth || 1, h:im.naturalHeight || 1 }); im.onerror = () => res(null); im.src = src; });
@@ -672,6 +718,7 @@
       for (let i = 0; i < 50 && !window.JSZip; i++) await new Promise(r => setTimeout(r, 100));
       if (!window.JSZip) throw new Error('zip tool not loaded');
       busy("Client's inventory…"); const files = [await listDoc(l)];
+      try { busy('Inventory Excel…'); files.push(await listXlsx(l)); } catch(e){ console.error(e); }
       { busy('Certificates…'); const idx = (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }); if (idx.length){ const c = await certDoc(l, idx); if (c) files.push(c); } }
       let reps = [], tools = null;
       try {
@@ -686,17 +733,17 @@
         }
       } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
       finally { if (tools) tools.done(); }
-      const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.pdf$/, `_${++used[n]}.pdf`); else used[n] = 1; f.name = n; f.type = 'application/pdf'; });
-      const pdfs = files.map(f => new File([f.blob], f.name, { type:'application/pdf' }));
+      const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.(pdf|xlsx)$/, `_${++used[n]}.$1`); else used[n] = 1; f.name = n; f.type = f.type || 'application/pdf'; });
+      const pdfs = files.map(f => new File([f.blob], f.name, { type:f.type }));
       const canShareAll = !asZip && navigator.canShare && navigator.share && navigator.canShare({ files:pdfs });
       const bb = document.getElementById('busyBox');
       if (canShareAll){
         // the share needs a fresh tap, so ask for one
-        bb.querySelector('.modal').innerHTML = `<div style="font-size:16px;font-weight:700">${files.length} PDFs ready</div>
+        bb.querySelector('.modal').innerHTML = `<div style="font-size:16px;font-weight:700">${files.length} files ready</div>
           <div class="hint" style="font-size:14px">${files.map(f => esc(f.name)).join('<br>')}</div>
           <button class="btn navy" id="shareAll">Share all ${files.length} – WhatsApp, email, Files…</button><button class="btn secondary" id="shareNo">Cancel</button>`;
         await new Promise(done => { bb.querySelector('#shareNo').onclick = () => { bb.remove(); done(); };
-          bb.querySelector('#shareAll').onclick = async () => { try { await navigator.share({ files:pdfs, title:folder }); toast(files.length + ' PDFs sent'); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – try “Download as zip folder”'); } bb.remove(); done(); }; });
+          bb.querySelector('#shareAll').onclick = async () => { try { await navigator.share({ files:pdfs, title:folder }); toast(files.length + ' files sent'); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – try “Download as zip folder”'); } bb.remove(); done(); }; });
       } else {
         busy('Packing the folder…');
         const zip = new JSZip(), dir = zip.folder(folder); files.forEach(f => dir.file(f.name, f.blob));
