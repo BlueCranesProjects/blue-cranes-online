@@ -252,7 +252,7 @@
     const nfl = (g.fl || []).length, nlt = (g.fl || []).filter(r => r.state.type === 'LOAD TEST').length;
     return `<div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">${g.total ? `<span class="pill ${g.open ? 'warn' : 'ok'}">Inventory ${g.done} of ${g.total} checked</span>${g.unsafe ? `<span class="pill bad">${g.unsafe} unsafe</span>` : ''}` : ''}
       ${g.total ? B('data-invpdf', '⬇ Inventory PDF') + B('data-cen', '⬇ Excel') + B('data-certs', '⬇ Certificates') : ''}
-      ${nfl ? B('data-flpdf', `⬇ Forklift reports (${nfl}${nlt ? ' + ' + nlt + ' cert' : ''})`) : ''}
+      ${nfl ? B('data-flpdf', `⬇ Forklift reports (${nfl})`) : ''}
       ${g.total || nfl ? B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
   let progBusy = false, progAt = 0;
   async function loadProgress(){
@@ -299,16 +299,19 @@
       try { const l = JSON.parse(JSON.stringify(g.list));
         if (which === 'inv' || which === 'all') files.push(await t.api.listDoc(l));
         if (which === 'all'){ try { files.push(await t.api.listXlsx(l)); } catch(e){} }
-        if (which === 'certs' || which === 'all'){ const idx = t.api.certIdx(l); if (idx.length){
+        if (which === 'certs' || which === 'all'){
           let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
-          const f = await t.api.certDoc(l, idx, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, l.ut || null); if (f) files.push(f); } }
+          const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' });
+          if ((g.fl || []).some(r => r.state.type === 'LOAD TEST')){ const ft = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
+            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const c = await ft.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:c.doc.output('blob'), name:c.name }); } } finally { ft.done(); } }
+          const f = await t.api.mergeCerts(l, parts); if (f) files.push(f); }
       } finally { t.done(); }
     }
     if ((g.fl || []).length && (which === 'fl' || which === 'all')){
       const t = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
       try { const reps = g.fl.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
         for (const r of reps){ const st = JSON.parse(JSON.stringify(r.state)); const a = await t.api.buildPdf(st); files.push({ blob:a.doc.output('blob'), name:a.name });
-          if (st.type === 'LOAD TEST'){ const c = await t.api.buildCert(JSON.parse(JSON.stringify(r.state))); files.push({ blob:c.doc.output('blob'), name:c.name }); } }
+          if (st.type === 'LOAD TEST' && !g.list){ const c = await t.api.buildCert(JSON.parse(JSON.stringify(r.state))); files.push({ blob:c.doc.output('blob'), name:c.name }); } }
       } finally { t.done(); }
     }
     return files;

@@ -275,6 +275,56 @@
         <div class="field"><label for="drt${i}">Allowed</label><select id="drt${i}" data-df="ratio" data-di="${i}">${RATIOS.map(n => `<option value="${n}" ${Number(d.ratio || 600) === n ? 'selected' : ''}>Span ÷ ${n}</option>`).join('')}</select></div></div>
       <div id="dres${i}">${deflLine(d)}</div></div>`;
   }
+  // ---------- understudy for the lifting machinery certificates (shared with the forklift load test) ----------
+  const UTK = 'bc-forklift-understudy';
+  const utLocal = () => { try { return JSON.parse(localStorage.getItem(UTK) || '{}') || {}; } catch(e){ return {}; } };
+  const needsUt = l => (l.rows || []).some(r => (isCertItem(r) && !isHarness(r)) || isForklift(r));
+  function utOf(l){ if (!l.ut){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
+  function utSave(l, p){ l.ut = Object.assign(utOf(l), p); saveList(l); try { localStorage.setItem(UTK, JSON.stringify(Object.assign(utLocal(), { name:l.ut.name, lmi:l.ut.lmi, sig:l.ut.sig || null }))); } catch(e){} }
+  function utCard(l){
+    if (!needsUt(l)) return '';
+    const u = utOf(l), open = S.utOpen || !(u.name && u.sig);
+    if (!open) return `<section class="card" style="gap:6px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><div><h2>Understudy</h2><div style="font-size:14px;font-weight:600">${esc(u.name)}${u.lmi ? ' · ' + esc(u.lmi) : ''} · ✓ signed</div><span class="hint">On every lifting machinery load test certificate of this job.</span></div><button class="btn secondary small" id="utEdit">Change</button></div></section>`;
+    return `<section class="card" style="gap:10px"><h2>Understudy</h2><span class="hint">Name, LMI number and signature go on every lifting machinery load test certificate of this job (cranes, gantries, beams, hoists, chain blocks, forklifts…). Not on harness certificates.</span>
+      <div class="grid2"><div class="field"><label for="utName">Understudy name</label><input id="utName" value="${esc(u.name)}"></div><div class="field"><label for="utLmi">LMI number</label><input id="utLmi" value="${esc(u.lmi)}"></div></div>
+      <div class="field"><label>Signature</label><div style="position:relative;border:1.5px dashed var(--line);border-radius:10px;background:#fff;height:120px"><canvas id="utPad" style="width:100%;height:100%;touch-action:none;display:block"></canvas>
+        ${u.sig ? '' : '<span class="hint" id="utPh" style="position:absolute;left:12px;top:48px;pointer-events:none">Sign here</span>'}</div>
+        <div class="row" style="gap:8px"><button type="button" class="btn secondary small" id="utUp">Upload signature</button><input type="file" accept="image/*" id="utFile" style="display:none"><button type="button" class="btn secondary small" id="utClr">Clear</button><button type="button" class="btn primary small" id="utDone">Done</button></div></div></section>`;
+  }
+  function wireUt(l){
+    const $ = id => document.getElementById(id);
+    const ed = $('utEdit'); if (ed) ed.onclick = () => { S.utOpen = true; render(); };
+    const dn = $('utDone'); if (dn) dn.onclick = () => { const u = utOf(l); if (!u.name){ toast('Fill in the understudy\'s name'); return; } if (!u.sig){ toast('The understudy still has to sign'); return; } S.utOpen = false; render(); };
+    const nm = $('utName'); if (!nm) return;
+    nm.oninput = () => utSave(l, { name:nm.value.trim() }); $('utLmi').oninput = e => utSave(l, { lmi:e.target.value.trim() });
+    const c = $('utPad'), x = c.getContext('2d'); const size = () => { const r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1; c.width = r.width * d; c.height = r.height * d; x.setTransform(d, 0, 0, d, 0, 0); x.lineWidth = 2.4; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#13224F';
+      const sig = utOf(l).sig; if (sig){ const im = new Image(); im.onload = () => { const s = Math.min(r.width / im.width, r.height / im.height) * 0.9, w = im.width * s, h = im.height * s; x.drawImage(im, (r.width - w) / 2, (r.height - h) / 2, w, h); }; im.src = sig; } };
+    size();
+    let on = false, inked = false; const pt = e => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    c.onpointerdown = e => { on = true; c.setPointerCapture(e.pointerId); if (!inked && utOf(l).sig){ x.clearRect(0, 0, c.width, c.height); } inked = true; const [a, b] = pt(e); x.beginPath(); x.moveTo(a, b); const ph = $('utPh'); if (ph) ph.remove(); };
+    c.onpointermove = e => { if (!on) return; const [a, b] = pt(e); x.lineTo(a, b); x.stroke(); };
+    c.onpointerup = c.onpointercancel = () => { if (!on) return; on = false; utSave(l, { sig:c.toDataURL('image/png') }); };
+    $('utClr').onclick = () => { utSave(l, { sig:'' }); S.utOpen = true; render(); };
+    $('utUp').onclick = () => $('utFile').click();
+    $('utFile').onchange = async e => { const f = e.target.files && e.target.files[0]; if (!f) return; try { utSave(l, { sig:await BC.fileToSig(f) }); toast('Signature added'); render(); } catch(err){ toast('Could not read that picture'); } };
+  }
+  // ---------- one certificates PDF: inventory certificates + forklift load test certificates, in number order ----------
+  let pdfLibReady = null;
+  function pdfLib(){ return pdfLibReady = pdfLibReady || new Promise((res, rej) => { if (window.PDFLib) return res(window.PDFLib); const sc = document.createElement('script'); sc.src = '../vendor/pdf-lib.min.js'; sc.onload = () => res(window.PDFLib); sc.onerror = () => { pdfLibReady = null; rej(new Error('pdf-lib not loaded')); }; document.head.appendChild(sc); }); }
+  const certNum = no => { const m = /\/(\d+)\s*$/.exec(String(no || '')); return m ? Number(m[1]) : 9999; };
+  async function mergeCerts(l, parts){
+    if (!parts.length) return null; parts.sort((a, b) => certNum(a.no) - certNum(b.no));
+    if (parts.length === 1) return { blob:parts[0].blob, name:parts[0].name };
+    const P = await pdfLib(); const out = await P.PDFDocument.create();
+    // files made in another frame: copy into this frame's own bytes
+    for (const p of parts){ const src = await P.PDFDocument.load(new Uint8Array(await p.blob.arrayBuffer())); (await out.copyPages(src, src.getPageIndices())).forEach(pg => out.addPage(pg)); }
+    return { blob:new Blob([await out.save()], { type:'application/pdf' }), name:`Certificates_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
+  }
+  // inventory items → one part per certificate (so they can be put in number order with the forklift ones)
+  async function itemCertParts(l, opts){ const parts = [];
+    for (const i of (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; })){
+      const f = await certDoc(l, [i], opts); if (f) parts.push({ no:certNoOf(l, i), blob:f.blob, name:f.name }); }
+    return parts; }
   function activeJob(){
     try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && a.date !== today())) return null;
       const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null');
@@ -324,6 +374,7 @@
         </div>
         <div class="field"><label for="fLoc">Site</label><input id="fLoc" value="${esc(l.location)}" placeholder="e.g. Ceres factory"></div>
       </section>
+      ${utCard(l)}
       <section class="card" style="gap:10px">
         <div class="row" style="justify-content:space-between"><h2>Locations</h2>
           ${(l.rows || []).length ? `<button class="btn secondary small" id="selMode">${sel ? 'Stop selecting' : 'Select items'}</button>` : ''}</div>
@@ -462,6 +513,7 @@
     if (S.view !== 'list') return;
     const l = S.cur;
     $('fLoc').oninput = e => { l.location = e.target.value; saveList(l); };
+    wireUt(l);
     app.querySelectorAll('.item [data-f]').forEach(inp => {
       inp.oninput = () => { const i = Number(inp.closest('.item').dataset.i); let v = inp.value; if (inp.dataset.f === 'serial') v = v.toUpperCase();
         if (inp.dataset.f === 'swl'){ const c = v.replace(/[^\d.,]/g, '').replace(',', '.'); if (c !== v){ v = c; inp.value = c; } }
@@ -502,10 +554,14 @@
     if (!$('pdf')) return;
     $('pdfOnly').onclick = () => { saveList(l, true); listPdf(l, $('pdfOnly')); };
     $('certOnly').onclick = async () => { const b = $('certOnly'), old = b.textContent; saveList(l, true);
-      const idx = (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; });
-      if (!idx.length){ toast('No certificates yet – mark the items Safe or Unsafe first'); return; }
       b.disabled = true; b.textContent = 'Working…';
-      try { const f = await certDoc(l, idx); const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
+      try { const parts = await itemCertParts(l); let tools = null;
+        try { tools = await forkliftTools(); const core = j => norm(j).replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
+          for (const r of (await tools.api.reports()).filter(r => r && r.state && r.state.type === 'LOAD TEST' && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))){
+            const c = await tools.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:c.doc.output('blob'), name:c.name }); } }
+        catch(e){ console.error(e); } finally { if (tools) tools.done(); }
+        if (!parts.length){ toast('No certificates yet – mark the items Safe or Unsafe first'); return; }
+        const idx = parts; const f = await mergeCerts(l, parts); const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
         toast(idx.length + (idx.length === 1 ? ' certificate' : ' certificates') + ' saved in Downloads'); }
       catch(e){ console.error(e); toast('Could not make the certificates'); } finally { b.disabled = false; b.textContent = old; } };
     $('xlsOnly').onclick = async () => { const b = $('xlsOnly'), old = b.textContent; b.disabled = true; b.textContent = 'Working…'; saveList(l, true);
@@ -667,6 +723,7 @@
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 15 + 5, R = 190, U = s => String(s || '').toUpperCase();
     const tech = opts.tech || S.profile || {}; let ut = {}; try { ut = JSON.parse(localStorage.getItem('bc-forklift-understudy') || '{}') || {}; } catch(e){}
     if (opts.ut !== undefined) ut = opts.ut || {};
+    else if (l.ut && (l.ut.name || l.ut.sig)) ut = l.ut;
     else if (ut && ut.name){ l.ut = { name:ut.name || '', lmi:ut.lmi || '', sig:ut.sig || '' }; }   // kept with the job, so the office can make the same certificates
     const dims = {}; for (const im of [tech.signature, ut.sig]) if (im) dims[im] = await imgDims(im);
     const sigImg = (img, x, base) => { if (!img) return; try { const d = dims[img] || { w:44, h:12.5 }, sc = Math.min(42 / d.w, 14 / d.h), w = d.w * sc, h = d.h * sc; doc.addImage(img, 'PNG', x + (42 - w) / 2, base - h + 1, w, h, undefined, 'FAST'); } catch(e){} };
@@ -743,8 +800,7 @@
       busy("Client's inventory…"); const files = [await listDoc(l)];
       try { busy('Inventory Excel…'); files.push(await listXlsx(l)); } catch(e){ console.error(e); }
       { const sk = sheetDateOf(l); if (sk){ let st = null; try { busy('Time sheet…'); st = await sheetTools(); const f = await st.api.sheetPdf(sk); if (f) files.push(f); } catch(e){ console.error(e); } finally { if (st) st.done(); } } }
-      { busy('Certificates…'); const idx = (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }); if (idx.length){ const c = await certDoc(l, idx); if (c) files.push(c); } }
-      let reps = [], tools = null;
+      let reps = [], tools = null; const flCerts = [];
       try {
         busy('Finding forklift reports…'); tools = await forkliftTools();
         const core = j => norm(j).replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
@@ -753,10 +809,11 @@
         for (let k = 0; k < reps.length; k++){
           const st = reps[k].state; busy(`Forklift report ${k + 1} of ${reps.length} (${st.f.docno || ''})…`);
           const a = await tools.api.buildPdf(JSON.parse(JSON.stringify(st))); files.push({ blob:a.doc.output('blob'), name:a.name });
-          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(JSON.parse(JSON.stringify(st))); files.push({ blob:c.doc.output('blob'), name:c.name }); }
+          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(JSON.parse(JSON.stringify(st))); flCerts.push({ no:'/' + ((/\.(\d+)$/.exec(st.f.docno || '') || [])[1] || 9999), blob:c.doc.output('blob'), name:c.name }); }
         }
       } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
       finally { if (tools) tools.done(); }
+      try { busy('Certificates…'); const c = await mergeCerts(l, (await itemCertParts(l)).concat(flCerts)); if (c) files.splice(Math.min(files.length, 3), 0, c); } catch(e){ console.error(e); toast('Certificates could not be added'); }
       const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.(pdf|xlsx)$/, `_${++used[n]}.$1`); else used[n] = 1; f.name = n; f.type = f.type || 'application/pdf'; });
       const pdfs = files.map(f => new File([f.blob], f.name, { type:f.type }));
       // phones only share some kinds of file (PDF yes, Excel often not): share what can be shared, download the rest
@@ -805,7 +862,8 @@
   // opened hidden by the Admin page: only offer the certificate maker
   if (new URLSearchParams(location.search).get('embed') === '1'){
     window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }),
-      certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l) };
+      certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l),
+      itemCertParts: (l, tech) => itemCertParts(l, { tech, noSave:true }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
   (async function start(){
     lsLoad(); S.profile = BC.cachedProfile();
