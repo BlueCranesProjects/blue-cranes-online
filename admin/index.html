@@ -64,7 +64,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', inv:null, invFile:'', invJob:'', invSite:'' };
+  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[] };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
   // ---------- Excel helpers ----------
@@ -115,35 +115,47 @@
 
   // ---------- client's inventory from Excel ----------
   const ICOLS = ['Customer', 'Site', 'Location', 'Serial nr', 'Description', 'Manufacturer', 'SWL (kg)', 'Job nr'];
-  const IALIAS = { 'customer':'customer', 'client':'customer', 'site':'site', 'location':'loc', 'area':'loc', 'serial nr':'serial', 'serial no':'serial', 'serial number':'serial', 'serial':'serial', 'description':'desc', 'item':'desc', 'equipment':'desc',
-    'manufacturer':'make', 'make':'make', 'swl kg':'swl', 'swl':'swl', 'safe working load':'swl', 'safe working load kg':'swl', 'job nr':'job', 'job no':'job', 'job number':'job', 'job card':'job', 'job':'job' };
+  const IALIAS = { 'customer':'customer', 'client':'customer', 'site':'site', 'location':'loc', 'area':'loc', 'item location':'loc', 'serial nr':'serial', 'serial no':'serial', 'serial number':'serial', 'serial':'serial', 'item no':'serial', 'item nr':'serial', 'item number':'serial', 'id no':'serial', 'id nr':'serial', 'description':'desc', 'item':'desc', 'equipment':'desc',
+    'manufacturer':'make', 'make':'make', 'swl kg':'swl', 'swl':'swl', 'tonnage':'swl', 'capacity':'swl', 'wll':'swl', 'safe working load':'swl', 'safe working load kg':'swl', 'job nr':'job', 'job no':'job', 'job number':'job', 'job card':'job', 'job':'job' };
   const up = s => String(s == null ? '' : s).trim().toUpperCase().replace(/\s+/g, ' ');
   const cardCore = s => up(s).replace(/^C(?=\d)/, '');
-  const swlText = v => { if (v == null || v === '') return ''; if (typeof v === 'number') return String(Math.round(v * 1000) / 1000); const t = String(v).trim().replace(/\s*kgs?\.?$/i, ''); return /^[\d\s.,]+$/.test(t) ? t.replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, '').replace(',', '.') : t; };
+  const swlText = v => { if (v == null || v === '') return ''; if (typeof v === 'number') return String(Math.round(v * 1000) / 1000); const tn = /^(\d+(?:[.,]\d+)?)\s*(?:t|ton|tons|tonne|tonnes)\.?$/i.exec(String(v).trim()); if (tn) return String(Math.round(Number(tn[1].replace(',', '.')) * 1000)); const t = String(v).trim().replace(/\s*kgs?\.?$/i, ''); return /^[\d\s.,]+$/.test(t) ? t.replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, '').replace(',', '.') : t; };
   const invJobs = () => { const from = keyOf(new Date(Date.now() - 864e5)); return S.jobs.filter(j => j.status !== 'done' && j.date >= from).sort((a, b) => (a.date + (a.time || '99') + a.customer).localeCompare(b.date + (b.time || '99') + b.customer)); };
+  // Reads our template, an export, or a customer's own "census" sheet: the heading row may be lower down (title lines above it),
+  // tonnage like "1,5 TON" / "250KG" becomes kg, and a line with only a description is a note on the item above it.
+  const hkey = k => IALIAS[String(k == null ? '' : k).trim().toLowerCase().replace(/[.:#()]/g, '').replace(/\s+/g, ' ').trim()];
   async function readInv(file){
     await xlsxReady();
     const wb = XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:false });
-    const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:'', raw:true });
-    const seen = {}; let site = '';
-    const rows = raw.map((r, n) => {
-      const j = {}; Object.keys(r).forEach(k => { const f = IALIAS[String(k).trim().toLowerCase().replace(/[.:#()]/g, '').replace(/\s+/g, ' ').trim()]; if (f && j[f] == null) j[f] = r[k]; });
-      const t = v => String(v == null ? '' : v).trim();
-      const out = { line:n + 2, customer:t(j.customer), loc:t(j.loc), serial:t(j.serial), desc:t(j.desc), make:t(j.make), swl:swlText(j.swl), job:t(j.job), errs:[], warns:[] };
-      if (!site && t(j.site)) site = t(j.site);
+    const grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:'', raw:true, blankrows:true });
+    const t = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+    let hr = -1, best = 1; for (let i = 0; i < Math.min(grid.length, 25); i++){ const n = new Set((grid[i] || []).map(hkey).filter(Boolean)).size; if (n > best){ best = n; hr = i; } }
+    if (hr < 0) return { rows:[], site:'', customer:'', skipped:[], noHead:true };
+    const col = {}; (grid[hr] || []).forEach((h, c) => { const f = hkey(h); if (f && col[f] == null) col[f] = c; });
+    let title = ''; for (let i = 0; i < hr && !title; i++) title = t((grid[i] || []).find(v => t(v)));
+    const seen = {}, rows = [], skipped = []; let site = '', cust = '';
+    for (let i = hr + 1; i < grid.length; i++){
+      const g = grid[i] || []; const filled = g.map((v, c) => t(v) ? c : -1).filter(c => c >= 0); if (!filled.length) continue;
+      const get = f => col[f] == null ? '' : g[col[f]];
+      if (filled.length === 1 && col.desc != null && filled[0] !== col.serial){ const last = rows[rows.length - 1];   // a remark under an item
+        if (filled[0] === col.desc && last){ last.note = (last.note ? last.note + '; ' : '') + t(g[col.desc]); continue; } }
+      if (filled.length === 1 && filled[0] === col.serial && col.desc != null && /[=:]|\s\S+\s/.test(t(g[col.serial]))){ skipped.push(t(g[col.serial])); continue; }   // a footer line such as "RED = UNSAFE FOR USE"
+      const out = { line:i + 1, customer:t(get('customer')), loc:t(get('loc')), serial:t(get('serial')), desc:t(get('desc')), make:t(get('make')), swl:swlText(get('swl')), job:t(get('job')), note:'', errs:[], warns:[] };
+      if (!site && t(get('site'))) site = t(get('site')); if (!cust && out.customer) cust = out.customer;
+      if (!(out.customer || out.loc || out.serial || out.desc || out.make || out.swl)) continue;
       if (!out.serial && !out.desc) out.errs.push('serial nr or description needed');
       const k = up(out.serial); if (k){ if (seen[k]) out.errs.push('serial nr is in the file twice (row ' + seen[k] + ')'); else seen[k] = out.line; }
       if (!out.serial && out.desc) out.warns.push('no serial nr');
-      return out;
-    }).filter(r => r.customer || r.loc || r.serial || r.desc || r.make || r.swl);
-    return { rows, site };
+      rows.push(out);
+    }
+    return { rows, site, customer:cust || (col.customer == null ? title : ''), skipped };
   }
   function vInv(){
     const jobs = invJobs(); const job = jobs.find(j => j.id === S.invJob); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
-    const other = job && p ? [...new Set(p.map(r => r.customer).filter(c => c && up(c) !== up(job.customer)))] : [];
+    const other = job && p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
     return `<main>
       <section class="card"><h2>1. Get the Excel template</h2>
-        <span class="hint">Columns: <b>${ICOLS.join(' · ')}</b>. One row per item. SWL in kg, numbers only. A sheet exported from <b>Export → Client inventories</b> also works.</span>
+        <span class="hint">Columns: <b>${ICOLS.join(' · ')}</b>. One row per item. A sheet exported from <b>Export → Client inventories</b> also works, and so does a census sheet with the headings <b>Item no · Description · Tonnage · Item location</b> (tons are changed to kg).</span>
         <button class="btn secondary" id="itpl">⬇ Download template (.xlsx)</button></section>
       <section class="card"><h2>2. Choose the job</h2>
         ${jobs.length ? `<div class="field"><label for="ij">Load the items for this job</label><select id="ij"><option value="">Choose a job…</option>${jobs.map(j => `<option value="${esc(j.id)}" ${j.id === S.invJob ? 'selected' : ''}>${esc(niceDate(j.date))} · ${esc(j.customer || '–')}${j.card ? ' · ' + esc(j.card) : ''} · ${esc(nameOf(j.tech) || j.tech)}${(j.inv || []).length ? ' (' + j.inv.length + ' items loaded)' : ''}</option>`).join('')}</select></div>
@@ -156,9 +168,10 @@
         ${p ? `<div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} items ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All items OK</span>'}</div>
           ${other.length ? `<span class="warn">The file says customer <b>${esc(other.join(', '))}</b> but the job is for <b>${esc(job.customer)}</b>. Check that you chose the right job.</span>` : ''}
           <div class="scroll"><table><thead><tr><th>Row</th><th>Location</th><th>Serial nr</th><th>Description</th><th>Manufacturer</th><th>SWL</th><th>Check</th></tr></thead><tbody>
-          ${p.map(r => `<tr class="${r.errs.length ? 'err' : ''}"><td>${r.line}</td><td>${esc(r.loc)}</td><td>${esc(r.serial)}</td><td>${esc(r.desc)}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(r.swl)}${/^\d+(\.\d+)?$/.test(r.swl) ? ' kg' : ''}</td>
+          ${p.map(r => `<tr class="${r.errs.length ? 'err' : ''}"><td>${r.line}</td><td>${esc(r.loc)}</td><td>${esc(r.serial)}</td><td>${esc(r.desc)}${r.note ? `<div class="hint">Note: ${esc(r.note)}</div>` : ''}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(r.swl)}${/^\d+(\.\d+)?$/.test(r.swl) ? ' kg' : ''}</td>
             <td>${r.errs.length ? `<span class="warn">${esc(r.errs.join('; '))}</span>` : r.warns.length ? `<span class="hint" style="color:var(--warn)">${esc(r.warns.join('; '))}</span>` : '<span class="pill ok">OK</span>'}</td></tr>`).join('')}
           </tbody></table></div>
+          ${S.invSkip.length ? `<span class="hint">Left out (not an item): ${S.invSkip.map(x => '“' + esc(x) + '”').join(', ')}</span>` : ''}
           <button class="btn primary" id="iload" ${ok.length && job && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : !job ? 'Choose the job first (step 2)' : `Load ${ok.length} ${ok.length === 1 ? 'item' : 'items'} for ${esc(job.customer || job.card)}`}</button>` : ''}
       </section></main>`;
   }
@@ -246,16 +259,16 @@
       XLSX.utils.book_append_sheet(wb, ws, 'Inventory'); download(wb, 'Blue Cranes inventory template.xlsx'); } catch(e){ toast('Could not make the template'); } };
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
     const fi = $('ifile'); if (fi) fi.onchange = async () => { const file = fi.files && fi.files[0]; fi.value = ''; if (!file) return;
-      try { const r = await readInv(file); S.invFile = file.name; S.inv = r.rows; S.invSite = r.site;
-        if (!S.inv.length) toast('No items found in the first sheet');
-        if (!S.invJob){ const nrs = [...new Set(S.inv.map(x => cardCore(x.job)).filter(Boolean))]; const hit = nrs.length === 1 ? invJobs().filter(j => cardCore(j.card) === nrs[0]) : []; if (hit.length === 1) S.invJob = hit[0].id; }
+      try { const r = await readInv(file); S.invFile = file.name; S.inv = r.rows; S.invSite = r.site; S.invCust = r.customer || ''; S.invSkip = r.skipped || [];
+        if (!S.inv.length) toast(r.noHead ? 'Could not find the headings (Serial nr / Item no, Description…)' : 'No items found in the first sheet');
+        if (!S.invJob){ const nrs = [...new Set(S.inv.map(x => cardCore(x.job)).filter(Boolean))]; const hit = nrs.length === 1 ? invJobs().filter(j => cardCore(j.card) === nrs[0]) : []; if (hit.length === 1) S.invJob = hit[0].id; else if (!nrs.length && S.invCust){ const hc = invJobs().filter(j => up(j.customer) === up(S.invCust)); if (hc.length === 1) S.invJob = hc[0].id; } }
         render(); }
       catch(e){ console.error(e); toast('Could not read that file – save it as .xlsx and try again'); } };
     const il = $('iload'); if (il) il.onclick = async () => {
       const job = S.jobs.find(j => j.id === S.invJob); if (!job || !S.inv) return; const ok = S.inv.filter(r => !r.errs.length); S.busy = true; render();
       try { const now = new Date().toISOString();
-        await window.Cloud.putJobs([{ id:job.id, inv:ok.map(r => ({ serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc })), invSite:S.invSite || '', invAt:now, updatedAt:now }]);
-        toast(ok.length + ' items loaded for ' + (job.customer || job.card)); S.inv = null; S.invFile = ''; S.invSite = ''; await refreshJobs();
+        await window.Cloud.putJobs([{ id:job.id, inv:ok.map(r => { const o = { serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc }; if (r.note) o.note = r.note; return o; }), invSite:S.invSite || '', invAt:now, updatedAt:now }]);
+        toast(ok.length + ' items loaded for ' + (job.customer || job.card)); S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
     const tf = $('tf'); if (tf) tf.onchange = () => { S.techFilter = tf.value; render(); };

@@ -192,7 +192,7 @@
       job.inv.forEach(it => { const ser = String(it.serial || '').trim(), desc = String(it.desc || '').trim(); if (!ser && !desc) return;
         let k = norm(ser); if (!k){ const d = norm(desc); nth[d] = (nth[d] || 0) + 1; k = 'D:' + d + '#' + nth[d]; }
         if (pre.has(k)) return; pre.add(k); if (norm(ser) && have.has(norm(ser))) return;
-        l.rows.push({ id:rowId(), serial:ser, desc, make:it.make ? addMake(it.make) : '', swl:String(it.swl == null ? '' : it.swl).trim(), status:'', loc:it.loc ? addLoc(l, it.loc) : '', office:true }); n++; });
+        l.rows.push({ id:rowId(), serial:ser, desc, make:it.make ? addMake(it.make) : '', swl:String(it.swl == null ? '' : it.swl).trim(), status:'', loc:it.loc ? addLoc(l, it.loc) : '', office:true, note:String(it.note || '').trim() }); n++; });
       if (pre.size === (l.pre || []).length) return;
       l.pre = [...pre];
       if (n){ l.rows = l.rows.filter(r => r.office || r.serial || r.desc || r.make || r.swl || r.status); if (!l.location && job.invSite) l.location = job.invSite; }
@@ -261,6 +261,7 @@
         return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}${on ? ' sel' : ''}" data-i="${i}">
           ${sel ? `<label class="pick"><input type="checkbox" data-pick="${i}" ${on ? 'checked' : ''}> Select item ${i + 1}${r.desc ? ' – ' + esc(r.desc) : ''}</label>` : ''}
           ${r.office && !r.status ? `<div class="from" style="background:#FFF3B0;color:var(--navyDeep)"><span>Loaded by the office – check it and mark <b>Safe</b> or <b>Unsafe</b></span></div>` : ''}
+          ${r.note ? `<span class="hint"><b>Office note:</b> ${esc(r.note)}</span>` : ''}
           ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
           <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
