@@ -148,6 +148,7 @@
       if (!out.serial && out.desc) out.warns.push('no serial nr');
       rows.push(out);
     }
+    if (/^customer name$/i.test(title)) title = '';
     return { rows, site, customer:cust || (col.customer == null ? title : ''), skipped };
   }
   function vInv(){
@@ -155,8 +156,9 @@
     const other = job && p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
     return `<main>
       <section class="card"><h2>1. Get the Excel template</h2>
-        <span class="hint">Columns: <b>${ICOLS.join(' · ')}</b>. One row per item. A sheet exported from <b>Export → Client inventories</b> also works, and so does a census sheet with the headings <b>Item no · Description · Tonnage · Item location</b> (tons are changed to kg).</span>
-        <button class="btn secondary" id="itpl">⬇ Download template (.xlsx)</button></section>
+        <span class="hint">Your census layout: customer name on the first line, then <b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>, one row per item. Tonnage like <b>1,5 TON</b> or <b>250KG</b> is changed to kg. ${job ? 'The template is made out for <b>' + esc(job.customer || job.card) + '</b>.' : 'Choose the job first (step 2) to have the customer filled in.'}</span>
+        <button class="btn secondary" id="itpl">⬇ Download census template (.xlsx)</button>
+        <span class="hint">Our own columns (${ICOLS.join(' · ')}) and a sheet from <b>Export → Client inventories</b> also load.</span></section>
       <section class="card"><h2>2. Choose the job</h2>
         ${jobs.length ? `<div class="field"><label for="ij">Load the items for this job</label><select id="ij"><option value="">Choose a job…</option>${jobs.map(j => `<option value="${esc(j.id)}" ${j.id === S.invJob ? 'selected' : ''}>${esc(niceDate(j.date))} · ${esc(j.customer || '–')}${j.card ? ' · ' + esc(j.card) : ''} · ${esc(nameOf(j.tech) || j.tech)}${(j.inv || []).length ? ' (' + j.inv.length + ' items loaded)' : ''}</option>`).join('')}</select></div>
           <span class="hint">Only jobs loaded with <b>Load jobs</b> that are not finished yet. The technician sees the items in <b>Client's inventory</b> when they start the job, and marks each one Safe or Unsafe on site.</span>
@@ -255,8 +257,11 @@
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
     const it = $('itpl'); if (it) it.onclick = async () => { try { await xlsxReady(); const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet([ICOLS, ['Afgri Ceres', 'Ceres depot', 'Workshop', 'CB-10234', 'Chain block', 'Yale', 2000, '124926'], ['Afgri Ceres', 'Ceres depot', 'Store room', 'SH-7731', 'Bow shackle', 'Unknown', 3250, '124926']]); ws['!cols'] = [24, 18, 18, 14, 30, 16, 10, 12].map(w => ({ wch:w }));
-      XLSX.utils.book_append_sheet(wb, ws, 'Inventory'); download(wb, 'Blue Cranes inventory template.xlsx'); } catch(e){ toast('Could not make the template'); } };
+      const job = S.jobs.find(j => j.id === S.invJob); const cust = String((job && job.customer) || 'CUSTOMER NAME').toUpperCase();
+      const mon = new Date().toLocaleDateString('en-ZA', { month:'long', year:'numeric' }).toUpperCase();
+      const ws = XLSX.utils.aoa_to_sheet([[cust], ['CENSUS OF LIFTING EQUIPMENT'], [mon], ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'], []]);
+      ws['!merges'] = [0, 1, 2].map(r => ({ s:{ r, c:0 }, e:{ r, c:3 } })); ws['!cols'] = [22, 44, 12, 26].map(w => ({ wch:w }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1'); download(wb, (job ? (job.customer || job.card) + ' ' : '') + 'census template.xlsx'); } catch(e){ toast('Could not make the template'); } };
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
     const fi = $('ifile'); if (fi) fi.onchange = async () => { const file = fi.files && fi.files[0]; fi.value = ''; if (!file) return;
       try { const r = await readInv(file); S.invFile = file.name; S.inv = r.rows; S.invSite = r.site; S.invCust = r.customer || ''; S.invSkip = r.skipped || [];
