@@ -11,7 +11,7 @@ Live: https://bluecranesprojects.github.io/blue-cranes-online/
 | `timesheet/` | Daily Time Sheet – vehicle check, jobs, schedule, PDF, WhatsApp |
 | `forklift/` | Forklift Inspection / Load Test report and load test certificate |
 | `equipment/` | Client's inventory per job (location, serial nr, description, manufacturer, SWL, safe/unsafe) and all client inventories |
-| `admin/` | Admin: load jobs from Excel for technicians, export completed jobs / time sheets and client inventories to Excel |
+| `admin/` | Admin: load jobs and a client inventory per job (`inv` on the job document) from Excel for technicians, export completed jobs / time sheets and client inventories to Excel |
 
 ## Adding a new tool
 

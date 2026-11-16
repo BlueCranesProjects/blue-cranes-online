@@ -64,7 +64,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'' };
+  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', inv:null, invFile:'', invJob:'', invSite:'' };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
   // ---------- Excel helpers ----------
@@ -113,10 +113,60 @@
     }).filter(r => r.date || r.card || r.customer || r.tech);
   }
 
+  // ---------- client's inventory from Excel ----------
+  const ICOLS = ['Customer', 'Site', 'Location', 'Serial nr', 'Description', 'Manufacturer', 'SWL (kg)', 'Job nr'];
+  const IALIAS = { 'customer':'customer', 'client':'customer', 'site':'site', 'location':'loc', 'area':'loc', 'serial nr':'serial', 'serial no':'serial', 'serial number':'serial', 'serial':'serial', 'description':'desc', 'item':'desc', 'equipment':'desc',
+    'manufacturer':'make', 'make':'make', 'swl kg':'swl', 'swl':'swl', 'safe working load':'swl', 'safe working load kg':'swl', 'job nr':'job', 'job no':'job', 'job number':'job', 'job card':'job', 'job':'job' };
+  const up = s => String(s == null ? '' : s).trim().toUpperCase().replace(/\s+/g, ' ');
+  const cardCore = s => up(s).replace(/^C(?=\d)/, '');
+  const swlText = v => { if (v == null || v === '') return ''; if (typeof v === 'number') return String(Math.round(v * 1000) / 1000); const t = String(v).trim().replace(/\s*kgs?\.?$/i, ''); return /^[\d\s.,]+$/.test(t) ? t.replace(/\s/g, '').replace(/,(?=\d{3}\b)/g, '').replace(',', '.') : t; };
+  const invJobs = () => { const from = keyOf(new Date(Date.now() - 864e5)); return S.jobs.filter(j => j.status !== 'done' && j.date >= from).sort((a, b) => (a.date + (a.time || '99') + a.customer).localeCompare(b.date + (b.time || '99') + b.customer)); };
+  async function readInv(file){
+    await xlsxReady();
+    const wb = XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:false });
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:'', raw:true });
+    const seen = {}; let site = '';
+    const rows = raw.map((r, n) => {
+      const j = {}; Object.keys(r).forEach(k => { const f = IALIAS[String(k).trim().toLowerCase().replace(/[.:#()]/g, '').replace(/\s+/g, ' ').trim()]; if (f && j[f] == null) j[f] = r[k]; });
+      const t = v => String(v == null ? '' : v).trim();
+      const out = { line:n + 2, customer:t(j.customer), loc:t(j.loc), serial:t(j.serial), desc:t(j.desc), make:t(j.make), swl:swlText(j.swl), job:t(j.job), errs:[], warns:[] };
+      if (!site && t(j.site)) site = t(j.site);
+      if (!out.serial && !out.desc) out.errs.push('serial nr or description needed');
+      const k = up(out.serial); if (k){ if (seen[k]) out.errs.push('serial nr is in the file twice (row ' + seen[k] + ')'); else seen[k] = out.line; }
+      if (!out.serial && out.desc) out.warns.push('no serial nr');
+      return out;
+    }).filter(r => r.customer || r.loc || r.serial || r.desc || r.make || r.swl);
+    return { rows, site };
+  }
+  function vInv(){
+    const jobs = invJobs(); const job = jobs.find(j => j.id === S.invJob); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
+    const other = job && p ? [...new Set(p.map(r => r.customer).filter(c => c && up(c) !== up(job.customer)))] : [];
+    return `<main>
+      <section class="card"><h2>1. Get the Excel template</h2>
+        <span class="hint">Columns: <b>${ICOLS.join(' · ')}</b>. One row per item. SWL in kg, numbers only. A sheet exported from <b>Export → Client inventories</b> also works.</span>
+        <button class="btn secondary" id="itpl">⬇ Download template (.xlsx)</button></section>
+      <section class="card"><h2>2. Choose the job</h2>
+        ${jobs.length ? `<div class="field"><label for="ij">Load the items for this job</label><select id="ij"><option value="">Choose a job…</option>${jobs.map(j => `<option value="${esc(j.id)}" ${j.id === S.invJob ? 'selected' : ''}>${esc(niceDate(j.date))} · ${esc(j.customer || '–')}${j.card ? ' · ' + esc(j.card) : ''} · ${esc(nameOf(j.tech) || j.tech)}${(j.inv || []).length ? ' (' + j.inv.length + ' items loaded)' : ''}</option>`).join('')}</select></div>
+          <span class="hint">Only jobs loaded with <b>Load jobs</b> that are not finished yet. The technician sees the items in <b>Client's inventory</b> when they start the job, and marks each one Safe or Unsafe on site.</span>
+          ${job && (job.inv || []).length ? `<span class="hint" style="color:var(--warn)">This job already has ${job.inv.length} items loaded. Loading a new file replaces that list (items the technician already has on the phone stay).</span>` : ''}`
+          : '<div class="empty">No open jobs. Load the job first with <b>Load jobs</b>.</div>'}</section>
+      <section class="card"><h2>3. Load your file</h2>
+        <label class="drop" for="ifile"><b>Choose Excel file</b><br><span class="hint">.xlsx, .xls or .csv${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
+        <input type="file" id="ifile" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none">
+        ${p ? `<div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} items ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All items OK</span>'}</div>
+          ${other.length ? `<span class="warn">The file says customer <b>${esc(other.join(', '))}</b> but the job is for <b>${esc(job.customer)}</b>. Check that you chose the right job.</span>` : ''}
+          <div class="scroll"><table><thead><tr><th>Row</th><th>Location</th><th>Serial nr</th><th>Description</th><th>Manufacturer</th><th>SWL</th><th>Check</th></tr></thead><tbody>
+          ${p.map(r => `<tr class="${r.errs.length ? 'err' : ''}"><td>${r.line}</td><td>${esc(r.loc)}</td><td>${esc(r.serial)}</td><td>${esc(r.desc)}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(r.swl)}${/^\d+(\.\d+)?$/.test(r.swl) ? ' kg' : ''}</td>
+            <td>${r.errs.length ? `<span class="warn">${esc(r.errs.join('; '))}</span>` : r.warns.length ? `<span class="hint" style="color:var(--warn)">${esc(r.warns.join('; '))}</span>` : '<span class="pill ok">OK</span>'}</td></tr>`).join('')}
+          </tbody></table></div>
+          <button class="btn primary" id="iload" ${ok.length && job && !S.busy ? '' : 'disabled'}>${S.busy ? 'Loading…' : !job ? 'Choose the job first (step 2)' : `Load ${ok.length} ${ok.length === 1 ? 'item' : 'items'} for ${esc(job.customer || job.card)}`}</button>` : ''}
+      </section></main>`;
+  }
+
   // ---------- views ----------
   function head(){ return `<header><a href="../?home=1" aria-label="Back to profile"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
       <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
-      <nav class="seg" aria-label="Admin sections">${[['load','Load jobs'],['jobs','Loaded jobs'],['export','Export']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
+      <nav class="seg" aria-label="Admin sections">${[['load','Load jobs'],['jobs','Loaded jobs'],['inv','Inventory'],['export','Export']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
     return `<main>
@@ -148,7 +198,7 @@
       <span class="hint">Jobs from a week ago onwards. Status updates when the technician starts and finishes the job.</span>
       ${list.length ? `<div class="scroll"><table><thead><tr><th>Time</th><th>Job</th><th>Technician</th><th>Status</th><th></th></tr></thead><tbody>
         ${list.map(j => { const h = j.date !== lastDate ? `<tr><td colspan="5" style="background:#E6EAF2;font-weight:800;color:var(--navyDeep)">${esc(niceDate(j.date))}</td></tr>` : ''; lastDate = j.date;
-          return h + `<tr><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact].filter(Boolean).join(' · '))}</div></td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
+          return h + `<tr><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact, (j.inv || []).length ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div></td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
             <td>${j.status === 'planned' || !j.status ? `<button class="x" data-del="${esc(j.id)}" aria-label="Delete job">✕</button>` : ''}</td></tr>`; }).join('')}
       </tbody></table></div>` : '<div class="empty">No jobs loaded for this period.</div>'}
     </section></main>`;
@@ -168,10 +218,10 @@
   function vNoAdmin(msg){ return `<header><a href="../?home=1" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a><div><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
     <main><section class="card"><h2>Admin only</h2><span class="hint" style="font-size:14px">${msg}</span><a class="btn secondary" href="../?home=1">Back</a></section></main>`; }
 
-  function render(){ app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : vLoad()); wire(); }
+  function render(){ app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); }
   function wire(){
     const $ = id => document.getElementById(id);
-    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; if (S.tab === 'jobs') await refreshJobs(); render(); });
+    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); render(); });
     const tpl = $('tpl'); if (tpl) tpl.onclick = async () => { try { await xlsxReady();
       const wb = XLSX.utils.book_new(); const nx = new Date(Date.now() + 864e5); const ex = pad(nx.getDate()) + '/' + pad(nx.getMonth() + 1) + '/' + nx.getFullYear();
       const me = S.users[0] ? S.users[0].email : 'tech@example.com';
@@ -189,6 +239,23 @@
         await window.Cloud.putJobs(ok.map(r => { const j = { id:r.id, date:r.date, time:r.time, card:r.card, customer:r.customer, contact:r.contact, notes:r.notes, tech:r.tech, updatedAt:now, loadedBy:me };
           if (!existing.has(r.id)){ j.status = 'planned'; j.createdAt = now; } return j; }));
         toast(ok.length + ' jobs loaded'); S.preview = null; S.fileName = ''; await refreshJobs(); S.tab = 'jobs';
+      } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
+      S.busy = false; render(); };
+    const it = $('itpl'); if (it) it.onclick = async () => { try { await xlsxReady(); const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([ICOLS, ['Afgri Ceres', 'Ceres depot', 'Workshop', 'CB-10234', 'Chain block', 'Yale', 2000, '124926'], ['Afgri Ceres', 'Ceres depot', 'Store room', 'SH-7731', 'Bow shackle', 'Unknown', 3250, '124926']]); ws['!cols'] = [24, 18, 18, 14, 30, 16, 10, 12].map(w => ({ wch:w }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Inventory'); download(wb, 'Blue Cranes inventory template.xlsx'); } catch(e){ toast('Could not make the template'); } };
+    const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
+    const fi = $('ifile'); if (fi) fi.onchange = async () => { const file = fi.files && fi.files[0]; fi.value = ''; if (!file) return;
+      try { const r = await readInv(file); S.invFile = file.name; S.inv = r.rows; S.invSite = r.site;
+        if (!S.inv.length) toast('No items found in the first sheet');
+        if (!S.invJob){ const nrs = [...new Set(S.inv.map(x => cardCore(x.job)).filter(Boolean))]; const hit = nrs.length === 1 ? invJobs().filter(j => cardCore(j.card) === nrs[0]) : []; if (hit.length === 1) S.invJob = hit[0].id; }
+        render(); }
+      catch(e){ console.error(e); toast('Could not read that file – save it as .xlsx and try again'); } };
+    const il = $('iload'); if (il) il.onclick = async () => {
+      const job = S.jobs.find(j => j.id === S.invJob); if (!job || !S.inv) return; const ok = S.inv.filter(r => !r.errs.length); S.busy = true; render();
+      try { const now = new Date().toISOString();
+        await window.Cloud.putJobs([{ id:job.id, inv:ok.map(r => ({ serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc })), invSite:S.invSite || '', invAt:now, updatedAt:now }]);
+        toast(ok.length + ' items loaded for ' + (job.customer || job.card)); S.inv = null; S.invFile = ''; S.invSite = ''; await refreshJobs();
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
     const tf = $('tf'); if (tf) tf.onchange = () => { S.techFilter = tf.value; render(); };

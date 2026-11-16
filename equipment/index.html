@@ -181,6 +181,24 @@
       lsSave(); if (fixed || S.view !== 'list') render(); else refreshSuggestions();
     } catch(e){ console.error('Equipment sync failed', e); }
   }
+  // items the office loaded for this job from Excel (Admin → Inventory): added once, the technician marks them Safe / Unsafe
+  async function loadOffice(){
+    try {
+      if (!S.active || !S.cur || !cloudOK() || !Cloud.myJobs) return;
+      const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const tj = ts && ts.sheets && ts.sheets[S.active.date] && ts.sheets[S.active.date].jobs && ts.sheets[S.active.date].jobs[S.active.idx];
+      if (!tj || !/^A_/.test(tj.sched || '')) return;
+      const jobs = await Cloud.myJobs(); const job = (jobs || []).find(x => x.id === tj.sched.slice(2)); if (!job || !Array.isArray(job.inv) || !job.inv.length) return;
+      const l = S.cur; const pre = new Set(l.pre || []); const have = new Set((l.rows || []).map(r => norm(r.serial)).filter(Boolean)); const nth = {}; let n = 0;
+      job.inv.forEach(it => { const ser = String(it.serial || '').trim(), desc = String(it.desc || '').trim(); if (!ser && !desc) return;
+        let k = norm(ser); if (!k){ const d = norm(desc); nth[d] = (nth[d] || 0) + 1; k = 'D:' + d + '#' + nth[d]; }
+        if (pre.has(k)) return; pre.add(k); if (norm(ser) && have.has(norm(ser))) return;
+        l.rows.push({ id:rowId(), serial:ser, desc, make:it.make ? addMake(it.make) : '', swl:String(it.swl == null ? '' : it.swl).trim(), status:'', loc:it.loc ? addLoc(l, it.loc) : '', office:true }); n++; });
+      if (pre.size === (l.pre || []).length) return;
+      l.pre = [...pre];
+      if (n){ l.rows = l.rows.filter(r => r.office || r.serial || r.desc || r.make || r.swl || r.status); if (!l.location && job.invSite) l.location = job.invSite; }
+      saveList(l, true); if (n){ if (S.view === 'list') render(); toast(n + (n === 1 ? ' item' : ' items') + ' loaded by the office'); }
+    } catch(e){ console.error('Office inventory failed', e); }
+  }
   function activeJob(){
     try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || a.date !== today()) return null;
       const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const j = ts && ts.sheets && ts.sheets[a.date] && ts.sheets[a.date].jobs && ts.sheets[a.date].jobs[a.idx];
@@ -242,6 +260,7 @@
         const on = sel && sel.has(r.id);
         return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}${on ? ' sel' : ''}" data-i="${i}">
           ${sel ? `<label class="pick"><input type="checkbox" data-pick="${i}" ${on ? 'checked' : ''}> Select item ${i + 1}${r.desc ? ' – ' + esc(r.desc) : ''}</label>` : ''}
+          ${r.office && !r.status ? `<div class="from" style="background:#FFF3B0;color:var(--navyDeep)"><span>Loaded by the office – check it and mark <b>Safe</b> or <b>Unsafe</b></span></div>` : ''}
           ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
           <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
@@ -547,7 +566,8 @@
     render();
     const w = await BC.requireUser(); if (w.profile && w.profile.name && S.cur && !S.cur.tech){ S.cur.tech = w.profile.name; }
     if (window.Cloud) Cloud.onError = () => toast('Cloud save failed – kept on this phone');
-    syncCloud();
+    await syncCloud();
+    loadOffice();
   })();
 })();
 </script>
