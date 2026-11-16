@@ -22,7 +22,8 @@
     if (!on){ resolve({ user:null, profile: cached || { name:'' } }); return; }   // cloud not set up: work on the phone
     let done = false;
     window.Cloud.onAuth(async u => {
-      if (!u){ BC.cacheProfile(null); BC.goHome(); return; }
+      if (!u){ BC.cacheProfile(null); const f = location.href.startsWith(BC.home) ? location.href.slice(BC.home.length).split(/[?#]/)[0].replace(/index\.html$/, '') : '';
+        BC.goHome(/^[a-z]+\/$/.test(f) ? '?next=' + f.slice(0, -1) : ''); return; }   // come back here after signing in
       if (done) return; done = true;
       let p = null; try { p = await window.Cloud.getItem('profile'); } catch(e){}
       if (p && p.name){ p.uid = u.uid; BC.cacheProfile(p); }

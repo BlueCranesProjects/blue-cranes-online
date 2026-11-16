@@ -63,6 +63,8 @@
 <script>
 (function(){
   'use strict';
+  // after signing in: the page they came from (e.g. ?next=admin from the office computer), otherwise the time sheet
+  const NEXT = (function(){ const m = /[?&]next=([a-z]+)(?:&|$)/.exec(location.search); return (m ? m[1] : 'timesheet') + '/'; })();
   // ---------- the tools on the home screen: add new ones here ----------
   const TOOLS = [
     { href:'timesheet/', name:'Daily Time Sheet', text:'Vehicle check, jobs, km and hours. PDF and WhatsApp.',
@@ -194,7 +196,7 @@
     };
     if (document.getElementById('profForm')) go.onclick = () => busy(async () => {
       err.textContent = ''; const prof = readProfile(err); if (!prof) return;
-      await saveProfile(prof); if (S.view === 'setup' && !/[?&]home=1/.test(location.search)){ location.replace('timesheet/'); return; } toast('Profile saved'); S.view = 'home'; render();
+      await saveProfile(prof); if (S.view === 'setup' && !/[?&]home=1/.test(location.search)){ location.replace(NEXT); return; } toast('Profile saved'); S.view = 'home'; render();
     });
     const cancel = document.getElementById('cancel'); if (cancel) cancel.onclick = () => { S.view = 'home'; render(); };
     const ep = document.getElementById('editProf'); if (ep) ep.onclick = () => { S.sig = (S.profile || {}).signature || null; S.view = 'profile'; render(); };
@@ -223,7 +225,7 @@
   (async function start(){
     if (!window.Cloud && document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r, { once:true }));
     S.cloud = window.Cloud ? await Cloud.ready : false;
-    if (!S.cloud){ S.profile = BC.cachedProfile(); if (S.profile && !/[?&]home=1/.test(location.search)){ location.replace('timesheet/'); return; } S.view = S.profile ? 'home' : 'setup'; if (!S.profile) S.sig = null; render(); return; }
+    if (!S.cloud){ S.profile = BC.cachedProfile(); if (S.profile && !/[?&]home=1/.test(location.search)){ location.replace(NEXT); return; } S.view = S.profile ? 'home' : 'setup'; if (!S.profile) S.sig = null; render(); return; }
     const wantHome = /[?&]home=1/.test(location.search);
     Cloud.onAuth(async u => {
       S.user = u;
@@ -234,7 +236,7 @@
       S.profile = p;
       if (!p || !p.name || !p.signature){ S.sig = p && p.signature || null; S.view = 'setup'; render(); return; }
       try { Cloud.saveUser({ email:String(u.email || '').toLowerCase(), name:p.name || '', seen:new Date().toISOString() }); } catch(e){}
-      if (!wantHome){ location.replace('timesheet/'); return; }
+      if (!wantHome){ location.replace(NEXT); return; }
       S.view = 'home'; render();
       try { S.admin = await Cloud.isAdmin(); if (S.admin) render(); } catch(e){}
     });
