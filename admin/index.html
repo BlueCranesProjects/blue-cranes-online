@@ -130,7 +130,7 @@
   const IALIAS = { 'customer':'customer', 'client':'customer', 'site':'site', 'location':'loc', 'area':'loc', 'item location':'loc', 'serial nr':'serial', 'serial no':'serial', 'serial number':'serial', 'serial':'serial', 'item no':'serial', 'item nr':'serial', 'item number':'serial', 'id no':'serial', 'id nr':'serial', 'description':'desc', 'item':'desc', 'equipment':'desc',
     'manufacturer':'make', 'make':'make', 'swl kg':'swl', 'swl':'swl', 'tonnage':'swl', 'capacity':'swl', 'wll':'swl', 'safe working load':'swl', 'safe working load kg':'swl', 'job nr':'job', 'job no':'job', 'job number':'job', 'job card':'job', 'job':'job' };
   const up = s => String(s == null ? '' : s).trim().toUpperCase().replace(/\s+/g, ' ');
-  const cardCore = s => up(s).replace(/^C(?=\d)/, '');
+  const cardCore = s => up(s).replace(/\s+/g, '').replace(/^C(?=\d)/, '');
   // a plain number under a heading in tons ("SWL (t)", "TONNAGE") is tons, up to 100
   const swlIn = (v, unit) => { const n = typeof v === 'number' ? v : /^\s*\d+([.,]\d+)?\s*$/.test(String(v == null ? '' : v)) ? Number(String(v).trim().replace(',', '.')) : NaN;
     if (!isNaN(n) && unit === 't' && n <= 100) return String(Math.round(n * 1000)); return swlText(v); };

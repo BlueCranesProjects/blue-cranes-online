@@ -181,7 +181,7 @@
       remote.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; seen[r.id] = 1; const l = S.lists[r.id]; if (!l || (r.savedAt || 0) > (l.savedAt || 0)) S.lists[r.id] = r; });
       Object.values(S.lists).forEach(l => { if (!seen[l.id]) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); });
       if (S.cur && S.lists[S.cur.id] && S.lists[S.cur.id] !== S.cur){ S.cur = S.lists[S.cur.id]; lsSave(); render(); return; }
-      let fixed = false; const core = j => String(j || '').trim().replace(/^C(?=\d)/i, '');
+      let fixed = false; const core = j => String(j || '').trim().replace(/\s+/g, '').replace(/^C(?=\d)/i, '');
       const fixNo = no => { const t = String(no || '').trim(); if (!/\.\d+$/.test(t)) return t; return 'F' + core(/^F/i.test(t) ? t.slice(1) : t); };
       Object.values(S.lists).forEach(l => { let c = false; (l.rows || []).forEach(x => {
         if (x.report && x.report.no && fixNo(x.report.no) !== x.report.no){ x.report.no = fixNo(x.report.no); c = true; }
@@ -243,7 +243,7 @@
   const isHarness = r => /harness|lanyard|fall\s*arrest|inertia\s*reel|self[\s-]*retract/i.test(r.desc || '');
   const isCertItem = r => { const d = r.desc || ''; if (isForklift(r)) return false; if (isHarness(r)) return true; if (/spreader/i.test(d)) return true; if (TACKLE.test(d) && !/hoist|crane|gantry|block/i.test(d)) return false; return MACHINE.test(d); };
   // certificate numbers follow the item's place on the inventory (item 1 → C<job>/1); once given, a number stays with its item
-  const jobCore = j => String(j || '').trim().replace(/^C(?=\d)/i, '');
+  const jobCore = j => String(j || '').trim().replace(/\s+/g, '').replace(/^C(?=\d)/i, '');
   function certN(l, i){ const r = l.rows[i]; if (r.cno) return r.cno; const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let n = i + 1; if (used.has(n)) n = Math.max(...used) + 1; return n; }
   const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
   const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
@@ -559,7 +559,7 @@
     $('certOnly').onclick = async () => { const b = $('certOnly'), old = b.textContent; saveList(l, true);
       b.disabled = true; b.textContent = 'Working…';
       try { const parts = await itemCertParts(l); let tools = null;
-        try { tools = await forkliftTools(); const core = j => norm(j).replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
+        try { tools = await forkliftTools(); const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
           for (const r of (await tools.api.reports()).filter(r => r && r.state && r.state.type === 'LOAD TEST' && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))){
             const c = await tools.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
         catch(e){ console.error(e); } finally { if (tools) tools.done(); }
@@ -806,7 +806,7 @@
       let reps = [], tools = null; const flCerts = [];
       try {
         busy('Finding forklift reports…'); tools = await forkliftTools();
-        const core = j => norm(j).replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
+        const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
         reps = (await tools.api.reports()).filter(r => r && r.state && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))
           .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
         for (let k = 0; k < reps.length; k++){

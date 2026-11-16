@@ -452,7 +452,7 @@ function nextSameJob(){
 function jobsMap(){try{return JSON.parse(load(JOBKEY)||"{}")}catch(e){return{}}}
 // next free suffix for a job; afterCurrent=true also counts the doc no on screen as used
 // job card C124926 -> report F124926.1, certificate C124926/1 (the job card's own C is left off)
-function jobCore(j){return String(j||"").trim().replace(/^C(?=\d)/i,"");}
+function jobCore(j){return String(j||"").trim().replace(/\s+/g,"").replace(/^C(?=\d)/i,"");}
 function nextDoc(job,afterCurrent){const core=jobCore(job),m=jobsMap();let n=Math.max(m[core]||0,m[job]||0);if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===core)n=Math.max(n,cur.n);}return "F"+core+"."+(n+1);}
 function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec((d||"").trim().replace(/^F(?=.+\.\d+$)/,""));return m?{job:jobCore(m[1]),n:+m[2]}:null;}
 function recordDoc(){const d=parseDoc(state.f.docno);if(!d)return;const m=jobsMap();m[d.job]=Math.max(m[d.job]||0,d.n);store(JOBKEY,JSON.stringify(m));}
@@ -502,7 +502,7 @@ async function buildPdf(st){const prev=state;state=st;try{
   block(166,[["Saldanha",1],["022 714 2207"],null,["Vredendal",1],["027 217 2217"]]);
   doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Reg No CK 1990/024648/23",L,LY+LH+3.2);doc.text("LME 017",R,LY+LH+3.2,{align:"right"});
   doc.setDrawColor(...NAVY);doc.setLineWidth(0.8);doc.line(L,LY+LH+5.6,R,LY+LH+5.6);const HY=LY+LH+5.6-43;
-  doc.setFontSize(9);doc.setTextColor(40,40,40);doc.text("Doc No:",168,48.5+HY);doc.setTextColor(190,30,30);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.text(f.docno||"",182,48.5+HY);
+  doc.setFontSize(9);doc.setTextColor(40,40,40);doc.setFont("helvetica","bold");doc.setFontSize(11);const dn=f.docno||"",dnw=doc.getTextWidth(dn);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.text("Doc No:",R-dnw-2,48.5+HY,{align:"right"});doc.setTextColor(190,30,30);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.text(dn,R,48.5+HY,{align:"right"});
   // title + fields
   doc.setDrawColor(60,66,80);doc.setLineWidth(0.25);doc.setTextColor(30,34,51);
   let y=51+HY;doc.rect(L,y,W,8);doc.setFontSize(13);doc.text(state.type==="LOAD TEST"?"FORKLIFT LOAD TEST REPORT":"FORKLIFT INSPECTION REPORT",105,y+5.6,{align:"center"});
@@ -737,7 +737,7 @@ async function renumberOld(){let n=0;
   await fixEquipmentNos();if(n){updRepCount();if($("repPanel").classList.contains("show"))showReports();toast(n+" report number"+(n>1?"s":"")+" updated");}}
 // used by the equipment list to put every report of a job in one folder
 window.BCF={async reports(){for(let i=0;i<80&&!window.BCF_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCF_READY;}catch(e){}return RDB.all();},
-  buildPdf:st=>buildPdf(st),buildCert:st=>buildCert(st)};
+  buildPdf:st=>{if(st&&st.f&&st.f.docno)st.f.docno=fixNo(st.f.docno);return buildPdf(st);},buildCert:st=>{if(st&&st.f&&st.f.docno)st.f.docno=fixNo(st.f.docno);return buildCert(st);}};
 async function saveReport(st){if(!st._rid)st._rid=st.f.docno||("r"+Date.now());const snap=JSON.parse(JSON.stringify(st));
   await RDB.put({id:st._rid,savedAt:Date.now(),date:st.f.date||today(),job:(st.f.jobno||"").trim(),state:snap});save();updRepCount();}
 async function updRepCount(){const a=await RDB.all();$("repCount").textContent=a.length;$("repCount").style.display=a.length?"":"none";}
