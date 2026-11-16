@@ -189,8 +189,8 @@
     try {
       if (!S.active || !S.cur || !cloudOK() || !Cloud.myJobs) return;
       const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const tj = ts && ts.sheets && ts.sheets[S.active.date] && ts.sheets[S.active.date].jobs && ts.sheets[S.active.date].jobs[S.active.idx];
-      if (!tj || !/^A_/.test(tj.sched || '')) return;
-      const jobs = await Cloud.myJobs(); const job = (jobs || []).find(x => x.id === tj.sched.slice(2)); if (!job || !Array.isArray(job.inv) || !job.inv.length) return;
+      const sid = S.active.sched || (tj && tj.sched) || ''; if (!/^A_/.test(sid)) return;
+      const jobs = await Cloud.myJobs(); const job = (jobs || []).find(x => x.id === sid.slice(2)); if (!job || !Array.isArray(job.inv) || !job.inv.length) return;
       const l = S.cur; const pre = new Set(l.pre || []); const have = new Set((l.rows || []).map(r => norm(r.serial)).filter(Boolean)); const nth = {}; let n = 0;
       job.inv.forEach(it => { const ser = String(it.serial || '').trim(), desc = String(it.desc || '').trim(); if (!ser && !desc) return;
         let k = norm(ser); if (!k){ const d = norm(desc); nth[d] = (nth[d] || 0) + 1; k = 'D:' + d + '#' + nth[d]; }
@@ -204,7 +204,11 @@
   }
   function activeJob(){
     try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || a.date !== today()) return null;
-      const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const j = ts && ts.sheets && ts.sheets[a.date] && ts.sheets[a.date].jobs && ts.sheets[a.date].jobs[a.idx];
+      const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null');
+      if (a.sched){   // opened from a scheduled job of today (before or without starting it)
+        const x = ts && ts.schedule && ts.schedule[a.sched]; if (ts && (!x || x.date !== a.date)) return null;
+        const done = ts && Object.values(ts.sheets || {}).some(sh => (sh.jobs || []).some(j => j.sched === a.sched && j.done)); return done ? null : a; }
+      const j = ts && ts.sheets && ts.sheets[a.date] && ts.sheets[a.date].jobs && ts.sheets[a.date].jobs[a.idx];
       if (ts && (!j || j.done || (j.card || '') !== (a.card || ''))) return null; return a; } catch(e){ return null; }
   }
   const listIdFor = a => (a.date + '_' + (a.card || a.customer || 'job')).replace(/[^\w\-]+/g, '_');

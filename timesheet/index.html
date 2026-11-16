@@ -173,7 +173,7 @@
     if (!list) return;
     const seen = {};
     list.forEach(j => { const id = 'A_' + j.id; seen[id] = 1; const old = state.schedule[id] || {};
-      const x = Object.assign({}, old, { id, assigned:true, jobId:j.id, date:j.date, time:j.time || '', card:j.card || '', customer:j.customer || '', contact:j.contact || '', notes:j.notes || '' });
+      const x = Object.assign({}, old, { id, assigned:true, jobId:j.id, date:j.date, time:j.time || '', card:j.card || '', customer:j.customer || '', contact:j.contact || '', notes:j.notes || '', invCount:Array.isArray(j.inv) ? j.inv.length : 0 });
       if (old._sent == null) x._sent = j.status || 'planned';
       state.schedule[id] = x; });
     Object.keys(state.schedule).forEach(id => { const x = state.schedule[id]; if (x.assigned && !seen[id] && !x.addedTo) delete state.schedule[id]; });
@@ -328,7 +328,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (H)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (I)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -464,6 +464,7 @@
     const sugg = sh && sh.firstOdo !== '' && sh.firstOdo != null ? sh.firstOdo : (prev && prev.lastOdo ? prev.lastOdo : '');
     const tn = techName(sh);
     return headerSteps(niceDate(key,true), 'Vehicle', sh) + `<main>${dayLine()}
+      ${key === todayKey() ? todaysJobs() : ''}
       <div class="card" style="font-size:14px;line-height:1.45;background:#FFFBEA;border-color:var(--yellowDark)"><b>Start of the day.</b> Check the vehicle and fill in the odometer. The Jobs tab opens when you tap <b>Start day</b>.</div>
       <form id="dayForm" style="display:flex;flex-direction:column;gap:14px">
         <section class="card" style="display:flex;flex-direction:column;gap:12px"><h2>1. VEHICLE</h2>
@@ -784,6 +785,27 @@
     try { localStorage.setItem('bco-active-job', JSON.stringify({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() })); } catch(e){}
     location.href = type === 'EQUIPMENT' ? '../equipment/' : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
   }
+  // today's scheduled jobs, shown first so the technician sees the day's work; tap one to open it (and its inventory)
+  function todaysJobs(){
+    const tk = todayKey(); const list = Object.values(state.schedule || {}).filter(x => x && x.date === tk).sort((a, b) => String(a.time || '99').localeCompare(String(b.time || '99')));
+    if (!list.length) return '';
+    return `<section class="card" style="display:flex;flex-direction:column;gap:8px"><h2>TODAY'S JOBS</h2>
+      ${list.map(x => { const sj = sheetJobFor(x.id); const done = sj && sj.j.done;
+        return `<button type="button" data-todayjob="${esc(x.id)}" style="display:flex;align-items:center;gap:10px;text-align:left;width:100%;border:1.5px solid var(--line);border-radius:12px;background:#fff;padding:10px;font-family:inherit;cursor:pointer;color:var(--ink)">
+          <span style="background:var(--navyDeep);color:#fff;border-radius:8px;padding:6px 8px;font-weight:800;font-size:14px;min-width:58px;text-align:center">${esc(x.time || '–')}</span>
+          <span style="flex:1;min-width:0"><b style="font-size:15px">${esc([x.card, x.customer].filter(Boolean).join(' · ') || 'Job')}</b>
+            <span class="hint" style="display:block">${esc([x.contact ? 'Contact: ' + x.contact : '', x.invCount ? x.invCount + ' inventory items' : ''].filter(Boolean).join(' · '))}</span></span>
+          ${done ? '<span class="pill ok">✓ Done</span>' : sj ? '<span class="pill prog">Busy</span>' : '<span style="font-size:22px;color:var(--navy)">›</span>'}</button>`; }).join('')}
+      <span class="hint">Tap a job to see it and open its client's inventory.</span></section>`;
+  }
+  function invButton(x){
+    return `<button class="btn" type="button" data-schedinv="${esc(x.id)}" style="height:52px;font-size:15px;background:#fff;color:var(--navyDeep);border:2px solid var(--navy)">📋 Client's inventory${x.invCount ? ' · ' + x.invCount + ' items from the office' : ''}</button>`;
+  }
+  function openSchedInv(id){
+    const x = state.schedule[id]; if (!x) return;
+    try { localStorage.setItem('bco-active-job', JSON.stringify({ date:x.date, sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', at:new Date().toISOString() })); } catch(e){}
+    location.href = '../equipment/';
+  }
   function schedActions(x){
     const tk = todayKey(); const sj = sheetJobFor(x.id);
     const box = inner => `<section class="card" style="display:flex;flex-direction:column;gap:10px;border-left:5px solid var(--yellow)">${inner}</section>`;
@@ -791,7 +813,7 @@
     if (sj) return box(`<div style="display:flex;align-items:center;gap:8px"><span class="pill prog">Busy</span><span class="hint">Started ${esc(niceDate(sj.k))}</span></div>${reportButtons(`data-flk="${sj.k}" data-fli="${sj.i}"`)}
       <button class="btn secondary" type="button" data-finishk="${sj.k}" data-finishi="${sj.i}">✓ Finish job</button>`);
     if (x.date !== tk) return box(`<span class="hint">You can start this job on ${esc(niceDate(x.date))}.</span>`);
-    return box(`<button class="btn primary" type="button" data-schedstart="${esc(x.id)}">${ICON.plus} Start job</button>
+    return box(`${invButton(x)}<button class="btn primary" type="button" data-schedstart="${esc(x.id)}">${ICON.plus} Start job</button>
       <span class="hint">${sheetReady(tk) ? 'Forklift inspection and load test open once the job is started.' : 'Do the vehicle inspection and start today\'s sheet first.'}</span>`);
   }
   function viewSchedJob(){
@@ -987,7 +1009,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 16 Nov (H)</span>
+        <span class="hint">App version 16 Nov (I)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -1175,6 +1197,8 @@
       state.activeDate = null; startScheduled(b.dataset.schedstart);
     });
     app.querySelectorAll('[data-schedopen]').forEach(b => b.onclick = () => { state._schedBack = 'today'; go('schedjob', { schedId:b.dataset.schedopen }); });
+    app.querySelectorAll('[data-todayjob]').forEach(b => b.onclick = () => { state._schedBack = 'vehicle'; go('schedjob', { schedId:b.dataset.todayjob }); });
+    app.querySelectorAll('[data-schedinv]').forEach(b => b.onclick = () => openSchedInv(b.dataset.schedinv));
     app.querySelectorAll('[data-done]').forEach(b => b.onclick = () => {
       const k = curKey(); const sh = state.sheets[k]; const j = sh && sh.jobs[Number(b.dataset.done)]; if (!j) return;
       if (!j.done){ go('job', { jobIdx:Number(b.dataset.done), _finishing:true }); return; }
