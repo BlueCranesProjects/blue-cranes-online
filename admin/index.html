@@ -75,7 +75,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
+  const S = { tab:'load', users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
   // ---------- Excel helpers ----------
@@ -290,20 +290,37 @@
       <div class="row"><button class="btn primary" id="edSave" style="flex:1">${S.busy ? 'Saving…' : 'Save changes'}</button><button class="btn secondary" id="edCancel" style="flex:1">Cancel</button></div>
       <span class="hint">The technician sees the change the next time they open the app. Inventory items and progress stay with the job.</span></section>`;
   }
+  // remove jobs (one or many) after asking on the page
+  function removeJobs(ids){
+    const jobs = ids.map(id => S.jobs.find(x => x.id === id)).filter(Boolean); if (!jobs.length) return;
+    const started = jobs.filter(j => j.status === 'busy' || j.status === 'done').length;
+    const m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px';
+    m.innerHTML = `<div class="card" style="max-width:460px;width:100%;gap:12px"><h2>Remove ${jobs.length === 1 ? 'this job' : jobs.length + ' jobs'}?</h2>
+      <div style="font-size:14px;line-height:1.5">${jobs.slice(0, 6).map(j => `<div><b>${esc(j.customer || j.card || 'Job')}</b> · ${esc(niceDate(j.date))} · ${esc(nameOf(j.tech) || j.tech)}</div>`).join('')}${jobs.length > 6 ? `<div class="hint">and ${jobs.length - 6} more</div>` : ''}</div>
+      <span class="hint">${started ? `${started === jobs.length ? 'The technician has already started ' + (jobs.length === 1 ? 'this job' : 'these jobs') : started + ' of them were already started'}. What they already did stays on their time sheet and in their inventory; only the job is taken off the schedule.` : 'The job disappears from the technician\'s schedule the next time they open the app.'} This can not be undone.</span>
+      <div class="row"><button class="btn" id="rmYes" style="flex:1;background:var(--bad);color:#fff">🗑 Remove</button><button class="btn secondary" id="rmNo" style="flex:1">Cancel</button></div></div>`;
+    document.body.appendChild(m);
+    m.querySelector('#rmNo').onclick = () => m.remove(); m.onclick = e => { if (e.target === m) m.remove(); };
+    m.querySelector('#rmYes').onclick = async () => { const b = m.querySelector('#rmYes'); b.disabled = true; b.textContent = 'Removing…'; let ok = 0;
+      for (const j of jobs){ try { await window.Cloud.deleteJob(j.id); ok++; S.jobs = S.jobs.filter(x => x.id !== j.id); S.sel.delete(j.id); if (S.editJob === j.id) S.editJob = null; } catch(e){ console.error(e); } }
+      m.remove(); render(); toast(ok === jobs.length ? (ok === 1 ? 'Job removed' : ok + ' jobs removed') : 'Could not remove ' + (jobs.length - ok) + ' – check the Firebase rules'); };
+  }
   function vJobs(){
-    const from = keyOf(new Date(Date.now() - 7 * 864e5));
+    const from = S.allJobs ? '' : keyOf(new Date(Date.now() - 7 * 864e5));
     const techs = [...new Set(S.jobs.map(j => j.tech))].sort();
     const list = S.jobs.filter(j => j.date >= from && (!S.techFilter || j.tech === S.techFilter)).sort((a, b) => (a.date + (a.time || '99') + a.tech).localeCompare(b.date + (b.time || '99') + b.tech));
     const st = j => j.status === 'done' ? '<span class="pill ok">✓ Done</span>' : j.status === 'busy' ? '<span class="pill busy">Busy</span>' : '<span class="pill plan">Planned</span>';
     let lastDate = '';
     return `<main>${editCard()}<section class="card">
       <div class="row"><div class="field"><label for="tf">Technician</label><select id="tf"><option value="">Everyone</option>${techs.map(t => `<option value="${esc(t)}" ${S.techFilter === t ? 'selected' : ''}>${esc(nameOf(t) || t)}</option>`).join('')}</select></div>
+        <div class="field"><label for="per">Show</label><select id="per"><option value="">From a week ago</option><option value="all" ${S.allJobs ? 'selected' : ''}>All jobs, also older</option></select></div>
         <button class="btn secondary" id="refresh" style="width:auto;align-self:flex-end">↻ Refresh</button></div>
-      <span class="hint">Jobs from a week ago onwards. Status updates when the technician starts and finishes the job. For jobs with an inventory you see how many items they checked, and <b>⬇ Census</b> gives you their results in the census layout.</span>
-      ${list.length ? `<div class="scroll"><table><thead><tr><th>Time</th><th>Job</th><th>Technician</th><th>Status</th><th></th></tr></thead><tbody>
-        ${list.map(j => { const h = j.date !== lastDate ? `<tr><td colspan="5" style="background:#E6EAF2;font-weight:800;color:var(--navyDeep)">${esc(niceDate(j.date))}</td></tr>` : ''; lastDate = j.date;
-          return h + `<tr><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact, (j.inv || []).length && !S.invProg[j.id] ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div>${progLine(j)}</td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
-            <td style="white-space:nowrap">${j.status !== 'done' ? `<button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-edit="${esc(j.id)}" aria-label="Change job">✎ Edit</button> ` : ''}${j.status === 'planned' || !j.status ? `<button class="x" data-del="${esc(j.id)}" aria-label="Delete job">✕</button>` : ''}</td></tr>`; }).join('')}
+      ${S.sel.size ? `<div class="row" style="background:#FDF3F2;border-radius:10px;padding:8px 10px"><b style="flex:1">${S.sel.size} selected</b><button class="x" id="selNone" style="border-color:var(--navy);color:var(--navyDeep)">Clear</button><button class="x" id="selDel" style="background:var(--bad);color:#fff">🗑 Remove ${S.sel.size} ${S.sel.size === 1 ? 'job' : 'jobs'}</button></div>` : ''}
+      <span class="hint">${S.allJobs ? 'All jobs.' : 'Jobs from a week ago onwards.'} Status updates when the technician starts and finishes the job. For jobs with an inventory you see how many items they checked, and <b>⬇ Census</b> gives you their results in the census layout.</span>
+      ${list.length ? `<div class="scroll"><table><thead><tr><th style="width:28px"><input type="checkbox" id="selAll" aria-label="Select all shown jobs" ${list.length && list.every(j => S.sel.has(j.id)) ? 'checked' : ''}></th><th>Time</th><th>Job</th><th>Technician</th><th>Status</th><th></th></tr></thead><tbody>
+        ${list.map(j => { const h = j.date !== lastDate ? `<tr><td colspan="6" style="background:#E6EAF2;font-weight:800;color:var(--navyDeep)">${esc(niceDate(j.date))}</td></tr>` : ''; lastDate = j.date;
+          return h + `<tr><td><input type="checkbox" data-sel="${esc(j.id)}" aria-label="Select job" ${S.sel.has(j.id) ? 'checked' : ''}></td><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact, (j.inv || []).length && !S.invProg[j.id] ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div>${progLine(j)}</td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
+            <td style="white-space:nowrap">${j.status !== 'done' ? `<button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-edit="${esc(j.id)}" aria-label="Change job">✎ Edit</button> ` : ''}<button class="x" data-del="${esc(j.id)}" aria-label="Remove job">🗑 Remove</button></td></tr>`; }).join('')}
       </tbody></table></div>` : '<div class="empty">No jobs loaded for this period.</div>'}
     </section></main>`;
   }
@@ -391,8 +408,12 @@
         await window.Cloud.putJobs([upd]); toast('Job changed'); S.editJob = null; await refreshJobs();
       } catch(err){ console.error(err); toast('Saving failed' + (err && err.code ? ' (' + err.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
-    app.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { const j = S.jobs.find(x => x.id === b.dataset.del); if (!j || !confirm(`Delete ${j.customer || j.card} on ${niceDate(j.date)} for ${nameOf(j.tech) || j.tech}?`)) return;
-      try { await window.Cloud.deleteJob(j.id); S.jobs = S.jobs.filter(x => x.id !== j.id); render(); toast('Job deleted'); } catch(e){ toast('Could not delete'); } });
+    app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeJobs([b.dataset.del]));
+    app.querySelectorAll('[data-sel]').forEach(c => c.onchange = () => { c.checked ? S.sel.add(c.dataset.sel) : S.sel.delete(c.dataset.sel); render(); });
+    const sa = $('selAll'); if (sa) sa.onchange = () => { app.querySelectorAll('[data-sel]').forEach(c => sa.checked ? S.sel.add(c.dataset.sel) : S.sel.delete(c.dataset.sel)); render(); };
+    const sn = $('selNone'); if (sn) sn.onclick = () => { S.sel.clear(); render(); };
+    const sd = $('selDel'); if (sd) sd.onclick = () => removeJobs([...S.sel]);
+    const per = $('per'); if (per) per.onchange = () => { S.allJobs = per.value === 'all'; render(); };
     const ef = $('ef'), et = $('et'); if (ef){ ef.onchange = () => S.ef = ef.value; et.onchange = () => S.et = et.value; }
     const ej = $('expJobs'); if (ej) ej.onclick = () => exportJobs(ej);
     const ei = $('expInv'); if (ei) ei.onclick = () => exportInv(ei);
