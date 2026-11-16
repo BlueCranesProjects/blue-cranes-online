@@ -749,15 +749,23 @@
       finally { if (tools) tools.done(); }
       const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.(pdf|xlsx)$/, `_${++used[n]}.$1`); else used[n] = 1; f.name = n; f.type = f.type || 'application/pdf'; });
       const pdfs = files.map(f => new File([f.blob], f.name, { type:f.type }));
-      const canShareAll = !asZip && navigator.canShare && navigator.share && navigator.canShare({ files:pdfs });
+      // phones only share some kinds of file (PDF yes, Excel often not): share what can be shared, download the rest
+      const canSh = list => !!(navigator.canShare && navigator.share && list.length && (() => { try { return navigator.canShare({ files:list }); } catch(e){ return false; } })());
+      const shareable = asZip ? [] : (canSh(pdfs) ? pdfs : pdfs.filter(f => canSh([f])));
+      const rest = files.filter(f => !shareable.some(x => x.name === f.name));
+      const canShareAll = shareable.length > 0;
       const bb = document.getElementById('busyBox');
+      const dl = f => { const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); };
       if (canShareAll){
         // the share needs a fresh tap, so ask for one
         bb.querySelector('.modal').innerHTML = `<div style="font-size:16px;font-weight:700">${files.length} files ready</div>
           <div class="hint" style="font-size:14px">${files.map(f => esc(f.name)).join('<br>')}</div>
-          <button class="btn navy" id="shareAll">Share all ${files.length} – WhatsApp, email, Files…</button><button class="btn secondary" id="shareNo">Cancel</button>`;
+          <button class="btn navy" id="shareAll">Share ${shareable.length === files.length ? 'all ' + files.length : 'the ' + shareable.length + ' PDFs'} – WhatsApp, email, Files…</button>
+          ${rest.length ? `<button class="btn secondary" id="dlRest">⬇ Download ${rest.length === 1 ? esc(rest[0].name.replace(/^.*\./, '').toUpperCase()) + ' file' : rest.length + ' other files'} (${rest.map(f => esc(f.name)).join(', ')})</button>` : ''}
+          <button class="btn secondary" id="shareNo">Close</button>`;
         await new Promise(done => { bb.querySelector('#shareNo').onclick = () => { bb.remove(); done(); };
-          bb.querySelector('#shareAll').onclick = async () => { try { await navigator.share({ files:pdfs, title:folder }); toast(files.length + ' files sent'); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – try “Download as zip folder”'); } bb.remove(); done(); }; });
+          const dr = bb.querySelector('#dlRest'); if (dr) dr.onclick = () => { rest.forEach((f, i) => setTimeout(() => dl(f), i * 400)); dr.textContent = '✓ Saved to Downloads'; dr.disabled = true; toast('Saved to Downloads'); };
+          bb.querySelector('#shareAll').onclick = async () => { try { await navigator.share({ files:shareable, title:folder }); toast(shareable.length + ' files sent'); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – try “Download as zip folder”'); } if (!rest.length){ bb.remove(); done(); } }; })
       } else {
         busy('Packing the folder…');
         const zip = new JSZip(), dir = zip.folder(folder); files.forEach(f => dir.file(f.name, f.blob));
