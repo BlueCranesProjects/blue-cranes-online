@@ -502,6 +502,10 @@
     } catch(e){ console.error(e); toast('Export failed – check the Firebase rules'); }
     finally { btn.disabled = false; btn.innerHTML = old; }
   }
+  // deflection test on gantries / beams (same wording as on the inventory PDF)
+  function deflText(d){ if (!d) return ''; const n = v => { const x = Number(String(v == null ? '' : v).replace(',', '.')); return String(v == null ? '' : v).trim() !== '' && isFinite(x) ? x : null; };
+    const span = n(d.span), meas = n(d.meas), ratio = Number(d.ratio) || 600; if (!span || meas == null) return ''; const max = Math.round(span / ratio * 10) / 10; const f = x => String(x).replace('.', ',');
+    return 'Deflection ' + f(meas) + ' mm (max ' + f(max) + ' mm = span ' + f(span) + ' mm ÷ ' + ratio + (n(d.load) ? ', test load ' + f(n(d.load)) + ' kg' : '') + ') – ' + (meas <= max ? 'OK' : 'TOO MUCH'); }
   async function exportInv(btn){
     const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Collecting…';
     try { await xlsxReady(); await refreshUsers(); const reg = new Map();
@@ -511,10 +515,10 @@
         const cust = String(l.customer || '').trim(); const key = cust.toUpperCase() + '|' + (String(r.serial || '').trim().toUpperCase() || ('#' + l.id + r.desc));
         const rep = r.report && r.report.no ? r.report.no + (r.report.cert ? ' / ' + r.report.cert : '') : '';
         reg.set(key, { Customer:cust, Site:l.location || '', Location:r.loc || '', 'Serial nr':r.serial || '', Description:r.desc || '', Manufacturer:r.make || '', 'SWL (kg)':/^\d+(\.\d+)?$/.test(String(r.swl || '').trim()) ? Number(r.swl) : (r.swl || ''),
-          Condition:r.status === 'SAFE' ? 'Safe' : r.status === 'UNSAFE' ? 'Unsafe' : '', 'Unsafe reason':r.status === 'UNSAFE' ? (r.reason || '') : '', 'Report nr':rep, 'Job nr':l.job || '', 'Last listed':l.date || '', Technician:l.tech || u.name || u.email }); }));
+          Condition:r.status === 'SAFE' ? 'Safe' : r.status === 'UNSAFE' ? 'Unsafe' : '', 'Unsafe reason':r.status === 'UNSAFE' ? (r.reason || '') : '', 'Deflection':deflText(r.defl), 'Report nr':rep, 'Job nr':l.job || '', 'Last listed':l.date || '', Technician:l.tech || u.name || u.email }); }));
       const rows = [...reg.values()].sort((a, b) => (a.Customer + a.Location + a.Description + a['Serial nr']).localeCompare(b.Customer + b.Location + b.Description + b['Serial nr']));
       if (!rows.length){ toast('No client inventories yet'); return; }
-      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, sheet(rows, [24, 18, 16, 14, 30, 16, 9, 9, 34, 20, 12, 11, 22]), 'Inventory');
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, sheet(rows, [24, 18, 16, 14, 30, 16, 9, 9, 34, 40, 20, 12, 11, 22]), 'Inventory');
       download(wb, `Blue Cranes client inventories ${today()}.xlsx`); toast(rows.length + ' items exported');
     } catch(e){ console.error(e); toast('Export failed – check the Firebase rules'); }
     finally { btn.disabled = false; btn.innerHTML = old; }

@@ -79,6 +79,8 @@
   .flbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:#E8EEF8;border-radius:10px;padding:8px 10px;font-size:13px;font-weight:700;color:var(--navyDeep)}
   .flbar span{display:flex;align-items:center;gap:6px}
   .flb{height:38px;border-radius:9px;border:0;background:var(--navyDeep);color:#fff;font-weight:800;font-size:13px;font-family:inherit;padding:0 12px;cursor:pointer}
+  .defl{display:flex;flex-direction:column;gap:10px;background:#F2F5FA;border:1.5px solid var(--line);border-radius:12px;padding:10px}
+  .linkbtn{border:0;background:none;color:var(--bad);font-weight:700;font-size:13px;font-family:inherit;cursor:pointer;padding:4px}
 </style>
 </head>
 <body>
@@ -231,6 +233,29 @@
       localStorage.setItem('bco-fl-item', JSON.stringify({ serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', type, at:Date.now() })); } catch(e){}
     location.href = '../forklift/?type=' + encodeURIComponent(type);
   }
+  // gantries and load / lifting beams get a deflection test (span, test load, measured deflection, allowed = span ÷ ratio)
+  const isBeam = r => /gantry|beam|monorail|runway/i.test(r.desc || '') && !/clamp|trolley/i.test(r.desc || '');
+  const RATIOS = [500, 600, 750, 800, 1000];
+  const num = v => { const n = Number(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) && String(v).trim() !== '' ? n : null; };
+  function deflResult(d){ if (!d) return null; const span = num(d.span), meas = num(d.meas), ratio = Number(d.ratio) || 600;
+    if (!span) return null; const max = Math.round(span / ratio * 10) / 10; if (meas == null) return { max, ratio };
+    return { max, ratio, meas, ok: meas <= max }; }
+  const fmtMm = n => String(n).replace('.', ',');
+  function deflText(d){ const x = deflResult(d); if (!x || x.meas == null) return '';
+    return 'Deflection ' + fmtMm(x.meas) + ' mm (max ' + fmtMm(x.max) + ' mm = span ' + fmtMm(num(d.span)) + ' mm ÷ ' + x.ratio + (num(d.load) ? ', test load ' + fmtMm(num(d.load)) + ' kg' : '') + ') – ' + (x.ok ? 'OK' : 'TOO MUCH'); }
+  function deflLine(d){ const x = deflResult(d); if (!x) return '<span class="hint">Fill in the span to see the allowed deflection.</span>';
+    if (x.meas == null) return `<span class="hint">Allowed: <b>${fmtMm(x.max)} mm</b> (span ÷ ${x.ratio})</span>`;
+    return x.ok ? `<span class="pill" style="background:#E3F1E8;color:var(--ok)">✓ ${fmtMm(x.meas)} mm – within ${fmtMm(x.max)} mm</span>` : `<span class="pill" style="background:#F8E1DE;color:var(--bad)">✕ ${fmtMm(x.meas)} mm – more than ${fmtMm(x.max)} mm allowed</span>`; }
+  function deflBox(r, i){
+    if (!r.defl) return `<button type="button" class="btn secondary small" data-defladd="${i}" style="width:100%">📏 Add deflection test</button>`;
+    const d = r.defl;
+    return `<div class="defl"><div class="row" style="justify-content:space-between"><b>📏 Deflection test</b><button type="button" class="linkbtn" data-deflrm="${i}">Remove</button></div>
+      <div class="grid2"><div class="field"><label for="dsp${i}">Span (mm)</label><input id="dsp${i}" data-df="span" data-di="${i}" inputmode="decimal" value="${esc(d.span || '')}" placeholder="e.g. 4000"></div>
+        <div class="field"><label for="dld${i}">Test load (kg)</label><input id="dld${i}" data-df="load" data-di="${i}" inputmode="decimal" value="${esc(d.load || '')}" placeholder="e.g. 1250"></div></div>
+      <div class="grid2"><div class="field"><label for="dms${i}">Measured deflection (mm)</label><input id="dms${i}" data-df="meas" data-di="${i}" inputmode="decimal" value="${esc(d.meas || '')}" placeholder="e.g. 4,5"></div>
+        <div class="field"><label for="drt${i}">Allowed</label><select id="drt${i}" data-df="ratio" data-di="${i}">${RATIOS.map(n => `<option value="${n}" ${Number(d.ratio || 600) === n ? 'selected' : ''}>Span ÷ ${n}</option>`).join('')}</select></div></div>
+      <div id="dres${i}">${deflLine(d)}</div></div>`;
+  }
   function activeJob(){
     try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && a.date !== today())) return null;
       const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null');
@@ -313,6 +338,7 @@
               <div id="mn${i}" style="display:none;gap:6px;flex-direction:column"><input id="mni${i}" placeholder="New manufacturer"><button type="button" class="btn secondary small" data-addmake="${i}" style="width:100%">Add to list</button></div></div>
             <div class="field"><label for="w${i}">SWL (kg)</label><div style="position:relative"><input id="w${i}" data-f="swl" value="${esc(r.swl)}" inputmode="decimal" placeholder="e.g. 2000" style="padding-right:40px" ${ro}><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">kg</span></div></div>
           </div>
+          ${isBeam(r) ? deflBox(r, i) : ''}
           <div class="field"><span style="font-size:12.5px;font-weight:600;color:var(--label)" id="stl${i}">Condition</span>
             <div class="row" role="group" aria-labelledby="stl${i}">
               <button type="button" class="st${r.status === 'SAFE' ? ' on-safe' : ''}" data-st="${i}" data-v="SAFE" aria-pressed="${r.status === 'SAFE'}">✓ Safe</button>
@@ -396,6 +422,11 @@
     const $ = id => document.getElementById(id);
     const ti = $('toInv'); if (ti) ti.onclick = () => { S.view = 'inventory'; render(); };
     const tl = $('toList'); if (tl) tl.onclick = () => { S.view = 'list'; render(); };
+    app.querySelectorAll('[data-defladd]').forEach(b => b.onclick = () => { const r = l.rows[Number(b.dataset.defladd)]; r.defl = { span:'', load:'', meas:'', ratio:600 }; saveList(l); render(); const f = document.getElementById('dsp' + b.dataset.defladd); if (f) f.focus(); });
+    app.querySelectorAll('[data-deflrm]').forEach(b => b.onclick = () => { delete l.rows[Number(b.dataset.deflrm)].defl; saveList(l); render(); });
+    app.querySelectorAll('[data-df]').forEach(inp => { inp.oninput = inp.onchange = () => { const i = Number(inp.dataset.di); const d = l.rows[i].defl || (l.rows[i].defl = {});
+      let v = inp.value; if (inp.dataset.df !== 'ratio'){ const c = v.replace(/[^\d.,]/g, ''); if (c !== v){ v = c; inp.value = c; } } else v = Number(v);
+      d[inp.dataset.df] = v; saveList(l); const o = document.getElementById('dres' + i); if (o) o.innerHTML = deflLine(d); }; });
     app.querySelectorAll('[data-flopen]').forEach(b => b.onclick = () => openForklift(Number(b.dataset.flopen), b.dataset.type));
     app.querySelectorAll('[data-cust]').forEach(b => b.onclick = () => { S.cust = b.dataset.cust; S.view = 'customer'; render(); });
     const q = $('q'); if (q){ q.oninput = () => { S.q = q.value; const pos = q.selectionStart; render(); const n = $('q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch(e){} }; }
@@ -518,7 +549,7 @@
   async function ensurePdf(){ for (let i = 0; i < 50 && !(window.jspdf && window.jspdf.jsPDF); i++) await new Promise(r => setTimeout(r, 100)); if (!(window.jspdf && window.jspdf.jsPDF)) throw new Error('PDF maker not loaded'); }
   async function listDoc(l){
       await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { swl: swlText(r.swl), rep: repText(r), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
+      const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl).map(r => Object.assign({}, r, { desc: (r.desc || '') + (deflText(r.defl) ? '\n' + deflText(r.defl) : ''), swl: swlText(r.swl), rep: repText(r), cond: r.status === 'SAFE' ? 'SAFE' : r.status === 'UNSAFE' ? 'UNSAFE' : '' }));
       await table(doc, "Client's inventory", [[['Customer:', l.customer, 15, 140, 42], ['Job nr:', l.job, 145, 195, 162]], [['Site:', l.location, 15, 140, 42], ['Date:', niceDate(l.date), 145, 195, 160]]],
         grouped(rows, locsOf(l)), [{ t:'Serial nr', k:'serial', w:32 }, { t:'Description', k:'desc', w:38 }, { t:'Manufacturer', k:'make', w:28 }, { t:'SWL (kg)', k:'swl', w:22 }, { t:'Condition', k:'cond', w:24, color:STATUS_COLOR }, { t:'Report nr', k:'rep', w:36 }],
         (l.tech ? 'Listed by ' + l.tech + ' · ' : '') + rows.length + ' items' + (rows.some(r => r.status === 'UNSAFE') ? ' · unsafe items with reasons and photos on the next page' : ''));
