@@ -241,7 +241,7 @@
       <div class="full"><div class="lblrow"><label for="engName">Engineer's name</label><button id="chgTech">Change technician</button></div><input id="engName" readonly class="auto" placeholder="From your profile"></div>
       <div class="full"><label>Engineer's signature <span style="font-weight:400">(from your profile)</span></label><div class="sigwrap"><canvas id="sigEng"></canvas><button class="upl" type="button" id="engUpBtn">Upload</button><input type="file" accept="image/*" id="engUpload" class="vh"><button class="clr" data-c="sigEng">Clear</button><span class="ph">Sign here or upload</span></div><div class="pastebox" contenteditable="true" id="engPaste" inputmode="none">Or copy a signature picture, then long-press here and tap Paste</div></div>
       <div class="full" id="utBox" style="display:none"><div style="font-size:12px;font-weight:700;color:var(--navy);margin:4px 0 8px">LOAD TEST CERTIFICATE — UNDERSTUDY TO</div><div class="pair two"><div><label for="utName">Name</label><input id="utName" placeholder="e.g. J. Van Huyssteen"></div><div><label for="utLmi">LMI no</label><input id="utLmi" inputmode="numeric"></div></div>
-        <label style="margin-top:8px">Signature</label><div class="sigwrap"><canvas id="sigUt"></canvas><button class="clr" data-c="sigUt">Clear</button><span class="ph">Sign here</span></div><div style="font-size:11px;color:#6b7280;margin-top:4px">Remembered for the next load test.</div></div>
+        <label style="margin-top:8px">Signature</label><div class="sigwrap"><canvas id="sigUt"></canvas><button class="upl" type="button" id="utUpBtn">Upload</button><input type="file" accept="image/*" id="utUpload" class="vh"><button class="clr" data-c="sigUt">Clear</button><span class="ph">Sign here or upload</span></div><div class="pastebox" contenteditable="true" id="utPaste" inputmode="none">Or copy a signature picture, then long-press here and tap Paste</div><div style="font-size:11px;color:#6b7280;margin-top:4px">Draw it, upload a photo of it, or paste it. Remembered for the next load test.</div></div>
       <div class="full"><label for="custName">Customer's name</label><input id="custName"></div>
       <div class="full"><label>Customer's signature</label><div class="sigwrap"><canvas id="sigCust"></canvas><button class="clr" data-c="sigCust">Clear</button><span class="ph">Sign here</span></div></div>
     </div>
@@ -665,6 +665,11 @@ function loginModal(){
 }
 $("chgTech").onclick=loginModal;
 $("engUpBtn").onclick=()=>$("engUpload").click();
+// understudy's signature: upload a photo/scan or paste a picture (remembered for the next load test)
+const setUtSig=async f=>{state.sig.sigUt=await fileToSig(f);utStore({sig:state.sig.sigUt});pads.sigUt.size();save();toast("Understudy signature saved");};
+$("utUpBtn").onclick=()=>$("utUpload").click();
+$("utUpload").onchange=async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;$("utUpBtn").textContent="Loading…";try{await setUtSig(f);}catch(err){upErr(err);}$("utUpBtn").textContent="Upload";e.target.value="";};
+wirePaste("utPaste",async f=>{try{await setUtSig(f);}catch(err){upErr(err);}});
 wirePaste("engPaste",async f=>{state.sig.sigEng=await fileToSig(f);saveTechSig(state.sig.sigEng);pads.sigEng.size();save();toast("Signature saved");});
 $("engUpload").onchange=async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;$("engUpBtn").textContent="Loading…";try{state.sig.sigEng=await fileToSig(f);saveTechSig(state.sig.sigEng);pads.sigEng.size();save();toast("Signature saved");}catch(err){upErr(err);}$("engUpBtn").textContent="Upload";e.target.value="";};
 function checkSession(){const se=session();if(se){state.f.engName=se.name;if(!state.sig.sigEng)state.sig.sigEng=techSig(se.name);applyState();}else{state.f.engName="";applyState();loginModal();}}
