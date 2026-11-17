@@ -675,29 +675,28 @@
   const monthOf = k => { const [y, m] = String(k || '').split('-').map(Number); return m ? ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'][m - 1] + ' ' + y : ''; };
   function censusItems(l){
     const rows = (l.rows || []).filter(r => r.serial || r.desc);
-    const items = rows.map(r => { const make = String(r.make || '').trim(); let desc = String(r.desc || '').trim();
-      if (make && !/^unknown$/i.test(make) && !norm(desc).includes(norm(make))) desc += ' (' + make + ')';
-      return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), ton:tonText(r.swl), loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? String(r.reason || '').toUpperCase() : '' }; });
+    const items = rows.map(r => { const make = String(r.make || '').trim(); const desc = String(r.desc || '').trim();
+      return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), make:make && !/^unknown$/i.test(make) ? make.toUpperCase() : '', ton:tonText(r.swl), loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? String(r.reason || '').toUpperCase() : '' }; });
     const order = []; items.forEach(it => { if (!order.includes(it.loc)) order.push(it.loc); });
     return order.map(loc => items.filter(it => it.loc === loc));
   }
   async function listDoc(l){
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-    const L = 15, W = [40, 78, 24, 38], X = [L, L + 40, L + 118, L + 142], R = L + 180, INK = [0, 0, 0], RED = [220, 0, 0], PH = 287;
+    const L = 15, W = [28, 62, 34, 22, 34], X = W.map((w, k) => L + W.slice(0, k).reduce((a, b) => a + b, 0)), R = L + 180, INK = [0, 0, 0], RED = [220, 0, 0], PH = 287;
     let y = 18;
     const head = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK);
       [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach(t => { doc.text(t, 105, y, { align:'center' }); y += 6; });
       y += 2; colHead(); };
     const colHead = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...INK); doc.setDrawColor(0); doc.setLineWidth(0.2);
-      ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { doc.rect(X[k], y, W[k], 7); doc.text(h, X[k] + 1.5, y + 4.8); }); y += 7 + 4; };
+      ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { doc.rect(X[k], y, W[k], 7); doc.text(h, X[k] + 1.5, y + 4.8); }); y += 7 + 4; };
     const cell = (vals, color) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color);
       const lines = vals.map((v, k) => doc.splitTextToSize(String(v || ''), W[k] - 3)); const h = Math.max(6, ...lines.map(x => x.length * 4 + 2));
       if (y + h > PH - 12){ doc.addPage(); y = 15; colHead(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color); }
       lines.forEach((ls, k) => { doc.setDrawColor(0); doc.rect(X[k], y, W[k], h); doc.text(ls, X[k] + 1.5, y + 4.2); }); y += h; };
     head();
     censusItems(l).forEach((grp, gi) => { if (gi) y += 5;
-      grp.forEach(it => { cell([it.serial, it.desc, it.ton, it.loc], it.unsafe ? RED : INK);
-        if (it.unsafe && it.reason){ doc.setTextColor(...RED); const ls = doc.splitTextToSize(it.reason, W[1] - 3); if (y + ls.length * 4 + 3 > PH - 12){ doc.addPage(); y = 15; colHead(); } doc.setFontSize(9); doc.text(ls, X[1] + 1.5, y + 4); y += ls.length * 4 + 2; } }); });
+      grp.forEach(it => { cell([it.serial, it.desc, it.make, it.ton, it.loc], it.unsafe ? RED : INK);
+        if (it.unsafe && it.reason){ doc.setTextColor(...RED); const ls = doc.splitTextToSize(it.reason, W[1] + W[2] - 3); if (y + ls.length * 4 + 3 > PH - 12){ doc.addPage(); y = 15; colHead(); } doc.setFontSize(9); doc.text(ls, X[1] + 1.5, y + 4); y += ls.length * 4 + 2; } }); });
     y += 8; if (y > PH - 12){ doc.addPage(); y = 20; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...RED); doc.text('RED = UNSAFE FOR USE', L, y);
     const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl);
     await unsafePages(doc, l, rows);
@@ -709,13 +708,13 @@
   async function listXlsx(l){
     const EX = await excelJS(); const wb = new EX.Workbook(); wb.creator = 'Blue Cranes Online';
     const ws = wb.addWorksheet(String(l.customer || 'Inventory').toUpperCase().replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 28) || 'INVENTORY', { pageSetup:{ paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0 } });
-    ws.columns = [{ width:24 }, { width:54 }, { width:12 }, { width:26 }];
+    ws.columns = [{ width:20 }, { width:46 }, { width:20 }, { width:12 }, { width:24 }];
     const red = { argb:'FFFF0000' }, line = { style:'thin', color:{ argb:'FF000000' } }, box = { top:line, left:line, bottom:line, right:line };
-    [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 4); const c = ws.getCell(k + 1, 1); c.value = t; c.font = { name:'Arial', bold:true, size:12 }; c.alignment = { horizontal:'center' }; });
-    ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { const c = ws.getCell(4, k + 1); c.value = h; c.font = { name:'Arial', bold:true }; c.border = box; });
+    [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 5); const c = ws.getCell(k + 1, 1); c.value = t; c.font = { name:'Arial', bold:true, size:12 }; c.alignment = { horizontal:'center' }; });
+    ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { const c = ws.getCell(4, k + 1); c.value = h; c.font = { name:'Arial', bold:true }; c.border = box; });
     let r = 6;
     censusItems(l).forEach((grp, gi) => { if (gi) r++;
-      grp.forEach(it => { [it.serial, it.desc, it.ton, it.loc].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : { name:'Arial' }; c.border = box; }); r++;
+      grp.forEach(it => { [it.serial, it.desc, it.make, it.ton, it.loc].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : { name:'Arial' }; c.border = box; }); r++;
         if (it.unsafe && it.reason){ const c = ws.getCell(r, 2); c.value = it.reason; c.font = { name:'Arial', color:red }; c.alignment = { wrapText:true }; r++; } }); });
     r++; const f = ws.getCell(r, 1); f.value = 'RED = UNSAFE FOR USE'; f.font = { name:'Arial', bold:true, color:red };
     const buf = await wb.xlsx.writeBuffer();

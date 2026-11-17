@@ -202,7 +202,7 @@
         <b style="font-size:14px">1. Import the client's Excel file</b>
         <label class="drop" for="ifile"><b>${S.invFile ? 'Choose another file' : 'Choose Excel file'}</b><br><span class="hint">.xlsx, .xls or .csv${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
         <input type="file" id="ifile" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none">
-        <span class="hint">The client's inventory in your census layout (<b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>). Other layouts are read too. No file? You can still schedule the job without an inventory.</span>
+        <span class="hint">The client's inventory in your census layout (<b>ITEM NO · DESCRIPTION · MANUFACTURER · TONNAGE · ITEM LOCATION</b>). Other layouts are read too. No file? You can still schedule the job without an inventory.</span>
         <button class="btn secondary" id="itpl">⬇ Download census template (.xlsx)</button></section>
       <section class="card"><h2>Schedule it</h2>
         <b style="font-size:14px">2. Who does the job, and when</b>
@@ -466,8 +466,7 @@
   async function censusOfJob(id, btn){ const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return; const l = g.list;
     const old = btn.textContent; btn.disabled = true; btn.textContent = '…';
     try { const items = (l.rows || []).filter(r => r.serial || r.desc).map(r => { const make = String(r.make || '').trim(); let desc = String(r.desc || '').trim();
-        if (make && !/^unknown$/i.test(make) && !up(desc).includes(up(make))) desc += ' (' + make + ')';
-        return { serial:r.serial || '', desc, swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? (r.reason || '') : '' }; });
+        return { serial:r.serial || '', desc, make:make && !/^unknown$/i.test(make) ? make : '', swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? (r.reason || '') : '' }; });
       const name = l.customer || j.customer || 'Customer';
       await saveBook(await censusBook([{ name, month:monthText(l.date || j.sheetDate), items }]), name + ' census ' + (l.date || j.sheetDate) + '.xlsx'); }
     catch(e){ console.error(e); toast('Could not make the file'); }
@@ -547,10 +546,10 @@
         ${exportResults()}
         <span class="hint">Each job exports as a folder with the client's inventory (PDF and Excel, census layout), all certificates in one PDF (load test, harness and forklift) and every forklift inspection and load test report. Jobs the technicians did themselves are included too.</span></section>
       <section class="card"><h2>Client inventories</h2>
-        <span class="hint">One sheet per customer in the census layout: <b>ITEM NO · DESCRIPTION · TONNAGE · ITEM LOCATION</b>, grouped by location, unsafe items in red with the reason under them. The newest record per item nr.</span>
+        <span class="hint">One sheet per customer in the census layout: <b>ITEM NO · DESCRIPTION · MANUFACTURER · TONNAGE · ITEM LOCATION</b>, grouped by location, unsafe items in red with the reason under them. The newest record per item nr.</span>
         <button class="btn navy" id="expCen">⬇ Export to Excel</button>
         <button class="btn secondary" id="expInv">⬇ Full list with all columns</button>
-        <span class="hint">The full list adds manufacturer, Safe/Unsafe, report nr, job nr and technician, all customers on one sheet.</span></section>
+        <span class="hint">The full list adds Safe/Unsafe, report nr, job nr and technician, all customers on one sheet.</span></section>
       </div></main>`;
   }
   function vNoAdmin(msg){ return `<header><a href="../?home=1" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a><div><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
@@ -582,8 +581,8 @@
     const it = $('itpl'); if (it) it.onclick = async () => { try { await xlsxReady(); const wb = XLSX.utils.book_new();
       const job = newJob(); const cust = String((job && job.customer) || 'CUSTOMER NAME').toUpperCase();
       const mon = new Date().toLocaleDateString('en-ZA', { month:'long', year:'numeric' }).toUpperCase();
-      const ws = XLSX.utils.aoa_to_sheet([[cust], ['CENSUS OF LIFTING EQUIPMENT'], [mon], ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'], []]);
-      ws['!merges'] = [0, 1, 2].map(r => ({ s:{ r, c:0 }, e:{ r, c:3 } })); ws['!cols'] = [22, 44, 12, 26].map(w => ({ wch:w }));
+      const ws = XLSX.utils.aoa_to_sheet([[cust], ['CENSUS OF LIFTING EQUIPMENT'], [mon], ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'ITEM LOCATION:'], []]);
+      ws['!merges'] = [0, 1, 2].map(r => ({ s:{ r, c:0 }, e:{ r, c:4 } })); ws['!cols'] = [20, 44, 20, 12, 24].map(w => ({ wch:w }));
       XLSX.utils.book_append_sheet(wb, ws, 'Sheet1'); download(wb, (job ? (job.customer || job.card) + ' ' : '') + 'census template.xlsx'); } catch(e){ toast('Could not make the template'); } };
     app.querySelectorAll('[data-cen]').forEach(b => b.onclick = () => censusOfJob(b.dataset.cen, b));
     app.querySelectorAll('[data-certs]').forEach(b => b.onclick = () => downloadJob(b.dataset.certs, 'certs', b));
@@ -693,14 +692,14 @@
     customers.forEach(c => {
       let nm = (String(c.name || 'NO CUSTOMER').toUpperCase().replace(/[\[\]:*?\/\\]/g, ' ').replace(/\s+/g, ' ').trim() || 'SHEET').slice(0, 28); let n = nm, i = 2; while (used[n]) n = nm.slice(0, 26) + ' ' + i++; used[n] = 1;
       const ws = wb.addWorksheet(n, { pageSetup:{ paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0 } });
-      ws.columns = [{ width:24 }, { width:54 }, { width:12 }, { width:26 }];
-      [String(c.name || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', c.month || ''].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 4); const cl = ws.getCell(k + 1, 1); cl.value = t; cl.font = { name:'Arial', bold:true, size:12 }; cl.alignment = { horizontal:'center' }; });
-      ['ITEM NO:', 'DESCRIPTION:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { const cl = ws.getCell(4, k + 1); cl.value = h; cl.font = { name:'Arial', bold:true }; cl.border = box; });
+      ws.columns = [{ width:20 }, { width:46 }, { width:20 }, { width:12 }, { width:24 }];
+      [String(c.name || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', c.month || ''].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 5); const cl = ws.getCell(k + 1, 1); cl.value = t; cl.font = { name:'Arial', bold:true, size:12 }; cl.alignment = { horizontal:'center' }; });
+      ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'ITEM LOCATION:'].forEach((h, k) => { const cl = ws.getCell(4, k + 1); cl.value = h; cl.font = { name:'Arial', bold:true }; cl.border = box; });
       const order = []; c.items.forEach(it => { const l = it.loc || ''; if (!order.includes(l)) order.push(l); });
       let r = 6;
       order.forEach((l, gi) => { if (gi) r++;
         c.items.filter(it => (it.loc || '') === l).forEach(it => {
-          [it.serial, it.desc, it.swl, it.loc].forEach((v, k) => { const cl = ws.getCell(r, k + 1); cl.value = String(v || '').toUpperCase(); cl.font = it.unsafe ? { name:'Arial', color:red } : { name:'Arial' }; cl.border = box; });
+          [it.serial, it.desc, it.make, it.swl, it.loc].forEach((v, k) => { const cl = ws.getCell(r, k + 1); cl.value = String(v || '').toUpperCase(); cl.font = it.unsafe ? { name:'Arial', color:red } : { name:'Arial' }; cl.border = box; });
           r++;
           if (it.unsafe && it.reason){ const cl = ws.getCell(r, 2); cl.value = String(it.reason).toUpperCase(); cl.font = { name:'Arial', color:red }; cl.alignment = { wrapText:true }; r++; }
         }); });
@@ -714,7 +713,7 @@
     const job = S.jobs.find(j => j.id === S.invJob); const ok = (S.inv || []).filter(r => !r.errs.length); if (!ok.length) return;
     const name = (job && job.customer) || S.invCust || (ok.find(r => r.customer) || {}).customer || 'Customer';
     const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Making…';
-    try { await saveBook(await censusBook([{ name, month:monthText(today()), items:ok.map(r => ({ serial:r.serial, desc:r.desc + (r.make && !/^unknown$/i.test(r.make) && !up(r.desc).includes(up(r.make)) ? ' (' + r.make + ')' : ''), swl:tonText(r.swl), loc:r.loc, unsafe:false, reason:'' })) }]), name + ' census.xlsx'); }
+    try { await saveBook(await censusBook([{ name, month:monthText(today()), items:ok.map(r => ({ serial:r.serial, desc:r.desc, make:r.make && !/^unknown$/i.test(r.make) ? r.make : '', swl:tonText(r.swl), loc:r.loc, unsafe:false, reason:'' })) }]), name + ' census.xlsx'); }
     catch(e){ console.error(e); toast('Could not make the file'); }
     finally { btn.disabled = false; btn.innerHTML = old; }
   }
@@ -727,9 +726,8 @@
         const c = by.get(ck) || { name:cust || 'No customer', last:'', items:new Map() }; by.set(ck, c); c.name = cust || c.name;
         (l.rows || []).forEach((r, i) => { if (!r.serial && !r.desc) return; if (l.date > c.last) c.last = l.date;
           const make = String(r.make || '').trim(); let desc = String(r.desc || '').trim();
-          if (make && !/^unknown$/i.test(make) && !up(desc).includes(up(make))) desc += ' (' + make + ')';
           const k = up(r.serial) || ('#' + l.id + '#' + i);
-          c.items.set(k, { serial:r.serial || '', desc, swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? (r.reason || '') : '' }); }); });
+          c.items.set(k, { serial:r.serial || '', desc, make:make && !/^unknown$/i.test(make) ? make : '', swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', reason:r.status === 'UNSAFE' ? (r.reason || '') : '' }); }); });
       const customers = [...by.values()].filter(c => c.items.size).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ name:c.name, month:monthText(c.last), items:[...c.items.values()] }));
       if (!customers.length){ toast('No client inventories yet'); return; }
       await saveBook(await censusBook(customers), `Blue Cranes client inventories ${today()}.xlsx`);
