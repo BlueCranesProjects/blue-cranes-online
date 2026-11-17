@@ -168,6 +168,7 @@
   .phrow{display:flex;gap:8px}
   .phbtn{flex:1;margin:0!important;text-align:center;padding:11px;border-radius:8px;border:1.5px solid var(--navy);background:#fff;color:var(--navy)!important;font-size:14px!important;font-weight:800!important;cursor:pointer}
   .phdel{border:1.5px solid var(--bad);background:#fff;color:var(--bad);border-radius:8px;padding:0 14px;font-weight:700;font-size:13px}
+  #pdfBtn.done{background:var(--ok);color:#fff}
 </style>
 </head>
 <body>
@@ -257,7 +258,7 @@
 
 <div class="actions">
   <button class="secondary" id="newBtn">New report</button>
-  <button class="primary" id="pdfBtn">Save PDF report</button>
+  <button class="primary" id="pdfBtn">Submit report</button>
 </div>
 
 <div class="panel" id="repPanel"><div class="ptop"><button id="repClose" class="pback">‹ Back</button><b>Saved reports</b><span></span></div>
@@ -346,7 +347,7 @@ function build(){
 function showNote(i,on){const d=$("it"+(i+1));d.querySelector(".notewrap").style.display=on?"flex":"none";d.querySelector(".notebtn").style.display=on?"none":"block";}
 
 function autoStatus(all,anyX){if(state.status&&state.stAuto!==true)return;const s=anyX?"UNSAFE":all?"SAFE":null;if(state.status!==s){state.status=s;state.stAuto=!!s;const u=s==="UNSAFE";state.wr={insp:u,load:u};}}
-function render(){
+function render(){subBtn();
   let done=0;
   ITEMS.forEach((_,i)=>{
     const d=$("it"+(i+1));
@@ -400,7 +401,10 @@ function chainCalc(apply){
   return out;
 }
 let saveT;
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>{FIELDS.forEach(f=>state.f[f]=$(f).value);store(KEY,JSON.stringify(state));keepDraft();},250);}
+// ---- submitting: the report is saved to the account and put on the client's inventory (PDFs come from Saved reports, the job pack and Admin) ----
+function subBtn(){const b=$("pdfBtn");if(!b)return;const done=!!(state._saved&&state._saved===stSig(state));b.classList.toggle("done",done);
+  b.textContent=done?"✓ Submitted":state._rid?"Submit changes":"Submit report";}
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{FIELDS.forEach(f=>state.f[f]=$(f).value);store(KEY,JSON.stringify(state));keepDraft();subBtn();},250);}
 // ---- unfinished reports: every report on screen that has content and is not saved (or changed since saving) is kept, so it can be finished later ----
 const DKEY="bc-forklift-drafts";
 function keepDraftNow(){try{if(typeof state!=="undefined"&&state&&state.f){FIELDS.forEach(f=>{const el=$(f);if(el&&el.value!==undefined&&document.readyState!=="loading")state.f[f]=el.value;});keepDraft();}}catch(e){}}
@@ -506,13 +510,13 @@ $("pdfBtn").onclick=()=>{
   if(!state.f.engName)miss.push("Engineer's name");
   if(!state.sig.sigEng)miss.push("Engineer's signature");
   if(state.type==="LOAD TEST"){if(!state.f.site)miss.push("Site address (for the certificate)");if(!state.f.swl)miss.push("SWL");if(!state.f.lc)miss.push("Load centre");}
-  if(miss.length){modal(`<h3>Some things are missing</h3><ul>${miss.map(m=>"<li>"+m+"</li>").join("")}</ul><div class="btns"><button class="secondary" id="mNo">Go back</button><button class="primary" id="mYes">Save PDF anyway</button></div>`);$("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();makePdf();};}
+  if(miss.length){modal(`<h3>Some things are missing</h3><ul>${miss.map(m=>"<li>"+m+"</li>").join("")}</ul><div class="btns"><button class="secondary" id="mNo">Go back</button><button class="primary" id="mYes">Submit anyway</button></div>`);$("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();makePdf();};}
   else makePdf();
 };
 
 function afterSave(){const job=(state.f.jobno||"").trim();
-  if(!job){toast("PDF saved");return;}
-  modal(`<h3>PDF saved</h3><p>Doing another forklift for <b>${(state.f.customer||"this customer").replace(/</g,"&lt;")}</b> on job ${job}?</p>
+  subBtn();if(!job){toast("✓ Report submitted");return;}
+  modal(`<h3>✓ Report submitted</h3><p>Doing another forklift for <b>${(state.f.customer||"this customer").replace(/</g,"&lt;")}</b> on job ${job}?</p>
     <button class="primary" id="aNext" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">Next forklift → ${nextDoc(job,true)}</button>
     <div class="btns"><button class="secondary" id="aStay">Stay on this report</button></div>`);
   $("aStay").onclick=closeModal;$("aNext").onclick=()=>{closeModal();nextSameJob();};}
@@ -625,13 +629,11 @@ async function buildPdf(st){const prev=state;state=st;try{
 async function makePdf(){
   if(!window.jspdf){toast("PDF tool still loading — try again");return;}
   if(!state._rid){const u=utSaved();if(u.name||u.sig){state.f.utName=u.name||"";state.f.utLmi=u.lmi||"";state.sig.sigUt=u.sig||null;}}
-  const {doc,name}=await buildPdf(state);
-  const blob=doc.output("blob");recordDoc();
-  try{await saveReport(state);}catch(e){}
+  try{await buildPdf(JSON.parse(JSON.stringify(state)));}catch(e){console.error(e);toast("This report could not be made – check the photos");return;}
+  recordDoc();
+  try{await saveReport(state);}catch(e){console.error(e);toast("Couldn't submit the report – try again");return;}
   try{toEquipment(state);}catch(e){console.error('Equipment list update failed',e);}
-  let cert=null;if(state.type==="LOAD TEST"){try{cert=await buildCert(JSON.parse(JSON.stringify(state)));}catch(e){toast("Couldn't build the certificate");}}
-  const files=[{blob,name,type:"application/pdf"}];if(cert)files.push({blob:cert.doc.output("blob"),name:cert.name,type:"application/pdf"});
-  try{const how=await BC.saveFiles(files,name);if(how)afterSave();}catch(e){toast("Couldn't save the PDF here");}
+  subBtn();afterSave();
 }
 
 
@@ -888,7 +890,7 @@ async function showReports(){
   document.querySelectorAll("#repScope button").forEach(b=>b.classList.toggle("on",b.dataset.sc===repScope));
   $("repAll").innerHTML=list.length?`<div class="dlrow"><button class="pdf" data-ex="all-pdf">All ${list.length} as one PDF</button><button class="zip" data-ex="all-zip">All as zip</button></div>`:"";
   if(!list.length&&q){$("repList").innerHTML=`<div class="empty">No reports for a customer matching “${esc(q)}”.</div>`;return;}
-  if(!list.length){$("repList").innerHTML=`<div class="empty">${repScope==="today"?"No reports saved today yet.":"No saved reports yet."}<br>Reports are kept here each time you tap <b>Save PDF report</b>.</div>`;return;}
+  if(!list.length){$("repList").innerHTML=`<div class="empty">${repScope==="today"?"No reports saved today yet.":"No saved reports yet."}<br>Reports are kept here each time you tap <b>Submit report</b>.</div>`;return;}
   const groups={};list.forEach(r=>{const k=r.job||"";(groups[k]=groups[k]||[]).push(r);});
   const latest=k=>Math.max(...groups[k].map(r=>r.savedAt||0));
   const keys=Object.keys(groups).sort((a,b)=>(a===""?1:0)-(b===""?1:0)||latest(b)-latest(a));
