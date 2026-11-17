@@ -216,7 +216,8 @@
   // the started time-sheet job this inventory belongs to (forklift reports need a started job)
   function startedJob(){
     try { const a = S.active; if (!a) return null; const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); if (!ts) return null;
-      if (a.idx != null && !a.sched){ const j = ts.sheets[a.date] && ts.sheets[a.date].jobs[a.idx]; return j && !j.done && a.date === today() ? { k:a.date, i:a.idx, j } : null; }
+      if (a.idx != null && !a.sched){ const j = ts.sheets[a.date] && ts.sheets[a.date].jobs[a.idx]; if (j && a.edit) return { k:a.date, i:a.idx, j, edit:true };   // past / finished job opened from History
+        return j && !j.done && a.date === today() ? { k:a.date, i:a.idx, j } : null; }
       const sid = a.sched || (S.cur && S.cur.sched); const sh = ts.sheets[today()]; if (!sid || !sh) return null;
       const i = (sh.jobs || []).findIndex(j => j.sched === sid && !j.done); return i >= 0 ? { k:today(), i, j:sh.jobs[i] } : null;
     } catch(e){ return null; } }
@@ -231,7 +232,7 @@
         <a class="btn primary" href="../timesheet/${sid ? '?job=' + encodeURIComponent(sid) : ''}">Go to the job</a><button class="btn secondary" type="button" id="flNo">Cancel</button></div>`;
       document.body.appendChild(m); m.querySelector('#flNo').onclick = () => m.remove(); m.onclick = e => { if (e.target === m) m.remove(); }; return; }
     if (!r.cno) r.cno = certN(l, i); saveList(l, true);
-    try { localStorage.setItem('bco-active-job', JSON.stringify({ date:st.k, idx:st.i, card:st.j.card || '', customer:st.j.customer || st.j.desc || '', contact:st.j.contact || '', at:new Date().toISOString() }));
+    try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:st.k, idx:st.i, card:st.j.card || '', customer:st.j.customer || st.j.desc || '', contact:st.j.contact || '', at:new Date().toISOString() }, st.edit ? { edit:true } : {})));
       localStorage.setItem('bco-fl-item', JSON.stringify({ serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', no:r.cno, type, at:Date.now() })); } catch(e){}
     location.href = '../forklift/?type=' + encodeURIComponent(type);
   }

@@ -905,7 +905,7 @@ if(!ACTIVE&&!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showRep
 if(ACTIVE&&!EMBED){setTimeout(async()=>{await syncDrafts();const jc=jobCore(ACTIVE.card||"");const mine=draftList().filter(r=>jc&&jobCore(r.job)===jc);
   if(mine.length&&!$("repPanel").classList.contains("show")){const r=mine[0],f=r.state.f;modal(`<h3>Unfinished report</h3><p>${esc(f.docno||"")} ${f.serial?"· "+esc(f.serial):""} on this job was started but not saved as a report.</p><div class="btns"><button class="secondary" id="mNo">Later</button><button class="primary" id="mYes">Continue it</button></div>`);
     $("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();continueDraft(r.id);};}},800);}
-if(ACTIVE&&ACTIVE.edit&&!EMBED){if(!state.f.serial&&!state.f.make&&ACTIVE.date&&state.f.date!==ACTIVE.date){state.f.date=ACTIVE.date;state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);applyState();save();}repScope="all";$("repSearch").value=ACTIVE.customer||"";$("repPanel").classList.add("show");showReports();toast("Tap Open on a report to change it, or close this list to add a new one");}
+if(ACTIVE&&ACTIVE.edit&&!EMBED&&!load("bco-fl-item")){if(!state.f.serial&&!state.f.make&&ACTIVE.date&&state.f.date!==ACTIVE.date){state.f.date=ACTIVE.date;state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);applyState();save();}repScope="all";$("repSearch").value=ACTIVE.customer||"";$("repPanel").classList.add("show");showReports();toast("Tap Open on a report to change it, or close this list to add a new one");}
 $("repClose").onclick=()=>{$("repPanel").classList.remove("show");if(!ACTIVE){if(WANT_REPORTS)location.href="../timesheet/";else showGate();}};
 if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
 {const wt=new URLSearchParams(location.search).get("type");let it=null;try{it=JSON.parse(load("bco-fl-item")||"null");}catch(e){}
@@ -913,7 +913,7 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
   if(ACTIVE&&!other&&(wt==="INSPECTION"||wt==="LOAD TEST")&&state.type!==wt){state.type=wt;applyState();save();}}
 // opened from a forklift in the client's inventory: a report for that forklift, with its details filled in
 (function(){let it=null;try{it=JSON.parse(load("bco-fl-item")||"null");localStorage.removeItem("bco-fl-item");}catch(e){}
-  if(!it||!ACTIVE||EMBED||Date.now()-(it.at||0)>15*60000)return;
+  if(!it||!ACTIVE||EMBED||Date.now()-(it.at||0)>15*60000)return;window.__FL_ITEM=1;
   const N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," ");FIELDS.forEach(f=>state.f[f]=$(f).value);
   const fill=()=>{if(it.serial)state.f.serial=String(it.serial).toUpperCase();if(it.make&&!state.f.make)state.f.make=it.make;if(it.swl&&!state.f.swl)state.f.swl=String(it.swl).replace(/[^\d.]/g,"");if(it.loc&&!state.f.location)state.f.location=it.loc;if(it.site&&!state.f.site)state.f.site=it.site;};
   const startNew=()=>{if(state.f.serial||state.f.make||state.f.model)recordDoc();fresh();state.type=it.type||state.type;fill();if(it.no&&state.f.jobno)state.f.docno="F"+jobCore(state.f.jobno)+"."+it.no;applyState();save();window.scrollTo(0,0);toast("New "+(state.type==="LOAD TEST"?"load test":"inspection")+(it.serial?" for "+N(it.serial):"")+" · "+state.f.docno);};
