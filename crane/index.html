@@ -261,6 +261,8 @@
       <div class="full"><label for="engName">Technician's name</label><input id="engName" readonly class="auto" placeholder="From your profile"></div>
       <div class="full"><label for="engLmi">Technician's LMI number</label><input id="engLmi" placeholder="e.g. LMI 0456"><div style="font-size:11px;color:#6b7280;margin-top:4px">Remembered for your next report.</div></div>
       <div class="full"><label>Technician's signature <span style="font-weight:400">(from your profile)</span></label><div class="sigwrap"><canvas id="sigEng"></canvas><span class="ph">From your profile</span></div></div>
+      <div class="full"><div style="font-size:12px;font-weight:700;color:var(--navy);margin:4px 0 8px">UNDERSTUDY TO</div><div class="pair two"><div><label for="utName">Name</label><input id="utName" placeholder="e.g. J. Van Huyssteen"></div><div><label for="utLmi">LMI no</label><input id="utLmi"></div></div>
+        <label style="margin-top:8px">Signature</label><div class="sigwrap"><canvas id="sigUt"></canvas><button class="upl" type="button" id="utUpBtn">Upload</button><input type="file" accept="image/*" id="utUpload" class="vh"><button class="clr" data-c="sigUt">Clear</button><span class="ph">Sign here or upload</span></div><div class="pastebox" contenteditable="true" id="utPaste" inputmode="none">Or copy a signature picture, then long-press here and tap Paste</div><div style="font-size:11px;color:#6b7280;margin-top:4px">Draw it, upload a photo of it, or paste it. Remembered for the next report (same understudy as on the certificates).</div></div>
       <div class="full"><label for="custName">Customer's name</label><input id="custName"></div>
       <div class="full"><label>Customer's signature</label><div class="sigwrap"><canvas id="sigCust"></canvas><button class="clr" data-c="sigCust">Clear</button><span class="ph">Sign here</span></div></div>
     </div>
@@ -296,9 +298,9 @@ SAFETY.forEach(([a,t])=>ROWS.push({id:a,no:a,name:t,kind:"one",sec:"Safety"}));
 MEAS.forEach(([a,t])=>ROWS.push({id:a,no:a,name:t,kind:"meas",sec:"Safety"}));
 ELEC.forEach((t,k)=>ROWS.push({id:"e"+(k+27),no:String(k+27),name:t,kind:"one",sec:"Electrical"}));
 const RV={ok:"✓",w:"W",x:"X",na:"N/A"};
-const FIELDS=["customer","date","jobno","details","make","serial","swl","location","site","docno","prevLoad","nextInsp","nextLoad","remarks","engName","engLmi","custName"];
+const FIELDS=["customer","date","jobno","details","make","serial","swl","location","site","docno","prevLoad","nextInsp","nextLoad","remarks","engName","engLmi","utName","utLmi","custName"];
 const KEY="bc-crane-draft-v1",JOBKEY="bc-crane-jobs",LMIKEY="bc-crane-lmi",DKEY="bc-crane-drafts";
-function blank(){return{type:"INSPECTION",f:{},parts:{lt:true,ct:true,h:true,ah:false},res:{},val:{F:"",G:"",H:""},note:{},status:null,wr:{insp:false,load:false},sig:{sigEng:null,sigCust:null},row:null,list:null};}
+function blank(){return{type:"INSPECTION",f:{},parts:{lt:true,ct:true,h:true,ah:false},res:{},val:{F:"",G:"",H:""},note:{},status:null,wr:{insp:false,load:false},sig:{sigEng:null,sigCust:null,sigUt:null},row:null,list:null};}
 let state=blank();
 function store(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function load(k){try{return localStorage.getItem(k)}catch(e){return null}}
@@ -398,7 +400,11 @@ $("date").addEventListener("change",()=>{const d=$("date").value;if(!d)return;$(
 $("allOk").onclick=()=>{let c=0;ROWS.forEach(r=>{if(!rowVisible(r)||r.kind==="meas")return;if(r.kind==="four")activeCols(r.n).forEach(k=>{if(!state.res[r.id+"_"+k]){state.res[r.id+"_"+k]="ok";c++;}});else if(!state.res[r.id]){state.res[r.id]="ok";c++;}});render();save();toast(c?`${c} marked ✓`:"All items already marked");};
 $("elNa").onclick=()=>{ROWS.filter(r=>r.sec==="Electrical").forEach(r=>state.res[r.id]="na");render();save();toast("Electrical items marked N/A");};
 $("jumpNext").onclick=()=>{const r=ROWS.find(x=>rowVisible(x)&&!rowDone(x));if(!r){toast("All items marked");return;}$("it-"+r.id).scrollIntoView({behavior:"smooth",block:"center"});};
-function saveTechSig(){} function utStore(){}
+function saveTechSig(){}
+const UTKEY="bc-forklift-understudy";
+function utSaved(){try{return JSON.parse(load(UTKEY)||"{}")||{}}catch(e){return{}}}
+let utCloudT;function utStore(p){store(UTKEY,JSON.stringify(Object.assign(utSaved(),p)));clearTimeout(utCloudT);utCloudT=setTimeout(()=>{try{if(cloudOK()){const u=utSaved();window.Cloud.putItem("understudy",{kind:"understudy",name:u.name||"",lmi:u.lmi||"",sig:u.sig||"",updated:new Date().toISOString()});}}catch(e){}},1000);}
+function utFill(){const u=utSaved();if(!state.f.utName)state.f.utName=u.name||"";if(!state.f.utLmi)state.f.utLmi=u.lmi||"";if(!state.sig.sigUt)state.sig.sigUt=u.sig||null;}
 
 // signatures
 const pads={};
@@ -508,7 +514,7 @@ function missing(){const miss=[];readFields();
   if(!state.f.customer)miss.push("Customer");if(!state.f.details)miss.push("Crane / hoist details");if(!state.f.serial)miss.push("Serial no");if(!state.f.swl)miss.push("SWL");
   if(!Object.values(state.parts).some(Boolean))miss.push("Tick what the crane / hoist has (L/T, C/T, H, A/H)");
   const un=ROWS.filter(r=>rowVisible(r)&&!rowDone(r)).map(r=>r.no);if(un.length)miss.push(`${un.length} checklist item${un.length>1?"s":""} not marked (${un.slice(0,8).join(", ")}${un.length>8?"…":""})`);
-  if(!state.status)miss.push("Safe / Unsafe for use");if(!state.f.engName)miss.push("Technician's name");if(!state.sig.sigEng)miss.push("Technician's signature (add it to your profile)");if(!state.f.engLmi)miss.push("Technician's LMI number");
+  if(!state.status)miss.push("Safe / Unsafe for use");if(!state.f.engName)miss.push("Technician's name");if(!state.sig.sigEng)miss.push("Technician's signature (add it to your profile)");if(!state.f.engLmi)miss.push("Technician's LMI number");if(!state.f.utName)miss.push("Understudy to – name");if(!state.sig.sigUt)miss.push("Understudy to – signature");
   return miss;}
 $("pdfBtn").onclick=()=>{const miss=missing();
   if(miss.length){modal(`<h3>Some things are missing</h3><ul>${miss.map(m=>"<li>"+esc(m)+"</li>").join("")}</ul><div class="btns"><button class="secondary" id="mNo">Go back</button><button class="primary" id="mYes">Save PDF anyway</button></div>`);$("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();makePdf();};}
@@ -535,7 +541,7 @@ function mark(doc,v,cx,cy){if(v==="ok"){doc.setDrawColor(29,138,74);doc.setLineW
 async function buildPdf(st){
   st=JSON.parse(JSON.stringify(st));st.parts=Object.assign(blank().parts,st.parts||{});st.val=Object.assign(blank().val,st.val||{});st.res=st.res||{};st.note=st.note||{};st.wr=Object.assign(blank().wr,st.wr||{});st.sig=Object.assign(blank().sig,st.sig||{});
   const {jsPDF}=window.jspdf,f=st.f;
-  const dims={};for(const im of [st.sig.sigCust,st.sig.sigEng])if(im)dims[im]=await imgDims(im);
+  const dims={};for(const im of [st.sig.sigCust,st.sig.sigEng,st.sig.sigUt])if(im)dims[im]=await imgDims(im);
   function draw(IH){const doc=new jsPDF({unit:"mm",format:"a4"});
     const NAVY=[27,47,110],YEL=[245,196,0],GREY_T=[90,96,112],L=10,R=200,W=R-L;
     const LW=56,LH=LW*464/900,LY=10,SC=LW/60;doc.addImage(LOGO,"JPEG",L,LY,LW,LH);
@@ -587,12 +593,13 @@ async function buildPdf(st){
     const remH=Math.max(17,4+lines.length*3.9);
     doc.setDrawColor(60,66,80);doc.rect(L,y,W,remH);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text("REMARKS :",L+1.5,y+4.6);
     doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(10,20,60);doc.text(lines,L+20,y+4.8);y+=remH;
-    const hw=W/2;
-    cell(L,y,hw,"CUSTOMER NAME :",U(f.custName));cell(L+hw,y,hw,"TECHNICIAN NAME :",U(f.engName));y+=rh;
-    doc.setDrawColor(60,66,80);doc.rect(L,y,hw,12);doc.rect(L+hw,y,hw,12);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text("CUSTOMER SIGNATURE :",L+1.5,y+4.6);doc.text("TECHNICIAN SIGNATURE :",L+hw+1.5,y+4.6);
-    const sig=(img,x)=>{if(!img)return;try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(50/d.w,10.5/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+38+(50-w)/2,y+11.5-h,w,h,undefined,"FAST");}catch(e){}};
-    sig(st.sig.sigCust,L);sig(st.sig.sigEng,L+hw);y+=12;
-    doc.setDrawColor(60,66,80);doc.rect(L,y,hw,rh);cell(L+hw,y,hw,"LMI NUMBER :",U(f.engLmi));y+=rh+3;
+    const c3=W/3;doc.setFont("helvetica","bold");doc.setFontSize(7.5);
+    cell(L,y,c3,"CUSTOMER NAME :",U(f.custName));cell(L+c3,y,c3,"TECHNICIAN NAME :",U(f.engName));cell(L+2*c3,y,c3,"UNDERSTUDY TO :",U(f.utName));y+=rh;
+    const SH=14;doc.setDrawColor(60,66,80);[0,1,2].forEach(k=>doc.rect(L+k*c3,y,c3,SH));doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);
+    doc.text("CUSTOMER SIGNATURE :",L+1.5,y+4.2);doc.text("TECHNICIAN SIGNATURE :",L+c3+1.5,y+4.2);doc.text("UNDERSTUDY SIGNATURE :",L+2*c3+1.5,y+4.2);
+    const sig=(img,x)=>{if(!img)return;try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(44/d.w,8.6/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+(c3-w)/2,y+SH-0.8-h,w,h,undefined,"FAST");}catch(e){}};
+    sig(st.sig.sigCust,L);sig(st.sig.sigEng,L+c3);sig(st.sig.sigUt,L+2*c3);y+=SH;
+    doc.setDrawColor(60,66,80);doc.rect(L,y,c3,rh);cell(L+c3,y,c3,"LMI NUMBER :",U(f.engLmi));cell(L+2*c3,y,c3,"LMI NUMBER :",U(f.utLmi));y+=rh+3;
     const leg=(v,x,t)=>{mark(doc,v,x,y);doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(t,x+4,y+1.2);};
     leg("ok",L+3,"NO APPARENT DEFECT");leg("w",L+48,"WORN BUT SERVICEABLE");leg("x",L+98,"PARTS NEED URGENT REPLACEMENT");leg("na",L+163,"NOT APPLICABLE");
     doc.setFont("helvetica","normal");doc.setTextColor(60,66,80);doc.setFontSize(6.5);doc.text("L/T long travel · C/T cross travel · H hoist · A/H auxiliary hoist · grey = not applicable",L,y+6);
@@ -701,7 +708,12 @@ document.querySelectorAll("#repScope button").forEach(b=>b.onclick=()=>{repScope
 // ---- start ----
 (function(){const y=new Date().getFullYear(),sel=$("prevLoad");sel.innerHTML='<option value="">Select year…</option>'+Array.from({length:21},(_,k)=>`<option>${y-k}</option>`).join("");})();
 $("logoImg").src=LOGO;
-build();["sigEng","sigCust"].forEach(setupPad);
+build();["sigEng","sigCust","sigUt"].forEach(setupPad);
+["utName","utLmi"].forEach(k=>$(k).addEventListener("input",()=>utStore({[k==="utName"?"name":"lmi"]:$(k).value})));
+const setUtSig=async f=>{state.sig.sigUt=await fileToSig(f);utStore({sig:state.sig.sigUt});pads.sigUt.size();save();toast("Understudy signature saved");};
+$("utUpBtn").onclick=()=>$("utUpload").click();
+$("utUpload").onchange=async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;$("utUpBtn").textContent="Loading…";try{await setUtSig(f);}catch(err){upErr(err);}$("utUpBtn").textContent="Upload";e.target.value="";};
+wirePaste("utPaste",async f=>{try{await setUtSig(f);}catch(err){upErr(err);}});
 let PROFILE=BC.cachedProfile();
 if(!PROFILE&&window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.apiKey)BC.goHome();
 function checkSession(){state.f.engName=PROFILE?PROFILE.name||"":"";state.sig.sigEng=PROFILE?PROFILE.signature||null:null;if(!state.f.engLmi)state.f.engLmi=load(LMIKEY)||(PROFILE&&PROFILE.lmi)||"";applyState();}
@@ -711,10 +723,10 @@ const ACTIVE=(function(){try{const a=JSON.parse(load("bco-active-job")||"null");
 const EMBED=/[?&]embed=1/.test(location.search),WANT_REPORTS=/[?&]reports=1/.test(location.search);
 const jobKey=f=>String((f&&(f.jobno||f.customer))||"").trim().toLowerCase();
 function fresh(){keepDraftNow();state=blank();state.f.date=(ACTIVE&&ACTIVE.edit&&ACTIVE.date)||today();state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);
-  state.f.engName=PROFILE?PROFILE.name||"":"";state.sig.sigEng=PROFILE?PROFILE.signature||null:null;state.f.engLmi=load(LMIKEY)||(PROFILE&&PROFILE.lmi)||"";
+  state.f.engName=PROFILE?PROFILE.name||"":"";state.sig.sigEng=PROFILE?PROFILE.signature||null:null;state.f.engLmi=load(LMIKEY)||(PROFILE&&PROFILE.lmi)||"";utFill();
   if(ACTIVE){state.f.customer=ACTIVE.customer||"";state.f.jobno=ACTIVE.card||"";state.f.custName=ACTIVE.contact||"";state.f.docno=ACTIVE.card?nextDoc(ACTIVE.card):"";}}
 {const saved=load(KEY);if(saved){try{useState(JSON.parse(saved));}catch(e){fresh();}}else fresh();}
-applyState();syncDoc();checkSession();save();updRepCount();
+utFill();applyState();syncDoc();checkSession();save();updRepCount();
 function showGate(){modal(`<h3>No job started</h3><p>Crane and hoist inspections and load tests open from the job you are busy with.</p><p>On the time sheet, tap <b>Start job</b>, open the <b>Client's inventory</b> and tap <b>Inspection</b> or <b>Load test</b> on the crane or hoist.</p><button class="secondary" id="gRep" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">View saved reports</button><div class="btns"><a class="primary" href="../timesheet/" style="flex:1;padding:12px;border-radius:10px;font-weight:700;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Go to time sheet</a></div>`);$("gRep").onclick=()=>{closeModal();$("repPanel").classList.add("show");showReports();};}
 if(!ACTIVE&&!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else showGate();}
 $("repClose").onclick=()=>{$("repPanel").classList.remove("show");if(!ACTIVE&&!EMBED){if(WANT_REPORTS)location.href="../timesheet/";else showGate();}};
