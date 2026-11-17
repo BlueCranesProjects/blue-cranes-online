@@ -236,9 +236,9 @@
       localStorage.setItem('bco-fl-item', JSON.stringify({ serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', no:r.cno, type, at:Date.now() })); } catch(e){}
     location.href = '../forklift/?type=' + encodeURIComponent(type);
   }
-  // cranes, hoists, beams with chain hoists and winches get the crane / hoist inspection and load test report
+  // cranes, hoists, beams with chain hoists and winches get the crane / hoist inspection and load test report (chain blocks and lever hoists have their own report)
   const isCrane = r => { const d = r.desc || ''; if (isForklift(r)) return false; if (r.cr) return true;
-    return /crane|hoist|chain\s*block|lever\s*block|winch|tirfor|gantry|monorail|runway|beam/i.test(d) && !/clamp|spreader|lifting\s*beam|sling|shackle|harness|lanyard/i.test(d) && !(/trolley/i.test(d) && !/hoist|crane/i.test(d)); };
+    return /crane|hoist|winch|tirfor|gantry|monorail|runway|beam/i.test(d) && !/clamp|spreader|lifting\s*beam|sling|shackle|harness|lanyard|chain\s*block|lever\s*(hoist|block)|lever\b/i.test(d) && !(/trolley/i.test(d) && !/hoist|crane/i.test(d)); };
   function openCrane(i, type){
     const l = S.cur; const r = l && l.rows[i]; if (!r) return;
     const st = startedJob();
