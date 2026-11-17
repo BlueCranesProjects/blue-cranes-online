@@ -204,8 +204,11 @@
       <div><label for="jobno">Job no</label><input id="jobno" inputmode="numeric"></div>
       <div class="full"><label for="details">Crane / hoist details</label><input id="details" placeholder="e.g. Gantry beam c/w chain hoist"></div>
       <div><label for="make">Manufacturer</label><input id="make" placeholder="e.g. Yale"></div>
-      <div><label for="serial">Serial no</label><input id="serial"></div>
-      <div><label for="swl">SWL</label><div class="unit"><input id="swl" inputmode="decimal" placeholder="1000"><span>kg</span></div></div>
+      <div><label for="model">Model</label><input id="model" placeholder="e.g. CPV 10-8"></div>
+      <div class="full"><label for="serial">Serial no</label><input id="serial"></div>
+      <div class="full pair"><div><label for="swl">SWL</label><div class="unit"><input id="swl" inputmode="decimal" placeholder="1000"><span>kg</span></div></div>
+        <div><label for="spanIn" class="nalab">Span<button type="button" class="na" data-vna="G">N/A</button></label><div class="unit"><input id="spanIn" data-v2="G" inputmode="decimal" placeholder="4000"><span>mm</span></div></div>
+        <div><label for="holIn" class="nalab">Height of lift<button type="button" class="na" data-vna="H">N/A</button></label><div class="unit"><input id="holIn" data-v2="H" inputmode="decimal" placeholder="3500"><span>mm</span></div></div></div>
       <div><label for="location">Location <span style="font-weight:400">(where it's used)</span></label><input id="location" placeholder="e.g. Workshop"></div>
       <div><label for="site">Site address <span style="font-weight:400">(town)</span></label><input id="site" placeholder="e.g. Ceres"></div>
       <div><label for="docno">Doc no <span style="font-weight:400">(automatic)</span></label><input id="docno" readonly tabindex="-1" placeholder="Fills in from job no" class="auto"></div>
@@ -292,10 +295,10 @@ const ROWS=[];
 MECH.forEach((t,k)=>ROWS.push({id:"m"+(k+1),n:k+1,no:String(k+1),name:t,kind:"four",sec:"Mechanical"}));
 BRAKES.forEach((t,k)=>ROWS.push({id:"m"+(k+20),n:k+20,no:String(k+20),name:t,kind:"four",sec:"Brakes"}));
 SAFETY.forEach(([a,t])=>ROWS.push({id:a,no:a,name:t,kind:"one",sec:"Safety"}));
-MEAS.forEach(([a,t])=>ROWS.push({id:a,no:a,name:t,kind:"meas",sec:"Safety"}));
+MEAS.forEach(([a,t])=>ROWS.push({id:a,no:a,name:t,kind:"meas",sec:"Safety",ui:a==="F"}));   // span and height of lift are filled in with the SWL
 ELEC.forEach((t,k)=>ROWS.push({id:"e"+(k+27),no:String(k+27),name:t,kind:"one",sec:"Electrical"}));
 const RV={ok:"✓",w:"W",x:"X",na:"N/A"};
-const FIELDS=["customer","date","jobno","details","make","serial","swl","location","site","docno","prevLoad","nextInsp","nextLoad","remarks","engName","custName"];
+const FIELDS=["customer","date","jobno","details","make","model","serial","swl","location","site","docno","prevLoad","nextInsp","nextLoad","remarks","engName","custName"];
 const KEY="bc-crane-draft-v1",JOBKEY="bc-crane-jobs",LMIKEY="bc-crane-lmi",DKEY="bc-crane-drafts";
 function blank(){return{type:"INSPECTION",f:{},parts:{lt:true,ct:true,h:true,ah:false},res:{},val:{F:"",G:"",H:""},note:{},status:null,wr:{insp:false,load:false},sig:{sigEng:null,sigCust:null,sigUt:null},row:null,list:null};}
 let state=blank();
@@ -305,7 +308,7 @@ const $=id=>document.getElementById(id);
 const itemsEl=$("items");
 const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function activeCols(n,st){st=st||state;return [0,1,2,3].filter(c=>!(GREY[n]||[]).includes(c)&&st.parts[COLS[c][0]]);}
-function rowVisible(r){return r.kind!=="four"||activeCols(r.n).length>0;}
+function rowVisible(r){if(r.ui===false)return false;return r.kind!=="four"||activeCols(r.n).length>0;}
 function rowDone(r){if(r.kind==="four")return activeCols(r.n).every(c=>!!state.res[r.id+"_"+c]);if(r.kind==="meas")return !!String(state.val[r.id]||"").trim();return !!state.res[r.id];}
 function rowVals(r){return r.kind==="four"?activeCols(r.n).map(c=>state.res[r.id+"_"+c]||null):[state.res[r.id]||null];}
 const expanded={};
@@ -314,7 +317,7 @@ function build(){
   $("parts").innerHTML=COLS.map(([k,s,t])=>`<label class="part"><input type="checkbox" data-part="${k}"><span><b>${s}</b> ${t}</span></label>`).join("");
   $("parts").querySelectorAll("[data-part]").forEach(c=>c.onchange=()=>{state.parts[c.dataset.part]=c.checked;render();save();});
   let sec="",h="";
-  ROWS.forEach(r=>{
+  ROWS.forEach(r=>{if(r.ui===false)return;
     if(r.sec!==sec){sec=r.sec;h+=`<div class="sech">${sec}</div>`;}
     h+=`<div class="item" id="it-${r.id}"><div class="row"><span class="num">${r.no}</span><span class="name">${esc(r.name)}<span class="mixed" id="mx-${r.id}">different per part</span></span>
       ${r.kind==="meas"?"":optBtns(`data-r="${r.id}"`,r.name)}</div>`;
@@ -340,7 +343,7 @@ function showNote(id,on){const d=$("it-"+id);if(!d)return;d.querySelector(".note
 function render(){
   let done=0,tot=0;
   $("parts").querySelectorAll("[data-part]").forEach(c=>c.checked=!!state.parts[c.dataset.part]);
-  ROWS.forEach(r=>{const d=$("it-"+r.id),vis=rowVisible(r);d.style.display=vis?"":"none";if(!vis)return;tot++;if(rowDone(r))done++;
+  ROWS.forEach(r=>{if(r.ui===false)return;const d=$("it-"+r.id),vis=rowVisible(r);d.style.display=vis?"":"none";if(!vis)return;tot++;if(rowDone(r))done++;
     const vals=rowVals(r),same=vals.every(v=>v===vals[0])?vals[0]:"__mixed";
     d.querySelectorAll(".row .opts button").forEach(b=>b.classList.toggle("on",b.dataset.v===same));
     d.classList.toggle("x",vals.includes("x"));
@@ -353,6 +356,7 @@ function render(){
     if(r.kind==="meas"){const inp=d.querySelector("[data-meas]"),v=state.val[r.id]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);d.querySelector(".unit").classList.toggle("isna",na);d.querySelector("[data-measna]").classList.toggle("on",na);}
     const ni=d.querySelector("[data-note]");if(ni.value!==(state.note[r.id]||""))ni.value=state.note[r.id]||"";if(state.note[r.id])showNote(r.id,true);
   });
+  document.querySelectorAll("[data-v2]").forEach(inp=>{const k=inp.dataset.v2,v=state.val[k]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);inp.closest(".unit").classList.toggle("isna",na);document.querySelector(`[data-vna="${k}"]`).classList.toggle("on",na);});
   $("prog").textContent=done+" / "+tot;$("bar").style.width=(tot?done/tot*100:0)+"%";
   document.querySelectorAll(".seg button").forEach(b=>b.classList.toggle("on",b.dataset.s===state.status));
   document.querySelectorAll(".rtype button[data-t]").forEach(b=>b.classList.toggle("on",b.dataset.t===state.type));
@@ -389,6 +393,8 @@ function useState(s){state=Object.assign(blank(),JSON.parse(JSON.stringify(s)));
 function continueDraft(id){const r=drafts()[id];if(!r)return;keepDraft();useState(r.state);state._did=r.id;applyState();save();$("repPanel").classList.remove("show");window.scrollTo(0,0);toast("Continuing "+(state.f.docno||state.f.serial||"report"));}
 
 FIELDS.forEach(f=>$(f).addEventListener("input",save));
+document.querySelectorAll("[data-v2]").forEach(inp=>inp.oninput=()=>{state.val[inp.dataset.v2]=inp.value;save();});
+document.querySelectorAll("[data-vna]").forEach(b=>b.addEventListener("click",e=>{e.preventDefault();const k=b.dataset.vna;state.val[k]=/^n\/a$/i.test(state.val[k]||"")?"":"N/A";render();save();}));
 document.querySelectorAll(".rtype button[data-t]").forEach(b=>b.onclick=()=>{state.type=b.dataset.t;render();save();});
 document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.status=state.status===b.dataset.s?null:b.dataset.s;const uns=state.status==="UNSAFE";state.wr={insp:uns,load:uns};render();save();});
 document.querySelectorAll("[data-wr]").forEach(c=>c.onchange=()=>{state.wr[c.dataset.wr]=c.checked;render();save();});
@@ -472,7 +478,7 @@ async function syncReports(){if(!cloudOK())return;try{const remote=await window.
   for(const l of local){if(!seen[l.id])cloudPut(l);}
   updRepCount();if($("repPanel").classList.contains("show"))showReports();}catch(e){console.error("Report sync failed",e);}}
 
-function applyState(){FIELDS.forEach(f=>$(f).value=state.f[f]||"");ROWS.forEach(r=>showNote(r.id,!!state.note[r.id]));render();Object.values(pads).forEach(p=>p.size());}
+function applyState(){FIELDS.forEach(f=>$(f).value=state.f[f]||"");ROWS.forEach(r=>{if(r.ui!==false)showNote(r.id,!!state.note[r.id]);});render();Object.values(pads).forEach(p=>p.size());}
 function today(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function addMonths(s,n){if(!s)return"";let [y,m,d]=s.split("-").map(Number);m+=n;y+=Math.floor((m-1)/12);m=((m-1)%12)+1;const last=new Date(y,m,0).getDate();d=Math.min(d,last);return y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0");}
 function fmt(s){if(!s)return"";if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const [y,m,d]=s.split("-");return `${d}/${m}/${y}`;}
@@ -507,7 +513,7 @@ function nextSameJob(){
   state.f.docno=nextDoc(job);applyState();save();window.scrollTo(0,0);toast("Doc no "+state.f.docno);
 }
 function missing(){const miss=[];readFields();
-  if(!state.f.customer)miss.push("Customer");if(!state.f.details)miss.push("Crane / hoist details");if(!state.f.serial)miss.push("Serial no");if(!state.f.swl)miss.push("SWL");
+  if(!state.f.customer)miss.push("Customer");if(!state.f.details)miss.push("Crane / hoist details");if(!state.f.serial)miss.push("Serial no");if(!state.f.swl)miss.push("SWL");if(!String(state.val.G||"").trim())miss.push("Crane span (or N/A)");if(!String(state.val.H||"").trim())miss.push("Height of lift (or N/A)");
   if(!Object.values(state.parts).some(Boolean))miss.push("Tick what the crane / hoist has (L/T, C/T, H, A/H)");
   const un=ROWS.filter(r=>rowVisible(r)&&!rowDone(r)).map(r=>r.no);if(un.length)miss.push(`${un.length} checklist item${un.length>1?"s":""} not marked (${un.slice(0,8).join(", ")}${un.length>8?"…":""})`);
   if(!state.status)miss.push("Safe / Unsafe for use");if(!state.f.engName)miss.push("Technician's name");if(!state.sig.sigEng)miss.push("Technician's signature (add it to your profile)");
@@ -556,8 +562,10 @@ async function buildPdf(st){
       let fs=10,t=String(val||"");while(fs>7&&doc.getTextWidth(t)>w-lw-2){fs-=0.5;doc.setFontSize(fs);}doc.text(doc.splitTextToSize(t,w-lw-2)[0]||"",x+lw,yy+4.8);}
     const U=s=>String(s||"").toUpperCase(),sw=kgN(f.swl);
     cell(L,y,145,"CUSTOMER :",U(f.customer));cell(L+145,y,W-145,"DATE :",fmt(f.date));y+=rh;
-    cell(L,y,145,"CRANE / HOIST DETAILS :",U(f.details)+(f.make?" ("+U(f.make)+")":""));cell(L+145,y,W-145,"JOB NO :",f.jobno);y+=rh;
-    cell(L,y,95,"SERIAL NO :",U(f.serial));cell(L+95,y,50,"LOCATION :",U(f.location));cell(L+145,y,W-145,"SWL :",sw?kgT(sw)+" kg":f.swl);y+=rh;
+    cell(L,y,145,"CRANE / HOIST DETAILS :",U(f.details));cell(L+145,y,W-145,"JOB NO :",f.jobno);y+=rh;
+    cell(L,y,W/2,"MANUFACTURER :",U(f.make));cell(L+W/2,y,W/2,"MODEL :",U(f.model));y+=rh;
+    cell(L,y,95,"SERIAL NO :",U(f.serial));cell(L+95,y,95,"LOCATION :",U(f.location));y+=rh;
+    cell(L,y,W/3,"SWL :",sw?kgT(sw)+" kg":f.swl);cell(L+W/3,y,W/3,"CRANE SPAN :",mmT(st.val.G));cell(L+2*W/3,y,W/3,"HEIGHT OF LIFT :",mmT(st.val.H));y+=rh;
     doc.setFillColor(215,219,228);doc.rect(L,y,W,rh,"FD");doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(30,34,51);doc.text("THE EQUIPMENT HAS BEEN FOUND",L+2,y+4.8);
     [["SAFE",88,20],["UNSAFE",108,24]].forEach(([s,x,w])=>{if(st.status===s){doc.setFillColor(...(s==="SAFE"?[29,138,74]:[198,40,40]));doc.rect(x,y,w,rh,"F");doc.setTextColor(255,255,255);}else doc.setTextColor(150,150,150);doc.setDrawColor(60,66,80);doc.rect(x,y,w,rh);doc.text(s,x+w/2,y+4.8,{align:"center"});});
     doc.setTextColor(30,34,51);doc.text("FOR USE",136,y+4.8);y+=rh+2;
