@@ -792,44 +792,46 @@ function utSaved(){try{return JSON.parse(load(UTKEY)||"{}")}catch(e){return{}}}
 let utCloudT;function utStore(p){store(UTKEY,JSON.stringify(Object.assign(utSaved(),p)));clearTimeout(utCloudT);utCloudT=setTimeout(()=>{try{if(cloudOK()){const u=utSaved();window.Cloud.putItem("understudy",{kind:"understudy",name:u.name||"",lmi:u.lmi||"",sig:u.sig||"",updated:new Date().toISOString()});}}catch(e){}},1000);}
 function certNo(f){const d=parseDoc(f.docno);return d?`C${d.job}/${d.n}`:(f.docno?"C"+String(f.docno).replace(".","/"):"");}
 function monthYear(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s||""))return(s||"").toUpperCase();const [y,m]=s.split("-");return ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"][+m-1]+" "+y;}
+// certificates are printed on the company letterhead: the text starts 70 mm from the top, spacing tightened to fit
+const CERT_TOP=75,CERT_K=0.82;
 async function buildCert(st){
   const {jsPDF}=window.jspdf,f=st.f,doc=new jsPDF({unit:"mm",format:"a4"});
   const NAVY=[27,47,110],YEL=[245,196,0],RED=[190,30,30],INK=[20,24,40],L=20,R=190;
   const dims={};for(const im of [st.sig.sigEng,st.sig.sigUt])if(im)dims[im]=await imgDims(im);
-  let y=24;
+  let y=CERT_TOP;
   doc.setFont("times","bold");doc.setFontSize(20);doc.setTextColor(...INK);doc.text("ANNUAL STATUTORY LOAD TEST CERTIFICATE",105,y,{align:"center"});
-  y+=7;doc.setFontSize(14);doc.text("Lifting Machinery",105,y,{align:"center"});
-  y+=8;doc.setFontSize(9.5);doc.text(doc.splitTextToSize("CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993 DRIVEN MACHINERY REGULATION 18(5).",R-L),L,y);
-  y+=13;
+  y+=7 * CERT_K;doc.setFontSize(14);doc.text("Lifting Machinery",105,y,{align:"center"});
+  y+=8 * CERT_K;doc.setFontSize(9.5);doc.text(doc.splitTextToSize("CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993 DRIVEN MACHINERY REGULATION 18(5).",R-L),L,y);
+  y+=13 * CERT_K;
   const VX=L+68,unsafe=st.status==="UNSAFE",U=s=>String(s||"").toUpperCase();
   const att=st.val[ATTACH-1];
   const rows=[["CERTIFICATE No",certNo(f)],["CUSTOMER NAME",U(f.customer)],["SITE ADDRESS",U(f.site)],["ITEM LOCATION",U(f.location)],["ITEM No",U(f.serial)],["DESCRIPTION OF ITEM","FORKLIFT"],
     ["SAFE WORKING LOAD",f.swl?`${f.swl}KG${f.lc?"@"+f.lc+"mm":""}`:""]];
   if(att){const na=v=>/^n\/a$/i.test(String(v||"").trim());rows.push(["ATTACHMENT TYPE",U(att)],["ATTACHMENT SERIAL No",U(f.aserial)],["ATTACHMENT SWL",na(f.aswl)?"N/A":f.aswl?`${f.aswl}KG${f.alc&&!na(f.alc)?"@"+f.alc+"mm":""}`:""]);}
   rows.push(["OVERLOAD APPLIED","10%"],["MANUFACTURED BY",U([f.make,f.model].filter(Boolean).join(" "))]);
-  rows.forEach(([l,v])=>{doc.setFont("times","bold");doc.setFontSize(11.5);doc.setTextColor(...INK);doc.text(l,L,y);doc.text(String(v||""),VX,y);y+=7.9;});
+  rows.forEach(([l,v])=>{doc.setFont("times","bold");doc.setFontSize(11.5);doc.setTextColor(...INK);doc.text(l,L,y);doc.text(String(v||""),VX,y);y+=7.9 * CERT_K;});
   doc.setFont("times","bold");doc.setFontSize(11.5);doc.setTextColor(...INK);doc.text("REMARKS",L,y);
   if(st.status){doc.setTextColor(...(unsafe?RED:[29,110,60]));doc.text(unsafe?"UNSAFE FOR USE AT TIME OF TEST":"SAFE FOR USE AT TIME OF TEST",VX,y);}
   if(f.docno){doc.setFontSize(13);doc.text("SEE REPORT "+f.docno,VX,y+6.5);if(!st.status)doc.setTextColor(...INK);}
-  y+=22;
+  y+=22 * CERT_K;
   function sigImg(img,x,base){if(!img)return;try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(42/d.w,14/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+(42-w)/2,base-h+1,w,h,undefined,"FAST");}catch(e){}}
   doc.setTextColor(...INK);doc.setFont("times","bold");doc.setFontSize(12.5);
   doc.text("TESTED BY",L,y);doc.text("NAME: "+U(f.engName),L+44,y);doc.text("SIGNATURE",L+112,y);doc.setLineDashPattern([0.4,0.9],0);doc.line(L+137,y+0.6,R,y+0.6);doc.setLineDashPattern([],0);sigImg(st.sig.sigEng,L+138,y);
-  y+=18;
+  y+=18 * CERT_K;
   doc.text("UNDERSTUDY TO",L,y);doc.text("NAME: "+U(f.utName),L+44,y);doc.text("SIGNATURE",L+112,y);doc.setLineDashPattern([0.4,0.9],0);doc.line(L+137,y+0.6,R,y+0.6);doc.setLineDashPattern([],0);sigImg(st.sig.sigUt,L+138,y);
   if(f.utLmi){doc.setFontSize(8.5);doc.text("LMI : "+f.utLmi,L+58,y+4.5);doc.setFontSize(12.5);}
-  y+=15;
+  y+=15 * CERT_K;
   doc.text("TEST DATE",L,y);doc.text(fmt(f.date),L+44,y);
-  y+=12;
+  y+=12 * CERT_K;
   const nl=(unsafe&&st.wr.load)?"WHEN REPAIRED":monthYear(f.nextLoad),ni=(unsafe&&st.wr.insp)?"WHEN REPAIRED":monthYear(f.nextInsp);
   doc.text("PREVIOUS TEST DATE:  "+(f.prevLoad||""),L,y);doc.text("NEXT TEST DATE:  "+nl,R,y,{align:"right"});
-  y+=12;
+  y+=12 * CERT_K;
   doc.text("6 MONTHLY THOROUGH INSPECTION DATE:  "+ni,L,y);
-  y+=15;
+  y+=15 * CERT_K;
   doc.setFontSize(11);const dots=(x1,x2,yy)=>{doc.setLineDashPattern([0.4,0.9],0);doc.line(x1,yy+0.6,x2,yy+0.6);doc.setLineDashPattern([],0);};
   doc.text("THOROUGH INSPECTION",L,y);doc.text("DATE",L+50,y);dots(L+62,L+84,y);doc.text("NAME",L+87,y);dots(L+100,L+124,y);doc.text("SIGNATURE",L+127,y);dots(L+150,R,y);
-  y+=12;doc.text("REMARKS",L,y);dots(L+20,R,y);
-  y+=14;doc.setFontSize(9.5);doc.text("LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017",L,y);
+  y+=12 * CERT_K;doc.text("REMARKS",L,y);dots(L+20,R,y);
+  y+=14 * CERT_K;doc.setFontSize(9.5);doc.text("LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017",L,y);
   const safe=s=>(s||"").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"_");
   const name=`Load_Test_Certificate_${certNo(f)?safe(certNo(f).replace("/","-"))+"_":""}${safe(f.customer)||"Customer"}${f.serial?"_"+safe(f.serial):""}_${f.date||today()}.pdf`;
   return {doc,name};}

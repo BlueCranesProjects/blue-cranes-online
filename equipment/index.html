@@ -703,24 +703,26 @@
   const kgText = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').trim(); return t ? t + 'KG' : ''; };
   const mmText = v => { const n = num(v); if (n == null) return ''; const [a, b] = String(n).split('.'); return String(Number(a)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (b ? ',' + b : '') + 'mm'; };
   // safety harnesses and lanyards: inspection certificate (Construction Regulation 10(d)), no understudy
+  // certificates are printed on the company letterhead: the text starts 70 mm from the top, spacing tightened to fit
+  const CERT_TOP = 75, CERT_K = 0.82;
   function harnessPage(doc, l, r, no, tech, sigImg, dots){
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 20, R = 190, U = s => String(s || '').toUpperCase(), unsafe = r.status === 'UNSAFE';
-    let y = 24; doc.setFont('times', 'bold'); doc.setTextColor(...INK); doc.setFontSize(20); doc.text('INSPECTION CERTIFICATE', 105, y, { align:'center' });
-    y += 7; doc.setFontSize(14); doc.text('Safety Harnesses', 105, y, { align:'center' });
-    y += 8; doc.setFontSize(9.5); doc.text(doc.splitTextToSize('CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993, CONSTRUCTION REGULATION 10(d).', R - L), L, y);
-    y += 13; const VX = L + 68, W = R - VX;
+    let y = CERT_TOP; doc.setFont('times', 'bold'); doc.setTextColor(...INK); doc.setFontSize(20); doc.text('INSPECTION CERTIFICATE', 105, y, { align:'center' });
+    y += 7 * CERT_K; doc.setFontSize(14); doc.text('Safety Harnesses', 105, y, { align:'center' });
+    y += 8 * CERT_K; doc.setFontSize(9.5); doc.text(doc.splitTextToSize('CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993, CONSTRUCTION REGULATION 10(d).', R - L), L, y);
+    y += 13 * CERT_K; const VX = L + 68, W = R - VX;
     const row = (a, v, color) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); if (color) doc.setTextColor(...color);
-      const lines = doc.splitTextToSize(String(v || ''), W).slice(0, 4); doc.text(lines, VX, y); doc.setTextColor(...INK); y += 7.9 + (Math.max(1, lines.length) - 1) * 5; };
+      const lines = doc.splitTextToSize(String(v || ''), W).slice(0, 4); doc.text(lines, VX, y); doc.setTextColor(...INK); y += 7.9 * CERT_K + (Math.max(1, lines.length) - 1) * 5; };
     row('CERTIFICATE No', no); row('CUSTOMER NAME', U(l.customer)); row('SITE ADDRESS', U(l.location)); row('ITEM LOCATION', U(r.loc)); row('ITEM No', U(r.serial));
     row('DESCRIPTION OF ITEM', U(r.desc)); row('SAFE WORKING LOAD', kgText(r.swl)); row('MANUFACTURED BY', /^unknown$/i.test(r.make || '') ? '' : U(r.make));
     row('REMARKS', unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' + (r.reason ? ' – ' + U(r.reason) : '') : 'SAFE FOR USE AT TIME OF INSPECTION', unsafe ? RED : GREEN);
     row('DATE OF MANUFACTURE', U(r.dom));
-    y += 10; doc.setFontSize(12.5);
+    y += 10 * CERT_K; doc.setFontSize(12.5);
     doc.text('INSPECTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 38, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
-    y += 10; doc.text('INSPECTION DATE:', L, y); doc.text(dmy(l.date), L + 50, y);
+    y += 10 * CERT_K; doc.text('INSPECTION DATE:', L, y); doc.text(dmy(l.date), L + 50, y);
     doc.setFontSize(11);
-    ['1ST', '2ND', '3RD'].forEach(n => { y += 12; doc.text(n + ' INSPECTION', L, y); doc.text('DATE', L + 42, y); dots(L + 53, L + 80, y); doc.text('NAME', L + 83, y); dots(L + 96, L + 122, y); doc.text('SIGNATURE', L + 125, y); dots(L + 148, R, y);
-      y += 9; doc.text('JOB NR:', L, y); dots(L + 16, L + 46, y); doc.text('REMARKS', L + 48, y); dots(L + 68, R, y); });
+    ['1ST', '2ND', '3RD'].forEach(n => { y += 12 * CERT_K; doc.text(n + ' INSPECTION', L, y); doc.text('DATE', L + 42, y); dots(L + 53, L + 80, y); doc.text('NAME', L + 83, y); dots(L + 96, L + 122, y); doc.text('SIGNATURE', L + 125, y); dots(L + 148, R, y);
+      y += 9 * CERT_K; doc.text('JOB NR:', L, y); dots(L + 16, L + 46, y); doc.text('REMARKS', L + 48, y); dots(L + 68, R, y); });
   }
   async function certDoc(l, idx, opts){ opts = opts || {};
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
@@ -737,28 +739,28 @@
       const r = l.rows[i]; if (!r) continue; if (!r.cno){ r.cno = certN(l, i); } const no = certNoOf(l, i); nos.push(no);
       if (isHarness(r)){ if (pages++) doc.addPage(); harnessPage(doc, l, r, no, tech, sigImg, dots); continue; }
       if (pages++) doc.addPage();
-      let y = 24; doc.setFont('times', 'bold'); doc.setFontSize(20); doc.setTextColor(...INK); doc.text('ANNUAL STATUTORY LOAD TEST CERTIFICATE', 105, y, { align:'center' });
-      y += 7; doc.setFontSize(14); doc.text('Lifting Machinery', 105, y, { align:'center' });
-      y += 8; doc.setFontSize(9.5); doc.text(doc.splitTextToSize('CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993 DRIVEN MACHINERY REGULATION 18(5).', R - L), L, y);
-      y += 13; const VX = L + 68, unsafe = r.status === 'UNSAFE';
+      let y = CERT_TOP; doc.setFont('times', 'bold'); doc.setFontSize(20); doc.setTextColor(...INK); doc.text('ANNUAL STATUTORY LOAD TEST CERTIFICATE', 105, y, { align:'center' });
+      y += 7 * CERT_K; doc.setFontSize(14); doc.text('Lifting Machinery', 105, y, { align:'center' });
+      y += 8 * CERT_K; doc.setFontSize(9.5); doc.text(doc.splitTextToSize('CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993 DRIVEN MACHINERY REGULATION 18(5).', R - L), L, y);
+      y += 13 * CERT_K; const VX = L + 68, unsafe = r.status === 'UNSAFE';
       const swl = num(String(r.swl || '').replace(/\s/g, '')); const rows = [['CERTIFICATE No', no], ['CUSTOMER NAME', U(l.customer)], ['SITE ADDRESS', U(l.location)], ['ITEM LOCATION', U(r.loc)], ['ITEM No', U(r.serial)], ['DESCRIPTION OF ITEM', U(r.desc)],
         ['SAFE WORKING LOAD', kgText(r.swl)], ['OVERLOAD APPLIED', '10%'], ['TEST LOAD', swl ? kgText(String(Math.round(swl * 1.1 * 100) / 100)) : '']];
       if (isBeam(r) && r.defl){ const x = deflResult(r.defl); rows.push(['SPAN', mmText(r.defl.span)], ['DEFLECTION MEASURED', mmText(r.defl.meas)], ['ALLOWED DEFLECTION', x ? mmText(x.max) : '']); }
       rows.push(['MANUFACTURED BY', /^unknown$/i.test(r.make || '') ? '' : U(r.make)]);
-      rows.forEach(([a, v]) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); doc.text(doc.splitTextToSize(String(v || ''), R - VX)[0] || '', VX, y); y += 7.9; });
+      rows.forEach(([a, v]) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); doc.text(doc.splitTextToSize(String(v || ''), R - VX)[0] || '', VX, y); y += 7.9 * CERT_K; });
       doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN)); doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF TEST' : 'SAFE FOR USE AT TIME OF TEST', VX, y);
       if (unsafe && r.reason){ doc.setFontSize(10.5); doc.text(doc.splitTextToSize(U(r.reason), R - VX).slice(0, 2), VX, y + 6); }
-      doc.setTextColor(...INK); y += 22; doc.setFontSize(12.5);
+      doc.setTextColor(...INK); y += 22 * CERT_K; doc.setFontSize(12.5);
       doc.text('TESTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
-      y += 18; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
+      y += 18 * CERT_K; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
       if (ut.lmi){ doc.setFontSize(8.5); doc.text('LMI : ' + ut.lmi, L + 58, y + 4.5); doc.setFontSize(12.5); }
-      y += 15; doc.text('TEST DATE', L, y); doc.text(dmy(l.date), L + 44, y);
-      y += 12; doc.text('PREVIOUS TEST DATE:  ', L, y); doc.text('NEXT TEST DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(l.date, 12))), R, y, { align:'right' });
-      y += 12; doc.text('6 MONTHLY THOROUGH INSPECTION DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(l.date, 6))), L, y);
-      y += 15; doc.setFontSize(11);
+      y += 15 * CERT_K; doc.text('TEST DATE', L, y); doc.text(dmy(l.date), L + 44, y);
+      y += 12 * CERT_K; doc.text('PREVIOUS TEST DATE:  ', L, y); doc.text('NEXT TEST DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(l.date, 12))), R, y, { align:'right' });
+      y += 12 * CERT_K; doc.text('6 MONTHLY THOROUGH INSPECTION DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(l.date, 6))), L, y);
+      y += 15 * CERT_K; doc.setFontSize(11);
       doc.text('THOROUGH INSPECTION', L, y); doc.text('DATE', L + 50, y); dots(L + 62, L + 84, y); doc.text('NAME', L + 87, y); dots(L + 100, L + 124, y); doc.text('SIGNATURE', L + 127, y); dots(L + 150, R, y);
-      y += 12; doc.text('REMARKS', L, y); dots(L + 20, R, y);
-      y += 14; doc.setFontSize(9.5); doc.text('LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017', L, y);
+      y += 12 * CERT_K; doc.text('REMARKS', L, y); dots(L + 20, R, y);
+      y += 14 * CERT_K; doc.setFontSize(9.5); doc.text('LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017', L, y);
     }
     if (!pages) return null; if (!opts.noSave) saveList(l, true);
     const name = idx.length === 1 ? `${isHarness(l.rows[idx[0]]) ? 'Inspection' : 'Load_Test'}_Certificate_${safe(nos[0].replace('/', '-'))}_${safe(l.customer)}${l.rows[idx[0]].serial ? '_' + safe(l.rows[idx[0]].serial) : ''}_${l.date}.pdf` : `Certificates_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`;
