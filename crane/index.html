@@ -166,8 +166,13 @@
   .part{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);border-radius:10px;padding:10px;margin:0;font-size:14px;font-weight:600;color:#1c2233;cursor:pointer}
   .part input{width:22px;height:22px;margin:0;accent-color:var(--navy);flex:none}
   .part b{color:var(--navy)}
-  .sech{font-size:12px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 2px;padding:4px 8px;border-left:3px solid var(--yellow);background:#f4f6fb;border-radius:0 6px 6px 0}
+  .sech{display:flex;align-items:center;gap:8px;width:100%;font:inherit;font-size:13px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.6px;margin:10px 0 0;padding:12px 12px;border:1px solid var(--line);border-left:4px solid var(--yellow);background:#f4f6fb;border-radius:10px;cursor:pointer;text-align:left}
   .sech:first-child{margin-top:0}
+  .sech .sc{margin-left:auto;font-size:12px;font-weight:800;letter-spacing:0;text-transform:none;padding:3px 9px;border-radius:999px;background:#fff;color:#4a5370;border:1px solid var(--line)}
+  .sech .sc.full{background:var(--ok);border-color:var(--ok);color:#fff}
+  .sech .chev{font-size:14px;transition:transform .2s}
+  .sech.open .chev{transform:rotate(180deg)}
+  .secbody{padding:0 2px}
   .mixed{display:none;margin-left:6px;font-size:10.5px;font-weight:700;color:#8a5d00;background:#fff6e0;border-radius:5px;padding:1px 6px;vertical-align:1px}
   .pbtn{background:none;border:0;color:var(--navy);font-size:12px;font-weight:700;padding:4px 0 0 34px;opacity:.8}
   .pp{margin:6px 0 0 34px;background:#f4f6fb;border-radius:10px;padding:6px 8px}
@@ -318,13 +323,16 @@ function rowVisible(r){if(r.ui===false)return false;return r.kind!=="four"||acti
 function rowDone(r){if(r.kind==="four")return activeCols(r.n).every(c=>!!state.res[r.id+"_"+c]);if(r.kind==="meas")return !!String(state.val[r.id]||"").trim();return !!state.res[r.id];}
 function rowVals(r){return r.kind==="four"?activeCols(r.n).map(c=>state.res[r.id+"_"+c]||null):[state.res[r.id]||null];}
 const expanded={};
+// the checklist groups fold open and closed; which ones are open is remembered while the page is open
+let openSec=new Set();try{openSec=new Set(JSON.parse(sessionStorage.getItem("bc-crane-open")||"[]"));}catch(e){}
+function keepOpen(){try{sessionStorage.setItem("bc-crane-open",JSON.stringify([...openSec]));}catch(e){}}
 function optBtns(attr,label){return `<span class="opts">${["ok","w","x","na"].map(v=>`<button data-v="${v}" ${attr} class="${v==="na"?"na":""}" aria-label="${esc(label)} ${v}">${RV[v]}</button>`).join("")}</span>`;}
 function build(){
   $("parts").innerHTML=COLS.map(([k,s,t])=>`<label class="part"><input type="checkbox" data-part="${k}"><span><b>${s}</b> ${t}</span></label>`).join("");
   $("parts").querySelectorAll("[data-part]").forEach(c=>c.onchange=()=>{state.parts[c.dataset.part]=c.checked;render();save();});
   let sec="",h="";
   ROWS.forEach(r=>{if(r.ui===false)return;
-    if(r.sec!==sec){sec=r.sec;h+=`<div class="sech">${sec}</div>`;}
+    if(r.sec!==sec){if(sec)h+=`</div>`;sec=r.sec;h+=`<button type="button" class="sech" data-sec="${sec}" aria-expanded="false"><span>${sec}</span><span class="sc" id="sc-${sec}"></span><span class="chev">▾</span></button><div class="secbody" id="sb-${sec}">`;}
     h+=`<div class="item" id="it-${r.id}"><div class="row"><span class="num">${r.no}</span><span class="name"><span id="nm-${r.id}">${esc(r.name)}</span><span class="mixed" id="mx-${r.id}">different per part</span></span>
       ${r.kind==="meas"?"":optBtns(`data-r="${r.id}"`,r.name)}</div>`;
     if(r.n===11)h+=`<div class="sub"><select id="loadSel" class="ysel"><option value="">Rope or chain? Choose…</option><option value="rope">Rope</option><option value="chain">Chain</option></select></div>`;
@@ -332,7 +340,8 @@ function build(){
     if(r.kind==="four"){h+=`<button class="pbtn" data-exp="${r.id}">Different per part ▾</button><div class="pp" id="pp-${r.id}">${COLS.map(([k,s],c)=>`<div class="pprow" id="pr-${r.id}-${c}"><span>${s}</span>${optBtns(`data-r="${r.id}" data-c="${c}"`,r.name+" "+s)}</div>`).join("")}</div>`;}
     h+=`<div class="sub notewrap" style="display:none"><input data-note="${r.id}" placeholder="Note / defect for item ${r.no}"></div><button class="notebtn" data-addnote="${r.id}">+ Add note</button></div>`;
   });
-  itemsEl.innerHTML=h;
+  itemsEl.innerHTML=h+(sec?"</div>":"");
+  itemsEl.querySelectorAll("[data-sec]").forEach(b=>b.onclick=()=>{const k=b.dataset.sec;if(openSec.has(k))openSec.delete(k);else openSec.add(k);keepOpen();render();if(openSec.has(k))b.scrollIntoView({behavior:"smooth",block:"start"});});
   $("loadSel").onchange=()=>{state.load=$("loadSel").value;render();save();};
   itemsEl.querySelectorAll(".opts button").forEach(b=>b.onclick=()=>{
     const r=ROWS.find(x=>x.id===b.dataset.r),v=b.dataset.v;
@@ -366,6 +375,9 @@ function render(){
     const ni=d.querySelector("[data-note]");if(ni.value!==(state.note[r.id]||""))ni.value=state.note[r.id]||"";if(state.note[r.id])showNote(r.id,true);
   });
   document.querySelectorAll("[data-v2]").forEach(inp=>{const k=inp.dataset.v2,v=state.val[k]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);inp.closest(".unit").classList.toggle("isna",na);document.querySelector(`[data-vna="${k}"]`).classList.toggle("on",na);});
+  {const per={};ROWS.forEach(r=>{if(!rowVisible(r))return;const p=per[r.sec]||(per[r.sec]={d:0,t:0});p.t++;if(rowDone(r))p.d++;});
+    itemsEl.querySelectorAll("[data-sec]").forEach(b=>{const k=b.dataset.sec,p=per[k]||{d:0,t:0},o=openSec.has(k),sc=$("sc-"+k);sc.textContent=p.t&&p.d===p.t?"✓ "+p.d+" / "+p.t:p.d+" / "+p.t;sc.classList.toggle("full",!!p.t&&p.d===p.t);
+      b.classList.toggle("open",o);b.setAttribute("aria-expanded",o);$("sb-"+k).style.display=o?"":"none";});}
   $("prog").textContent=done+" / "+tot;$("bar").style.width=(tot?done/tot*100:0)+"%";
   document.querySelectorAll(".seg button").forEach(b=>b.classList.toggle("on",b.dataset.s===state.status));
   document.querySelectorAll(".rtype button[data-t]").forEach(b=>b.classList.toggle("on",b.dataset.t===state.type));
@@ -410,7 +422,7 @@ document.querySelectorAll("[data-wr]").forEach(c=>c.onchange=()=>{state.wr[c.dat
 $("date").addEventListener("change",()=>{const d=$("date").value;if(!d)return;$("nextInsp").value=addMonths(d,6);$("nextLoad").value=addMonths(d,12);save();});
 $("allOk").onclick=()=>{let c=0;ROWS.forEach(r=>{if(!rowVisible(r)||r.kind==="meas")return;if(r.kind==="four")activeCols(r.n).forEach(k=>{if(!state.res[r.id+"_"+k]){state.res[r.id+"_"+k]="ok";c++;}});else if(!state.res[r.id]){state.res[r.id]="ok";c++;}});render();save();toast(c?`${c} marked ✓`:"All items already marked");};
 $("elNa").onclick=()=>{ROWS.filter(r=>r.sec==="Electrical").forEach(r=>state.res[r.id]="na");render();save();toast("Electrical items marked N/A");};
-$("jumpNext").onclick=()=>{const r=ROWS.find(x=>rowVisible(x)&&!rowDone(x));if(!r){toast("All items marked");return;}$("it-"+r.id).scrollIntoView({behavior:"smooth",block:"center"});};
+$("jumpNext").onclick=()=>{const r=ROWS.find(x=>rowVisible(x)&&!rowDone(x));if(!r){toast("All items marked");return;}if(!openSec.has(r.sec)){openSec.add(r.sec);keepOpen();render();}$("it-"+r.id).scrollIntoView({behavior:"smooth",block:"center"});};
 function saveTechSig(){}
 const UTKEY="bc-forklift-understudy";
 function utSaved(){try{return JSON.parse(load(UTKEY)||"{}")||{}}catch(e){return{}}}
