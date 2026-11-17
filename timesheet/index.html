@@ -113,6 +113,7 @@
   .tile .cnt:empty{display:none}.tile.light .cnt{background:var(--navy)}
   .okbox{background:#F3FAF5;border:2px solid #9CC9AD;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
   nav.tabs button.locked{opacity:.45}
+  .pastbtn{border:1.5px solid var(--navy);background:#fff;color:var(--navyDeep);border-radius:9px;padding:7px 10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 </style>
 </head>
 <body>
@@ -331,7 +332,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 16 Nov (ZK)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (A)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -801,9 +802,9 @@
       const id = (k + '_' + (j.card || j.customer || j.desc || 'job')).replace(/[^\w\-]+/g, '_');
       const all = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; const l = all[id] || (j.sched ? Object.values(all).find(v => v && v.sched === j.sched) : null); const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
       return { total:rows.length, open:rows.filter(r => !r.status).length }; } catch(e){ return {}; } }
-  function openReport(k, i, type){
-    const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || j.done) return;
-    try { localStorage.setItem('bco-active-job', JSON.stringify({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() })); } catch(e){}
+  function openReport(k, i, type, editPast){
+    const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || (j.done && !editPast)) return;
+    try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
     location.href = type === 'EQUIPMENT' ? '../equipment/' : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
   }
   // today's scheduled jobs, shown first so the technician sees the day's work; tap one to open it (and its inventory)
@@ -1018,7 +1019,9 @@
       </div>
       <div class="card" style="display:flex;flex-direction:column;gap:8px">
         <div class="hint">Odometer ${fmtKm(s.firstOdo)} → ${fmtKm(last)} km${s.clockIn?` · ${esc(s.clockIn)}–${esc(s.clockOut||'')}`:''}</div>
-        ${(s.jobs||[]).map((j,i)=>`<div style="display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:8px"><span class="num-badge" style="width:26px;height:26px;font-size:12px">${i+1}</span><span style="flex:1;font-size:14px">${esc([j.card,j.customer||j.desc].filter(Boolean).join(' · '))}<br><span class="hint">${j.done?'<b style="color:var(--A)">✓ Completed</b> · ':'Not finished · '}${j.contact?'Contact: '+esc(j.contact)+' · ':''}odo ${fmtKm(j.odo)} km${j.notes?' · '+esc(j.notes):''}</span></span><b>${fmtHM(Number(j.hrs)||0)}</b></div>`).join('') || '<div class="hint">No jobs</div>'}
+        ${(s.jobs||[]).map((j,i)=>`<div style="display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:8px"><span class="num-badge" style="width:26px;height:26px;font-size:12px">${i+1}</span><span style="flex:1;font-size:14px">${esc([j.card,j.customer||j.desc].filter(Boolean).join(' · '))}<br><span class="hint">${j.done?'<b style="color:var(--A)">✓ Completed</b> · ':'Not finished · '}${j.contact?'Contact: '+esc(j.contact)+' · ':''}odo ${fmtKm(j.odo)} km${j.notes?' · '+esc(j.notes):''}</span></span><b>${fmtHM(Number(j.hrs)||0)}</b></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:36px"><button type="button" class="pastbtn" data-past="${i}" data-type="EQUIPMENT">📋 Client's inventory</button><button type="button" class="pastbtn" data-past="${i}" data-type="INSPECTION">🔍 Forklift reports</button></div>`).join('') || '<div class="hint">No jobs</div>'}
+        ${(s.jobs||[]).length ? '<div class="hint">Open a job\'s inventory or forklift reports to make changes. Certificates are made again from the changes.</div>' : ''}
       </div>
       <div class="card" style="display:flex;flex-direction:column;gap:6px">
         <div class="k">Vehicle condition</div>
@@ -1036,7 +1039,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 16 Nov (ZK)</span>
+        <span class="hint">App version 17 Nov (A)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
@@ -1227,6 +1230,7 @@
       state.activeDate = null; startScheduled(b.dataset.schedstart);
     });
     app.querySelectorAll('[data-schedopen]').forEach(b => b.onclick = () => { state._schedBack = 'today'; go('schedjob', { schedId:b.dataset.schedopen }); });
+    app.querySelectorAll('[data-past]').forEach(b => b.onclick = () => openReport(state.detailKey, Number(b.dataset.past), b.dataset.type, true));
     app.querySelectorAll('[data-todayjob]').forEach(b => b.onclick = () => { state._schedBack = 'vehicle'; go('schedjob', { schedId:b.dataset.todayjob }); });
     app.querySelectorAll('[data-schedinv]').forEach(b => b.onclick = () => openSchedInv(b.dataset.schedinv));
     app.querySelectorAll('[data-done]').forEach(b => b.onclick = () => {

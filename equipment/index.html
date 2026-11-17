@@ -329,13 +329,13 @@
       const f = await certDoc(l, [i], opts); if (f) parts.push({ no:certNoOf(l, i), blob:f.blob, name:f.name }); }
     return parts; }
   function activeJob(){
-    try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && a.date !== today())) return null;
+    try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && !a.edit && a.date !== today())) return null;
       const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null');
       if (a.sched){   // opened from a scheduled job of today (before or without starting it)
         const x = ts && ts.schedule && ts.schedule[a.sched]; if (ts && (!x || x.date !== a.date)) return null;
         const done = ts && Object.values(ts.sheets || {}).some(sh => (sh.jobs || []).some(j => j.sched === a.sched && j.done)); return done ? null : a; }
       const j = ts && ts.sheets && ts.sheets[a.date] && ts.sheets[a.date].jobs && ts.sheets[a.date].jobs[a.idx];
-      if (ts && (!j || j.done || (j.card || '') !== (a.card || ''))) return null; return a; } catch(e){ return null; }
+      if (ts && (!j || (j.done && !a.edit) || (j.card || '') !== (a.card || ''))) return null; return a; } catch(e){ return null; }   // a.edit: a past or finished job opened from History to make changes
   }
   const listIdFor = a => (a.date + '_' + (a.card || a.customer || 'job')).replace(/[^\w\-]+/g, '_');
 
