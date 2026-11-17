@@ -161,6 +161,13 @@
   header{padding-top:env(safe-area-inset-top)}
   .homebtn{flex:none;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:#f4f6fb;color:var(--navy)}
   @media (max-width:420px){.opts button{width:36px;height:38px}.grid{grid-template-columns:1fr}.name{font-size:13px}}
+  .phbox{margin:8px 0 0 34px;padding:10px;border-radius:10px;background:#f4f6fb;display:flex;flex-direction:column;gap:8px}
+  .phbox.miss{background:#fdecec;border:1px solid #f3c2c2}
+  .phwarn{font-size:13px;font-weight:700;color:var(--bad)}
+  .phimg{max-width:100%;max-height:220px;border-radius:8px;object-fit:contain;align-self:flex-start}
+  .phrow{display:flex;gap:8px}
+  .phbtn{flex:1;margin:0!important;text-align:center;padding:11px;border-radius:8px;border:1.5px solid var(--navy);background:#fff;color:var(--navy)!important;font-size:14px!important;font-weight:800!important;cursor:pointer}
+  .phdel{border:1.5px solid var(--bad);background:#fff;color:var(--bad);border-radius:8px;padding:0 14px;font-weight:700;font-size:13px}
 </style>
 </head>
 <body>
@@ -285,7 +292,7 @@ const FIELDS=["customer","date","jobno","make","model","serial","swl","lc","mh",
 const KEY="bc-forklift-draft-v1", ENGKEY="bc-forklift-engineer", JOBKEY="bc-forklift-jobs", SESSKEY="bc-forklift-session", TECHKEY="bc-forklift-techs";
 
 let state=blank();
-function blank(){return{batt:{min:"",max:""},crack:"",type:"INSPECTION",wr:{insp:false,load:false},chain:{ln:"",lm:"",rn:"",rm:""},fork:{lv:"",lh:"",rv:"",rh:""},f:{},res:Array(ITEMS.length).fill(null),val:Array(ITEMS.length).fill(""),note:Array(ITEMS.length).fill(""),status:null,sig:{sigEng:null,sigCust:null,sigUt:null}};}
+function blank(){return{batt:{min:"",max:""},crack:"",type:"INSPECTION",wr:{insp:false,load:false},chain:{ln:"",lm:"",rn:"",rm:""},fork:{lv:"",lh:"",rv:"",rh:""},f:{},res:Array(ITEMS.length).fill(null),val:Array(ITEMS.length).fill(""),note:Array(ITEMS.length).fill(""),status:null,photo:{},sig:{sigEng:null,sigCust:null,sigUt:null}};}
 function store(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function load(k){try{return localStorage.getItem(k)}catch(e){return null}}
 
@@ -317,6 +324,7 @@ function build(){
           <div><label>Original (mm)</label><input inputmode="decimal" data-chain="${k}n"></div>
           <div><label>Measured (mm)</label><input inputmode="decimal" data-chain="${k}m"></div>
           <div class="wear" id="str-${k}">–</div></div>`).join("")}</div>`:""}
+      ${(n===CRACK||VALUE_ONLY.includes(n))?"":photoBox(i,name)}
       <div class="sub notewrap" style="display:none"><input data-note="${i}" placeholder="Note / defect for item ${n}"></div>
       <button class="notebtn" data-addnote="${i}">+ Add note</button>`;
     d.querySelectorAll(".opts button").forEach(b=>b.onclick=()=>{
@@ -326,6 +334,7 @@ function build(){
     });
     itemsEl.appendChild(d);
   });
+  wirePhotos(itemsEl);
   itemsEl.querySelectorAll("[data-val]").forEach(inp=>inp.oninput=inp.onchange=()=>{state.val[+inp.dataset.val]=inp.value;render();save();if(+inp.dataset.val===ATTACH-1&&inp.value&&!$("aserial").value)toast("Add the "+inp.value.toLowerCase()+" details under SWL");});
   $("crackSel").onchange=()=>{state.crack=$("crackSel").value;render();save();};
   itemsEl.querySelectorAll("[data-batt]").forEach(inp=>inp.oninput=()=>{state.batt[inp.dataset.batt]=inp.value;render();save();});
@@ -346,6 +355,7 @@ function render(){
     if(visible(i)&&isDone(i))done++;
     const nm=$("nm"+(i+1));if(nm.textContent!==itemName(i))nm.textContent=itemName(i);
     const vi=d.querySelector("[data-val]"); if(vi&&vi.value!==state.val[i])vi.value=state.val[i];
+    showPhoto(i,visible(i)&&state.res[i]==="x");
     const ni=d.querySelector("[data-note]"); if(ni.value!==state.note[i])ni.value=state.note[i];
     if(state.note[i])showNote(i,true);
   });
@@ -478,8 +488,10 @@ function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec((d||"").trim().replace(/^F(?=.
 function recordDoc(){const d=parseDoc(state.f.docno);if(!d)return;const m=jobsMap();m[d.job]=Math.max(m[d.job]||0,d.n);store(JOBKEY,JSON.stringify(m));}
 $("jobno").addEventListener("input",()=>{const j=$("jobno").value.trim();$("docno").value=j?nextDoc(j):"";save();});
 
+function photosNeeded(){return vis().filter(i=>state.res[i]==="x"&&!(state.photo&&state.photo[i])).map(i=>({i,label:"#"+dnum(i)+" "+esc(itemName(i))}));}
 $("pdfBtn").onclick=()=>{
   FIELDS.forEach(f=>state.f[f]=$(f).value);
+  {const ph=photosNeeded();if(ph.length){photoBlock(ph,t=>$("pb-"+t.i).scrollIntoView({behavior:"smooth",block:"center"}));return;}}
   const miss=[];
   if(!state.f.customer)miss.push("Customer");
   if(!state.f.make)miss.push("Manufacturer");
@@ -599,6 +611,7 @@ async function buildPdf(st){const prev=state;state=st;try{
   // overflow remarks page
   if(rem.length){let all=[];doc.setFontSize(9);rem.forEach(t=>all.push(...doc.splitTextToSize(t,W-4)));if(all.length>maxLines){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("REMARKS (continued) — Doc No "+(f.docno||"")+"  "+(f.customer||""),L,16);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(10,20,60);doc.text(all,L,24);}}
 
+  photoPages(doc,vis().filter(i=>state.res[i]==="x"&&state.photo&&state.photo[i]).map(i=>({label:"#"+dnum(i)+" "+itemName(i)+" – X"+(state.note[i]?": "+state.note[i]:""),p:state.photo[i]})),"PHOTOS — Doc No "+(f.docno||"")+"  "+(f.customer||"").toUpperCase());
   return {doc,end:y+17.6,per,ih};}
   // two passes: second pass stretches the checklist rows so the page ends exactly on the 10 mm bottom margin
   let pass=draw();const ih2=Math.max(5,Math.min(7.2,pass.ih+(287-pass.end)/pass.per));pass=draw(ih2);const doc=pass.doc;const f=state.f;
@@ -741,6 +754,27 @@ function toEquipment(st){
 }
 // ---- one-time: old report numbers (7001.1) get the F prefix (F7001.1), also on equipment lists ----
 const NOF=/^(?!F)(.+\.\d+)$/i;
+// ---- photos: every item marked X needs a photo; the photos print on a page at the back of the report ----
+async function photoData(file){if(file.type&&!/^image\//.test(file.type)&&!/\.(heic|heif|jpe?g|png|webp|gif|bmp)$/i.test(file.name))throw new Error("type");
+  const im=await loadImg(file);const W0=im.naturalWidth||im.width,H0=im.naturalHeight||im.height;if(!W0||!H0)throw new Error("decode");
+  const sc=Math.min(1,900/Math.max(W0,H0)),w=Math.max(1,Math.round(W0*sc)),h=Math.max(1,Math.round(H0*sc));const c=document.createElement("canvas");c.width=w;c.height=h;const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);
+  return {src:c.toDataURL("image/jpeg",0.6),w,h};}
+function photoBox(key,label){return `<div class="phbox" id="pb-${key}" style="display:none"><div class="phwarn">📷 Photo needed – this item is marked X</div><img class="phimg" alt="Photo of ${String(label).replace(/"/g,"")}"><div class="phrow"><label class="phbtn">📷 <span>Take photo</span><input type="file" accept="image/*" capture="environment" data-photo="${key}" class="vh"></label><button type="button" class="phdel" data-phdel="${key}">Remove</button></div></div>`;}
+function wirePhotos(root){root.querySelectorAll("[data-photo]").forEach(inp=>inp.onchange=async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const k=inp.dataset.photo,sp=inp.parentNode.querySelector("span");sp.textContent="Loading…";
+    try{state.photo=state.photo||{};state.photo[k]=await photoData(f);render();save();toast("Photo added");}catch(err){upErr(err);render();}e.target.value="";});
+  root.querySelectorAll("[data-phdel]").forEach(b=>b.onclick=()=>{if(state.photo)delete state.photo[b.dataset.phdel];render();save();});}
+function showPhoto(key,need){const b=$("pb-"+key);if(!b)return;const p=state.photo&&state.photo[key];b.style.display=need||p?"":"none";b.classList.toggle("miss",!!need&&!p);
+  const im=b.querySelector(".phimg");if(p){if(im.getAttribute("src")!==p.src)im.src=p.src;im.style.display="";}else{im.removeAttribute("src");im.style.display="none";}
+  b.querySelector(".phdel").style.display=p?"":"none";b.querySelector(".phwarn").style.display=need&&!p?"":"none";b.querySelector(".phbtn span").textContent=p?"Retake photo":"Take photo";}
+function photoPages(doc,list,title){if(!list.length)return;const L=10,cw=92,ch=70;
+  list.forEach((it,k)=>{if(k%6===0){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(27,47,110);doc.text(title,L,16);}
+    const col=k%2,row=Math.floor((k%6)/2),x=L+col*(cw+6),y=26+row*(ch+20);
+    doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(30,34,51);doc.text(doc.splitTextToSize(it.label,cw).slice(0,2),x,y);
+    const sc=Math.min(cw/it.p.w,ch/it.p.h),w=it.p.w*sc,h=it.p.h*sc;try{doc.addImage(it.p.src,"JPEG",x+(cw-w)/2,y+7+(ch-h)/2,w,h,undefined,"FAST");}catch(e){}
+    doc.setDrawColor(150,156,170);doc.setLineWidth(0.25);doc.rect(x,y+7,cw,ch);});}
+function photoBlock(list,go){modal(`<h3>Photos needed</h3><p>Every item marked X needs a photo before the report can be saved:</p><ul>${list.map(t=>"<li>"+t.label+"</li>").join("")}</ul><div class="btns"><button class="primary" id="phGo">Take the photo${list.length>1?"s":""}</button></div>`);
+  $("phGo").onclick=()=>{closeModal();go(list[0]);};}
+
 function fixNo(no){const t=String(no||"").trim();if(!/\.\d+$/.test(t)||/^CR/i.test(t))return t;if(/^F/i.test(t))return "F"+jobCore(t.slice(1));return "F"+jobCore(t);}
 function fixCert(c){return String(c||"").replace(/^CC(?=\d)/i,"C");}
 const needsFix=no=>{const t=String(no||"").trim();return !!t&&fixNo(t)!==t;};
