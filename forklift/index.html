@@ -889,7 +889,7 @@ function checkSession(){state.f.engName=PROFILE?PROFILE.name||"":"";state.sig.si
 // ---- Blue Cranes Online: only open for the job the tech is busy with on the time sheet ----
 const ACTIVE=(function(){try{const a=JSON.parse(load("bco-active-job")||"null");if(!a||(a.date!==today()&&!a.edit))return null;
   const ts=JSON.parse(load("dts-v1")||"null");const j=ts&&ts.sheets&&ts.sheets[a.date]&&ts.sheets[a.date].jobs&&ts.sheets[a.date].jobs[a.idx];
-  if(ts&&(!j||(j.done&&!a.edit)||(j.card||"")!==(a.card||"")))return null;return a;}catch(e){return null;}})();
+  if(ts&&(!j||(j.done&&!a.edit)||((j.card||"")!==(a.card||"")&&(j.customer||j.desc||"")!==(a.customer||""))))return null;if(j&&j.card)a.card=j.card;return a;}catch(e){return null;}})();
 const jobKey=f=>String((f&&(f.jobno||f.customer))||"").trim().toLowerCase();
 function fresh(){keepDraftNow();state=blank();{const u=utSaved();state.f.utName=u.name||"";state.f.utLmi=u.lmi||"";state.sig.sigUt=u.sig||null;}state.f.date=(typeof ACTIVE!=="undefined"&&ACTIVE&&ACTIVE.edit&&ACTIVE.date)||today();state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);const se=session();state.f.engName=se?se.name:"";state.sig.sigEng=se?techSig(se.name):null;
   if(ACTIVE){state.f.customer=ACTIVE.customer||"";state.f.jobno=ACTIVE.card||"";state.f.custName=ACTIVE.contact||"";state.f.docno=ACTIVE.card?nextDoc(ACTIVE.card):"";}}

@@ -336,7 +336,7 @@
         const x = ts && ts.schedule && ts.schedule[a.sched]; if (ts && (!x || x.date !== a.date)) return null;
         const done = ts && Object.values(ts.sheets || {}).some(sh => (sh.jobs || []).some(j => j.sched === a.sched && j.done)); return done ? null : a; }
       const j = ts && ts.sheets && ts.sheets[a.date] && ts.sheets[a.date].jobs && ts.sheets[a.date].jobs[a.idx];
-      if (ts && (!j || (j.done && !a.edit) || (j.card || '') !== (a.card || ''))) return null; return a; } catch(e){ return null; }   // a.edit: a past or finished job opened from History to make changes
+      if (ts && (!j || (j.done && !a.edit) || ((j.card || '') !== (a.card || '') && (j.customer || j.desc || '') !== (a.customer || '')))) return null; return a; } catch(e){ return null; }   // a.edit: a past or finished job opened from History to make changes
   }
   const listIdFor = a => (a.date + '_' + (a.card || a.customer || 'job')).replace(/[^\w\-]+/g, '_');
 
@@ -876,7 +876,13 @@
     S.active = activeJob();
     const wantInv = /[?&]inventory=1/.test(location.search);
     if (S.active){
-      let id = listIdFor(S.active);
+      // take the job number and customer from the job itself (they may have been filled in or changed after the inventory was started)
+      const idOld = listIdFor(S.active);
+      try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null');
+        const tj = ts && S.active.idx != null && ts.sheets[S.active.date] && ts.sheets[S.active.date].jobs[S.active.idx];
+        const sx = ts && S.active.sched && ts.schedule && ts.schedule[S.active.sched];
+        const src = tj || sx; if (src){ if (src.card) S.active.card = src.card; if (src.customer && !S.active.customer) S.active.customer = src.customer; } } catch(e){}
+      let id = listIdFor(S.active); if (!S.lists[id] && S.lists[idOld]) id = idOld;
       // the same scheduled job keeps one inventory, whether opened from the schedule or after starting it (even on another day)
       const sid = S.active.sched || (() => { try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const tj = ts.sheets[S.active.date].jobs[S.active.idx]; return tj.sched || ''; } catch(e){ return ''; } })();
       if (sid && !S.lists[id]){ const linked = Object.values(S.lists).find(v => v && v.sched === sid); if (linked) id = linked.id; }
@@ -884,6 +890,8 @@
       if (!S.cur.rows.length && !S.lists[id]){ S.cur.rows.push({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'' }); }
       S.cur.rows.forEach(r => { if (!r.id) r.id = rowId(); });
       if (sid && !S.cur.sched) S.cur.sched = sid;
+      if (S.active.card && S.cur.job !== S.active.card) S.cur.job = S.active.card;
+      if (S.active.customer && !S.cur.customer) S.cur.customer = S.active.customer;
       S.lists[id] = S.cur; lsSave();
     }
     S.view = wantInv ? 'inventory' : S.active ? 'list' : 'gate';
