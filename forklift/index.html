@@ -373,7 +373,7 @@ function render(){
   if($("crackSel").value!==state.crack)$("crackSel").value=state.crack;
   {const a=state.val[ATTACH-1];$("attRow").style.display=a?"":"none";if(a)$("attHead").textContent=a+" details";}
   $("hType").textContent=state.type==="LOAD TEST"?"Forklift Load Test":"Forklift Inspection";
-  {const lt=state.type==="LOAD TEST",b=$("utBox"),was=b.style.display!=="none";b.style.display=lt?"":"none";if(lt&&!was&&pads.sigUt)pads.sigUt.size();}
+  // the understudy is filled in on the client's inventory (Load test certificate – understudy), not on this report
   [["insp","nextInsp"],["load","nextLoad"]].forEach(([k,id])=>{const uns=state.status==="UNSAFE",on=uns&&state.wr[k];
     $("wr-"+k).classList.toggle("show",uns);$("wr-"+k).querySelector("input").checked=on;
     $(id).style.display=on?"none":"";$("wrt-"+k).style.display=on?"block":"none";});
@@ -505,7 +505,7 @@ $("pdfBtn").onclick=()=>{
   if(!state.status)miss.push("Safe / Unsafe for use");
   if(!state.f.engName)miss.push("Engineer's name");
   if(!state.sig.sigEng)miss.push("Engineer's signature");
-  if(state.type==="LOAD TEST"){if(!state.f.site)miss.push("Site address (for the certificate)");if(!state.f.swl)miss.push("SWL");if(!state.f.lc)miss.push("Load centre");if(!state.f.utName)miss.push("Understudy to – name");if(!state.sig.sigUt)miss.push("Understudy to – signature");}
+  if(state.type==="LOAD TEST"){if(!state.f.site)miss.push("Site address (for the certificate)");if(!state.f.swl)miss.push("SWL");if(!state.f.lc)miss.push("Load centre");}
   if(miss.length){modal(`<h3>Some things are missing</h3><ul>${miss.map(m=>"<li>"+m+"</li>").join("")}</ul><div class="btns"><button class="secondary" id="mNo">Go back</button><button class="primary" id="mYes">Save PDF anyway</button></div>`);$("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();makePdf();};}
   else makePdf();
 };
@@ -624,6 +624,7 @@ async function buildPdf(st){const prev=state;state=st;try{
   return {doc,name};}finally{state=prev;}}
 async function makePdf(){
   if(!window.jspdf){toast("PDF tool still loading — try again");return;}
+  if(!state._rid){const u=utSaved();if(u.name||u.sig){state.f.utName=u.name||"";state.f.utLmi=u.lmi||"";state.sig.sigUt=u.sig||null;}}
   const {doc,name}=await buildPdf(state);
   const blob=doc.output("blob");recordDoc();
   try{await saveReport(state);}catch(e){}
