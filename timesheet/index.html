@@ -332,7 +332,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (U)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (V)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -1055,7 +1055,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 17 Nov (U)</span>
+        <span class="hint">App version 17 Nov (V)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
@@ -1211,6 +1211,8 @@
   }
 
   function wire(){
+    // links to the inventories and report lists remember where you were, so coming back opens the same page (e.g. History)
+    app.querySelectorAll('a[href^="../equipment/"], a[href^="../forklift/"], a[href^="../crane/"]').forEach(x => x.addEventListener('click', keepPlace));
     app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'jobpage' ? go('jobpage', { _finishing:false }) : go(b.dataset.go, { jobIdx:null, prefill:null, schedId:null, _finishing:false, _editDay:false }));
     app.querySelectorAll('[data-addjob]').forEach(b => b.onclick = () => go('job', { jobIdx:null, prefill:null, _finishing:false }));
     // account, backup, install

@@ -791,8 +791,9 @@ function fresh(){keepDraftNow();state=blank();state.f.date=(ACTIVE&&ACTIVE.edit&
 {const saved=load(KEY);if(saved){try{useState(JSON.parse(saved));}catch(e){fresh();}}else fresh();}
 applyState();syncDoc();checkSession();save();updRepCount();
 function showGate(){modal(`<h3>No job started</h3><p>Crane and hoist inspections and load tests open from the job you are busy with.</p><p>On the time sheet, tap <b>Start job</b>, open the <b>Client's inventory</b> and tap <b>Inspection</b> or <b>Load test</b> on the crane or hoist.</p><button class="secondary" id="gRep" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">View saved reports</button><div class="btns"><a class="primary" href="../timesheet/" style="flex:1;padding:12px;border-radius:10px;font-weight:700;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Go to time sheet</a></div>`);$("gRep").onclick=()=>{closeModal();$("repPanel").classList.add("show");showReports();};}
-if(!ACTIVE&&!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else showGate();}
-$("repClose").onclick=()=>{$("repPanel").classList.remove("show");if(!ACTIVE&&!EMBED){if(WANT_REPORTS)location.href="../timesheet/";else showGate();}};
+if(!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else if(!ACTIVE)showGate();}
+const goBackTs=()=>{let r=null;try{r=document.referrer?new URL(document.referrer):null;}catch(e){}if(r&&r.origin===location.origin&&r.pathname!==location.pathname&&history.length>1)history.back();else location.href="../timesheet/";};
+$("repClose").onclick=()=>{if(WANT_REPORTS&&!EMBED){goBackTs();return;}$("repPanel").classList.remove("show");if(!ACTIVE&&!EMBED)showGate();};
 if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
 // opened from a crane / hoist on the client's inventory: a report for that item, with its details filled in
 (function(){let it=null;try{it=JSON.parse(load("bco-cr-item")||"null");localStorage.removeItem("bco-cr-item");}catch(e){}

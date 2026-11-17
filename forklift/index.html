@@ -943,13 +943,14 @@ applyState();syncDoc();checkSession();save();updRepCount();
 function showGate(){modal(`<h3>No job started</h3><p>New forklift inspections and load tests open from the job you are busy with.</p><p>On the time sheet, tap <b>Start job</b> on the job, then <b>Forklift inspection / load test</b>.</p><button class="secondary" id="gRep" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">View saved reports</button><div class="btns"><a class="primary" href="../timesheet/" style="flex:1;padding:12px;border-radius:10px;font-weight:700;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Go to time sheet</a></div>`);$("gRep").onclick=()=>{closeModal();$("repPanel").classList.add("show");showReports();};}
 const WANT_REPORTS=/[?&]reports=1/.test(location.search);
 const EMBED=/[?&]embed=1/.test(location.search);
-if(!ACTIVE&&!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else showGate();}
+if(!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else if(!ACTIVE)showGate();}
 // a past job opened from History: show its saved reports first, so one can be opened and changed
 if(ACTIVE&&!EMBED){setTimeout(async()=>{await syncDrafts();const jc=jobCore(ACTIVE.card||"");const mine=draftList().filter(r=>jc&&jobCore(r.job)===jc);
   if(mine.length&&!$("repPanel").classList.contains("show")){const r=mine[0],f=r.state.f;modal(`<h3>Unfinished report</h3><p>${esc(f.docno||"")} ${f.serial?"· "+esc(f.serial):""} on this job was started but not saved as a report.</p><div class="btns"><button class="secondary" id="mNo">Later</button><button class="primary" id="mYes">Continue it</button></div>`);
     $("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();continueDraft(r.id);};}},800);}
 if(ACTIVE&&ACTIVE.edit&&!EMBED&&!load("bco-fl-item")){if(!state.f.serial&&!state.f.make&&ACTIVE.date&&state.f.date!==ACTIVE.date){state.f.date=ACTIVE.date;state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);applyState();save();}repScope="all";$("repSearch").value=ACTIVE.customer||"";$("repPanel").classList.add("show");showReports();toast("Tap Open on a report to change it, or close this list to add a new one");}
-$("repClose").onclick=()=>{$("repPanel").classList.remove("show");if(!ACTIVE){if(WANT_REPORTS)location.href="../timesheet/";else showGate();}};
+const goBackTs=()=>{let r=null;try{r=document.referrer?new URL(document.referrer):null;}catch(e){}if(r&&r.origin===location.origin&&r.pathname!==location.pathname&&history.length>1)history.back();else location.href="../timesheet/";};
+$("repClose").onclick=()=>{if(WANT_REPORTS){goBackTs();return;}$("repPanel").classList.remove("show");if(!ACTIVE)showGate();};
 if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
 {const wt=new URLSearchParams(location.search).get("type");let it=null;try{it=JSON.parse(load("bco-fl-item")||"null");}catch(e){}
   const other=it&&it.serial&&String(state.f.serial||"").trim().toUpperCase()!==String(it.serial).trim().toUpperCase()&&hasContent(state);   // a report for another forklift is on screen: leave it as it is

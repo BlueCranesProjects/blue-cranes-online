@@ -469,7 +469,7 @@
     const inv = inventory(); const q = S.q.trim().toLowerCase();
     const keys = Object.keys(inv).filter(k => !q || inv[k].name.toLowerCase().includes(q) || Object.values(inv[k].items).some(r => String(r.serial).toLowerCase().includes(q)))
       .sort((a,b) => inv[b].last.localeCompare(inv[a].last));
-    const back = S.cur ? `<button class="ib" id="toList" aria-label="Back to the client's inventory">${ICON.back}</button>` : backBtn('../timesheet/', 'Back to the time sheet');
+    const back = S.cur && !S.invDirect ? `<button class="ib" id="toList" aria-label="Back to the client's inventory">${ICON.back}</button>` : backBtn('../timesheet/', 'Back to the time sheet');
     return head('Blue Cranes', 'All client inventories', back) + `<main>
       <input type="search" id="q" placeholder="Search customer or serial nr…" value="${esc(S.q)}">
       ${keys.length ? keys.map(k => { const c = inv[k]; const n = Object.keys(c.items).length;
@@ -943,7 +943,7 @@
       if (S.active.customer && !S.cur.customer) S.cur.customer = S.active.customer;
       S.lists[id] = S.cur; lsSave();
     }
-    S.view = wantInv ? 'inventory' : S.active ? 'list' : 'gate';
+    S.view = wantInv ? 'inventory' : S.active ? 'list' : 'gate'; S.invDirect = wantInv;   // opened straight from the time sheet: back goes back there
     render();
     const w = await BC.requireUser(); if (w.profile && w.profile.name && S.cur && !S.cur.tech){ S.cur.tech = w.profile.name; }
     if (window.Cloud) Cloud.onError = () => toast('Cloud save failed – kept on this phone');
