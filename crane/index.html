@@ -289,10 +289,12 @@ const MEAS=[["F","Deflection"],["G","Crane span / beam length"],["H","Height of 
 const ELEC=["Isolator","Pendant cable","Pendant / radio","Control buttons","Festoon cables","Festoon track","Festoon trolleys","Contactors / controllers","Relays","Overloads","Timers","Electric motors","Variable speed drives","Resistor bank","Power supply DSL","Collectors / shoes","General wiring","Other"];
 const COLS=[["lt","L/T","Long travel"],["ct","C/T","Cross travel"],["h","H","Hoist"],["ah","A/H","Aux hoist"]];
 // cells that are not applicable on the paper form (grey): column 0 L/T, 1 C/T, 2 H, 3 A/H
-const GREY={2:[2,3],10:[0,1],11:[0,1],12:[0,1],13:[0,1],14:[0,1],15:[0,1],16:[0,1],17:[0,1],18:[0,1],19:[2,3]};
+const GREY={2:[2,3],11:[0,1],12:[0,1],13:[0,1],14:[0,1],15:[0,1],16:[0,1],17:[0,1],18:[0,1],19:[0,1],20:[2,3]};
 const ROWS=[];
-MECH.forEach((t,k)=>ROWS.push({id:"m"+(k+1),n:k+1,no:String(k+1),name:t,kind:"four",sec:"Mechanical"}));
-BRAKES.forEach((t,k)=>ROWS.push({id:"m"+(k+20),n:k+20,no:String(k+20),name:t,kind:"four",sec:"Brakes"}));
+// numbers on the sheet: lubrication is item 9 (after oil / grease levels), so the mechanical group is 1–20 and brakes 21–26
+// (ids stay as they were, so reports already started keep their answers)
+{const order=[...MECH.slice(0,8).map((t,k)=>["m"+(k+1),t,"Mechanical"]),["m20","Lubrication","Mechanical"],...MECH.slice(8).map((t,k)=>["m"+(k+9),t,"Mechanical"]),...BRAKES.slice(1).map((t,k)=>["m"+(k+21),t,"Brakes"])];
+  order.forEach(([id,t,sec],k)=>ROWS.push({id,n:k+1,no:String(k+1),name:t,kind:"four",sec}));}
 SAFETY.forEach(([a,t])=>ROWS.push({id:a,no:a,name:t,kind:"one",sec:"Safety"}));
 MEAS.forEach(([a,t])=>ROWS.push({id:a,no:a,name:t,kind:"meas",sec:"Safety",ui:a==="F"}));   // span and height of lift are filled in with the SWL
 ELEC.forEach((t,k)=>ROWS.push({id:"e"+(k+27),no:String(k+27),name:t,kind:"one",sec:"Electrical"}));
@@ -307,10 +309,10 @@ const $=id=>document.getElementById(id);
 const itemsEl=$("items");
 const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // item 10: rope or chain – changes the names of items 10–13 and takes away the load sprocket (17) for rope
-function greyOf(n,st){st=st||state;if(n===17&&st.load==="rope")return [0,1,2,3];return GREY[n]||[];}
+function greyOf(n,st){st=st||state;if(n===18&&st.load==="rope")return [0,1,2,3];return GREY[n]||[];}
 function rname(r,st){st=st||state;const L=st.load;if(!L)return r.name;
-  if(r.n===10)return L==="rope"?"Load rope":"Load chain";if(r.n===11)return L==="rope"?"Guide / pressure band":"Guide";
-  if(r.n===12)return L==="rope"?"Top sheaves":"Top sprocket";if(r.n===13)return L==="rope"?"Bottom sheaves":"Bottom block sprocket";return r.name;}
+  if(r.n===11)return L==="rope"?"Load rope":"Load chain";if(r.n===12)return L==="rope"?"Guide / pressure band":"Guide";
+  if(r.n===13)return L==="rope"?"Top sheaves":"Top sprocket";if(r.n===14)return L==="rope"?"Bottom sheaves":"Bottom block sprocket";return r.name;}
 function activeCols(n,st){st=st||state;const g=greyOf(n,st);return [0,1,2,3].filter(c=>!g.includes(c)&&st.parts[COLS[c][0]]);}
 function rowVisible(r){if(r.ui===false)return false;return r.kind!=="four"||activeCols(r.n).length>0;}
 function rowDone(r){if(r.kind==="four")return activeCols(r.n).every(c=>!!state.res[r.id+"_"+c]);if(r.kind==="meas")return !!String(state.val[r.id]||"").trim();return !!state.res[r.id];}
@@ -325,7 +327,7 @@ function build(){
     if(r.sec!==sec){sec=r.sec;h+=`<div class="sech">${sec}</div>`;}
     h+=`<div class="item" id="it-${r.id}"><div class="row"><span class="num">${r.no}</span><span class="name"><span id="nm-${r.id}">${esc(r.name)}</span><span class="mixed" id="mx-${r.id}">different per part</span></span>
       ${r.kind==="meas"?"":optBtns(`data-r="${r.id}"`,r.name)}</div>`;
-    if(r.n===10)h+=`<div class="sub"><select id="loadSel" class="ysel"><option value="">Rope or chain? Choose…</option><option value="rope">Rope</option><option value="chain">Chain</option></select></div>`;
+    if(r.n===11)h+=`<div class="sub"><select id="loadSel" class="ysel"><option value="">Rope or chain? Choose…</option><option value="rope">Rope</option><option value="chain">Chain</option></select></div>`;
     if(r.kind==="meas")h+=`<div class="sub"><div class="unit" style="flex:1"><input data-meas="${r.id}" inputmode="decimal" placeholder="${r.id==="F"?"Measured deflection":r.id==="G"?"Span / length":"Height"}"><span>mm</span></div><button type="button" class="na nab" data-measna="${r.id}">N/A</button></div>`;
     if(r.kind==="four"){h+=`<button class="pbtn" data-exp="${r.id}">Different per part ▾</button><div class="pp" id="pp-${r.id}">${COLS.map(([k,s],c)=>`<div class="pprow" id="pr-${r.id}-${c}"><span>${s}</span>${optBtns(`data-r="${r.id}" data-c="${c}"`,r.name+" "+s)}</div>`).join("")}</div>`;}
     h+=`<div class="sub notewrap" style="display:none"><input data-note="${r.id}" placeholder="Note / defect for item ${r.no}"></div><button class="notebtn" data-addnote="${r.id}">+ Add note</button></div>`;
@@ -522,7 +524,7 @@ function nextSameJob(){
 function missing(){const miss=[];readFields();
   if(!state.f.customer)miss.push("Customer");if(!state.f.details)miss.push("Crane / hoist details");if(!state.f.serial)miss.push("Serial no");if(!state.f.swl)miss.push("SWL");if(!String(state.val.G||"").trim())miss.push("Crane span (or N/A)");if(!String(state.val.H||"").trim())miss.push("Height of lift (or N/A)");
   if(!Object.values(state.parts).some(Boolean))miss.push("Tick what the crane / hoist has (L/T, C/T, H, A/H)");
-  if(!state.load)miss.push("Item 10: choose rope or chain");const un=ROWS.filter(r=>rowVisible(r)&&!rowDone(r)).map(r=>r.no);if(un.length)miss.push(`${un.length} checklist item${un.length>1?"s":""} not marked (${un.slice(0,8).join(", ")}${un.length>8?"…":""})`);
+  if(!state.load)miss.push("Item 11: choose rope or chain");const un=ROWS.filter(r=>rowVisible(r)&&!rowDone(r)).map(r=>r.no);if(un.length)miss.push(`${un.length} checklist item${un.length>1?"s":""} not marked (${un.slice(0,8).join(", ")}${un.length>8?"…":""})`);
   if(!state.status)miss.push("Safe / Unsafe for use");if(!state.f.engName)miss.push("Technician's name");if(!state.sig.sigEng)miss.push("Technician's signature (add it to your profile)");
   return miss;}
 $("pdfBtn").onclick=()=>{const miss=missing();
