@@ -541,7 +541,8 @@ async function buildPdf(st){const prev=state;state=st;try{
   doc.setDrawColor(60,66,80);doc.setLineWidth(0.25);doc.setTextColor(30,34,51);
   let y=51+HY;doc.rect(L,y,W,8);doc.setFontSize(13);doc.text(state.type==="LOAD TEST"?"FORKLIFT LOAD TEST REPORT":"FORKLIFT INSPECTION REPORT",105,y+5.6,{align:"center"});
   y+=8;const rh=7;
-  function cell(x,yy,w,label,val){doc.rect(x,yy,w,rh);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(label,x+1.5,yy+4.6);const lw=doc.getTextWidth(label)+3;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(10,20,60);doc.text(doc.splitTextToSize(val||"",w-lw-2)[0]||"",x+lw,yy+4.8);}
+  const NAF=[208,212,220],isNA=v=>/^n\/a$/i.test(String(v==null?"":v).trim());
+  function cell(x,yy,w,label,val){if(isNA(val)){doc.setFillColor(...NAF);doc.rect(x,yy,w,rh,"FD");}else doc.rect(x,yy,w,rh);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(label,x+1.5,yy+4.6);const lw=doc.getTextWidth(label)+3;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(10,20,60);doc.text(doc.splitTextToSize(val||"",w-lw-2)[0]||"",x+lw,yy+4.8);}
   cell(L,y,145,"CUSTOMER :",f.customer);cell(L+145,y,W-145,"DATE :",fmt(f.date));y+=rh;
   cell(L,y,72,"MANUFACTURER :",f.make);cell(L+72,y,73,"MODEL :",f.model);cell(L+145,y,W-145,"JOB NO :",f.jobno);y+=rh;
   cell(L,y,95,"SERIAL NO :",f.serial);cell(L+95,y,95,"LOCATION :",f.location);y+=rh;
@@ -564,6 +565,7 @@ async function buildPdf(st){const prev=state;state=st;try{
       if(i===BATT-1){const b=state.batt||{};state.val[i]=b.min&&b.max?b.min+" - "+b.max+" kg":b.min?"Min "+b.min+" kg":b.max?"Max "+b.max+" kg":"";}
       if(i===14){const cc=chainCalc(false),parts=[];if(cc.l)parts.push("L "+cc.l.p.toFixed(1)+"%");if(cc.r)parts.push("R "+cc.r.p.toFixed(1)+"%");state.val[14]=parts.length?"Stretch "+parts.join("  "):"";}
       const inRes=i===CRACK-1||VALUE_ONLY.includes(i+1);
+      if((inRes&&i!==CRACK-1&&isNA(state.val[i]))||(!inRes&&state.res[i]==="na")){doc.setFillColor(...NAF);doc.setDrawColor(150,156,170);doc.rect(x+colW-20,yy,20,ih,"FD");doc.setTextColor(30,34,51);doc.setFont("helvetica","normal");doc.setFontSize(8);}
       if(inRes){
         if(i===CRACK-1)label="FORK CRACK";
         const rv=i===CRACK-1?(state.crack?state.crack[0].toUpperCase()+state.crack.slice(1):""):(state.val[i]?state.val[i]+(UNIT_ITEMS[i+1]&&/^[\d.,\s]+$/.test(state.val[i])?" "+UNIT_ITEMS[i+1]:""):"");
@@ -602,7 +604,7 @@ async function buildPdf(st){const prev=state;state=st;try{
   doc.text("NO APPARENT DEFECT:",L,y+3);doc.rect(L+34,y-0.5,7,5);doc.setDrawColor(29,138,74);doc.setLineWidth(0.6);doc.line(L+35.8,y+2,L+37,y+3.4);doc.line(L+37,y+3.4,L+39.4,y+0.6);doc.setLineWidth(0.25);doc.setDrawColor(60,66,80);
   doc.text("WORN BUT SERVICEABLE:",L+50,y+3);doc.rect(L+88,y-0.5,7,5);doc.setTextColor(201,138,0);doc.text("W",L+91.5,y+3.1,{align:"center"});doc.setTextColor(30,34,51);
   doc.text("PART NEEDS URGENT REPLACEMENT:",L+104,y+3);doc.rect(L+159,y-0.5,7,5);doc.setTextColor(198,40,40);doc.text("X",L+162.5,y+3.1,{align:"center"});doc.setTextColor(30,34,51);
-  doc.text("N/A:",L+172,y+3);doc.rect(L+179,y-0.5,9,5);doc.setFontSize(6.5);doc.setTextColor(107,114,128);doc.text("N/A",L+183.5,y+2.9,{align:"center"});doc.setTextColor(30,34,51);
+  doc.text("N/A:",L+172,y+3);doc.setFillColor(...NAF);doc.rect(L+179,y-0.5,9,5,"FD");doc.setFontSize(6.5);doc.setTextColor(107,114,128);doc.text("N/A",L+183.5,y+2.9,{align:"center"});doc.setTextColor(30,34,51);
   y+=10;
   // signatures
   function sig(x,label1,name,label2,img){doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(label1,x,y+3);doc.line(x+30,y+3.6,x+92,y+3.6);doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(10,20,60);doc.text(name||"",x+31,y+2.6);

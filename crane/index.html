@@ -585,7 +585,7 @@ function afterSave(){const job=(state.f.jobno||"").trim();
   $("aStay").onclick=closeModal;if($("aNext"))$("aNext").onclick=()=>{closeModal();nextSameJob();};}
 const kgN=v=>{const n=Number(String(v==null?"":v).replace(/\s/g,"").replace(",","."));return isFinite(n)&&String(v).trim()!==""?n:null;};
 const kgT=n=>String(Math.round(n*100)/100).replace(/\B(?=(\d{3})+(?!\d))/g," ").replace(".",",");
-const mmT=v=>{const s=String(v||"").trim();if(!s)return"";return /^n\/a$/i.test(s)?"N/A":/^[\d\s.,]+$/.test(s)?s+" mm":s;};
+const mmT=v=>{let s=String(v||"").trim();if(!s)return"";if(/^n\/a$/i.test(s))return"N/A";if(/^\d{4,}$/.test(s))s=s.replace(/\B(?=(\d{3})+(?!\d))/g," ");return /^[\d\s.,]+$/.test(s)?s+" mm":s;};
 function remarkLines(st){const f=st.f,out=[];
   if(st.type==="LOAD TEST"){const s=kgN(f.swl);if(s)out.push(`Load tested at ${kgT(s*1.1)} kg (SWL ${kgT(s)} kg + 10% overload).`);}
   if(f.remarks)out.push(...String(f.remarks).split("\n").filter(x=>x.trim()));
@@ -594,6 +594,7 @@ function remarkLines(st){const f=st.f,out=[];
     else if(st.res[r.id])tag=" ("+RV[st.res[r.id]]+")";
     out.push(`#${r.no} ${rname(r,st)}${tag}: ${n}`);});
   return out;}
+const NAF=[208,212,220],isNA=v=>/^n\/a$/i.test(String(v==null?"":v).trim());
 function mark(doc,v,cx,cy){if(v==="ok"){doc.setDrawColor(29,138,74);doc.setLineWidth(0.6);doc.line(cx-1.7,cy,cx-0.5,cy+1.3);doc.line(cx-0.5,cy+1.3,cx+1.9,cy-1.4);doc.setLineWidth(0.2);doc.setDrawColor(150,156,170);}
   else if(v){doc.setFont("helvetica","bold");doc.setFontSize(v==="na"?6:8.5);doc.setTextColor(...(v==="w"?[201,138,0]:v==="x"?[198,40,40]:[107,114,128]));doc.text(RV[v],cx,cy+1.2,{align:"center"});}}
 async function buildPdf(st){
@@ -614,7 +615,7 @@ async function buildPdf(st){
     doc.setDrawColor(60,66,80);doc.setLineWidth(0.25);doc.setTextColor(30,34,51);
     let y=51+HY;doc.rect(L,y,W,8);doc.setFontSize(13);doc.text(st.type==="LOAD TEST"?"CRANE / HOIST LOAD TEST REPORT":"CRANE / HOIST INSPECTION REPORT",105,y+5.6,{align:"center"});
     y+=8;const rh=7;
-    function cell(x,yy,w,label,val){doc.setDrawColor(60,66,80);doc.rect(x,yy,w,rh);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(label,x+1.5,yy+4.6);const lw=doc.getTextWidth(label)+3;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(10,20,60);
+    function cell(x,yy,w,label,val){doc.setDrawColor(60,66,80);if(isNA(val)){doc.setFillColor(...NAF);doc.rect(x,yy,w,rh,"FD");}else doc.rect(x,yy,w,rh);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(label,x+1.5,yy+4.6);const lw=doc.getTextWidth(label)+3;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(10,20,60);
       let fs=10,t=String(val||"");while(fs>7&&doc.getTextWidth(t)>w-lw-2){fs-=0.5;doc.setFontSize(fs);}doc.text(doc.splitTextToSize(t,w-lw-2)[0]||"",x+lw,yy+4.8);}
     const U=s=>String(s||"").toUpperCase(),sw=kgN(f.swl);
     cell(L,y,145,"CUSTOMER :",U(f.customer));cell(L+145,y,W-145,"DATE :",fmt(f.date));y+=rh;
@@ -633,15 +634,16 @@ async function buildPdf(st){
       doc.setFillColor(222,227,238);doc.setDrawColor(150,156,170);doc.rect(lx,yy,lw,4.4,"FD");doc.setFont("helvetica","bold");doc.setFontSize(6.8);doc.setTextColor(27,47,110);doc.text(title,lx+9,yy+3.1);yy+=4.4;
       list.forEach(r=>{doc.setDrawColor(150,156,170);doc.rect(lx,yy,lw,ih);doc.line(lx+8,yy,lx+8,yy+ih);
         doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(30,34,51);doc.text(r.no,lx+4,yy+ty,{align:"center"});doc.text(U(rname(r,st)).replace(/ \/ /g,"/"),lx+9.5,yy+ty);
-        for(let c=0;c<4;c++){const x=lx+8+nameW+c*cw;if(greyOf(r.n,st).includes(c)){doc.setFillColor(160,166,180);doc.rect(x,yy,cw,ih,"FD");}else{doc.rect(x,yy,cw,ih);mark(doc,st.parts[COLS[c][0]]?st.res[r.id+"_"+c]:"na",x+cw/2,yy+ih/2);}}
+        for(let c=0;c<4;c++){const x=lx+8+nameW+c*cw;if(greyOf(r.n,st).includes(c)){doc.setFillColor(160,166,180);doc.rect(x,yy,cw,ih,"FD");}else{const v=st.parts[COLS[c][0]]?st.res[r.id+"_"+c]:"na";if(v==="na"){doc.setFillColor(...NAF);doc.rect(x,yy,cw,ih,"FD");}else doc.rect(x,yy,cw,ih);mark(doc,v,x+cw/2,yy+ih/2);}}
         yy+=ih;});});
     const leftEnd=yy;
     yy=y;doc.setFillColor(237,240,246);doc.setDrawColor(150,156,170);doc.rect(rx,yy,rw,5,"FD");doc.setFont("helvetica","bold");doc.setFontSize(7);doc.setTextColor(60,66,80);doc.text("NO",rx+1.3,yy+3.5);doc.text("ITEM CHECKED",rx+9,yy+3.5);doc.text("RESULT",rx+rw-9,yy+3.5,{align:"center"});yy+=5;
     [["SAFETY",ROWS.filter(r=>r.sec==="Safety")],["ELECTRICAL",ROWS.filter(r=>r.sec==="Electrical")]].forEach(([title,list])=>{
       doc.setFillColor(222,227,238);doc.setDrawColor(150,156,170);doc.rect(rx,yy,rw,4.4,"FD");doc.setFont("helvetica","bold");doc.setFontSize(6.8);doc.setTextColor(27,47,110);doc.text(title,rx+9,yy+3.1);yy+=4.4;
       list.forEach(r=>{doc.setDrawColor(150,156,170);doc.rect(rx,yy,rw,ih);doc.line(rx+8,yy,rx+8,yy+ih);doc.line(rx+rw-18,yy,rx+rw-18,yy+ih);
-        doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(30,34,51);doc.text(r.no,rx+4,yy+ty,{align:"center"});doc.text(U(r.name)+(r.kind==="meas"?" (mm)":""),rx+9.5,yy+ty);
-        if(r.kind==="meas"){const v=String(st.val[r.id]||"").trim();if(/^n\/a$/i.test(v))mark(doc,"na",rx+rw-9,yy+ih/2);else if(v){doc.setFont("helvetica","bold");let fs=7.8;doc.setFontSize(fs);while(fs>5.5&&doc.getTextWidth(v)>16.5){fs-=0.3;doc.setFontSize(fs);}doc.setTextColor(10,20,90);doc.text(v,rx+rw-9,yy+ty,{align:"center"});}}
+        if(r.kind==="meas"?isNA(st.val[r.id]):st.res[r.id]==="na"){doc.setFillColor(...NAF);doc.rect(rx+rw-18,yy,18,ih,"FD");}
+        doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(30,34,51);doc.text(r.no,rx+4,yy+ty,{align:"center"});doc.text(U(r.name),rx+9.5,yy+ty);
+        if(r.kind==="meas"){const v=String(st.val[r.id]||"").trim();if(/^n\/a$/i.test(v))mark(doc,"na",rx+rw-9,yy+ih/2);else if(v){const t=mmT(v);doc.setFont("helvetica","bold");let fs=7.8;doc.setFontSize(fs);while(fs>5.5&&doc.getTextWidth(t)>16.5){fs-=0.3;doc.setFontSize(fs);}doc.setTextColor(10,20,90);doc.text(t,rx+rw-9,yy+ty,{align:"center"});}}
         else mark(doc,st.res[r.id],rx+rw-9,yy+ih/2);
         yy+=ih;});});
     y=Math.max(leftEnd,yy)+2;
@@ -659,7 +661,7 @@ async function buildPdf(st){
     doc.text("CUSTOMER SIGNATURE :",L+1.5,y+4.6);doc.text("TECHNICIAN SIGNATURE :",L+c2+1.5,y+4.6);
     const sig=(img,x)=>{if(!img)return;try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(50/d.w,11/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+38+(50-w)/2,y+SH-1-h,w,h,undefined,"FAST");}catch(e){}};
     sig(st.sig.sigCust,L);sig(st.sig.sigEng,L+c2);y+=SH+3;
-    const leg=(v,x,t)=>{mark(doc,v,x,y);doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(t,x+4,y+1.2);};
+    const leg=(v,x,t)=>{if(v==="na"){doc.setFillColor(...NAF);doc.setDrawColor(150,156,170);doc.rect(x-3.5,y-2.2,7,4.4,"FD");}mark(doc,v,x,y);doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(t,x+4,y+1.2);};
     leg("ok",L+3,"NO APPARENT DEFECT");leg("w",L+48,"WORN BUT SERVICEABLE");leg("x",L+98,"PARTS NEED URGENT REPLACEMENT");leg("na",L+163,"NOT APPLICABLE");
     doc.setFont("helvetica","normal");doc.setTextColor(60,66,80);doc.setFontSize(6.5);doc.text("L/T long travel · C/T cross travel · H hoist · A/H auxiliary hoist · grey = not applicable",L,y+6);
     if(over){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("REMARKS (continued) — Doc No "+(f.docno||"")+"  "+U(f.customer),L,16);doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(10,20,60);let all=[];rem.forEach(t=>all.push(...doc.splitTextToSize(t,W)));doc.text(all,L,24);}
