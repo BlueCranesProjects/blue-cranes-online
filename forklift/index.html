@@ -173,7 +173,7 @@
 <body>
 <header>
   <div class="hrow">
-    <a href="../timesheet/" class="homebtn" aria-label="Back to the time sheet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <a href="../timesheet/" data-back="auto" class="homebtn" aria-label="Back to the time sheet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
     <img id="logoImg" alt="Blue Cranes – Material Handling Lifting Equipment">
     <div class="htitle"><span id="hType">Forklift Inspection</span><small>Report</small></div>
     <button id="repBtn" class="repbtn" aria-label="Saved reports"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="repCount">0</span></button>
@@ -345,6 +345,7 @@ function build(){
 }
 function showNote(i,on){const d=$("it"+(i+1));d.querySelector(".notewrap").style.display=on?"flex":"none";d.querySelector(".notebtn").style.display=on?"none":"block";}
 
+function autoStatus(all,anyX){if(state.status&&state.stAuto!==true)return;const s=anyX?"UNSAFE":all?"SAFE":null;if(state.status!==s){state.status=s;state.stAuto=!!s;const u=s==="UNSAFE";state.wr={insp:u,load:u};}}
 function render(){
   let done=0;
   ITEMS.forEach((_,i)=>{
@@ -364,6 +365,7 @@ function render(){
   itemsEl.querySelectorAll("[data-batt]").forEach(inp=>{const v=state.batt[inp.dataset.batt]||"";if(inp.value!==v)inp.value=v;});
   itemsEl.querySelectorAll("[data-chain]").forEach(inp=>{const v=state.chain[inp.dataset.chain]||"";if(inp.value!==v)inp.value=v;});
   const cc=chainCalc(false);["l","r"].forEach(k=>{const e=$("str-"+k),w=cc[k];e.className="wear"+(w?" "+w.g:"");e.textContent=w?w.p.toFixed(1)+"%":"–";});
+  autoStatus(done===vis().length,vis().some(i=>state.res[i]==="x"));
   const tot=vis().length;$("prog").textContent=done+" / "+tot;
   $("bar").style.width=(done/tot*100)+"%";
   document.querySelectorAll(".seg button").forEach(b=>b.classList.toggle("on",b.dataset.s===state.status));
@@ -425,7 +427,7 @@ function syncNA(){document.querySelectorAll("[data-na]").forEach(b=>{const inp=$
 document.querySelectorAll("[data-na]").forEach(b=>b.addEventListener("click",e=>{e.preventDefault();const inp=$(b.dataset.na);inp.value=inp.value.trim().toUpperCase()==="N/A"?"":"N/A";syncNA();save();if(!inp.value)inp.focus();}));
 ["aserial","aswl","alc"].forEach(f=>$(f).addEventListener("input",syncNA));
 document.querySelectorAll(".rtype button[data-t]").forEach(b=>b.onclick=()=>{state.type=b.dataset.t;render();save();});
-document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.status=state.status===b.dataset.s?null:b.dataset.s;
+document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.status=state.status===b.dataset.s?null:b.dataset.s;state.stAuto=false;
   const uns=state.status==="UNSAFE";state.wr={insp:uns,load:uns};render();save();});
 document.querySelectorAll("[data-wr]").forEach(c=>c.onchange=()=>{state.wr[c.dataset.wr]=c.checked;render();save();});
 $("date").addEventListener("change",()=>{const d=$("date").value;if(!d)return;$("nextInsp").value=addMonths(d,6);$("nextLoad").value=addMonths(d,12);save();});

@@ -204,7 +204,7 @@
     state.cloudOn = cloudOn;
     // signing in and the technician profile live on the Blue Cranes Online home screen
     const who = await BC.requireUser(); state.profile = who.profile;
-    if (!cloudOn || !who.user){ state.loaded = true; render(); return; }
+    if (!cloudOn || !who.user){ state.loaded = true; render(); restorePlace(); return; }
     const user = who.user; state.user = user;
     // a different person signed in on this phone: don't mix in the last person's data
     const owner = (() => { try { return localStorage.getItem(LS_KEY + '-owner'); } catch(e){ return null; } })();
@@ -212,7 +212,7 @@
     try { localStorage.setItem(LS_KEY + '-owner', user.uid); } catch(e){}
     await loadCloud(user.uid, local);
     await loadAssigned();
-    state.loaded = true; render();
+    state.loaded = true; render(); if (!new URLSearchParams(location.search).get('job')) restorePlace();
     // opened with ?job=<schedule id> (e.g. from a forklift in the inventory): show that job
     const wantJob = new URLSearchParams(location.search).get('job');
     if (wantJob && state.schedule[wantJob]){ history.replaceState(null, '', location.pathname); state._schedBack = 'today'; go('schedjob', { schedId:wantJob }); }
@@ -332,7 +332,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (P)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (Q)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -802,7 +802,22 @@
       const id = (k + '_' + (j.card || j.customer || j.desc || 'job')).replace(/[^\w\-]+/g, '_');
       const all = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; const l = all[id] || (j.sched ? Object.values(all).find(v => v && v.sched === j.sched) : null); const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
       return { total:rows.length, open:rows.filter(r => !r.status).length }; } catch(e){ return {}; } }
+  // opening an inventory or report remembers where you were (e.g. a day in History), so coming back opens there again
+  const PLACE = 'bco-ts-place';
+  function keepPlace(){ try { sessionStorage.setItem(PLACE, JSON.stringify({ view:state.view, detailKey:state.detailKey, jobIdx:state.jobIdx, schedId:state.schedId, schedDate:state.schedDate, schedWeek:state.schedWeek, activeDate:state.activeDate, _schedBack:state._schedBack, y:window.scrollY, at:Date.now() })); } catch(e){} }
+  function restorePlace(){
+    let p = null; try { p = JSON.parse(sessionStorage.getItem(PLACE) || 'null'); sessionStorage.removeItem(PLACE); } catch(e){}
+    if (!p || Date.now() - (p.at || 0) > 3 * 3600e3) return;
+    let ref = ''; try { ref = new URL(document.referrer).pathname; } catch(e){}
+    let nav = ''; try { nav = performance.getEntriesByType('navigation')[0].type; } catch(e){}
+    if (nav !== 'back_forward' && !/\/(equipment|forklift|crane)\/?/.test(ref)) return;
+    if (!['today', 'jobs', 'history', 'detail', 'schedjob', 'schedule', 'jobpage'].includes(p.view)) return;
+    if (p.view === 'detail' && !(p.detailKey && state.sheets[p.detailKey])) return;
+    if (p.view === 'schedjob' && !(p.schedId && state.schedule[p.schedId])) return;
+    const y = p.y || 0; delete p.y; delete p.at; Object.assign(state, p); render(); setTimeout(() => window.scrollTo(0, y), 30);
+  }
   function openReport(k, i, type, editPast){
+    keepPlace();
     const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || (j.done && !editPast)) return;
     try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
     location.href = type === 'EQUIPMENT' ? '../equipment/' : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
@@ -832,7 +847,7 @@
   function openSchedInv(id){
     const x = state.schedule[id]; if (!x) return;
     try { localStorage.setItem('bco-active-job', JSON.stringify({ date:x.date, sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', at:new Date().toISOString() })); } catch(e){}
-    location.href = '../equipment/';
+    keepPlace(); location.href = '../equipment/';
   }
   function schedActions(x){
     const tk = todayKey(); const sj = sheetJobFor(x.id);
@@ -1040,7 +1055,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 17 Nov (P)</span>
+        <span class="hint">App version 17 Nov (Q)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>

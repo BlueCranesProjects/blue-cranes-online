@@ -72,6 +72,19 @@
     return o.toDataURL('image/png');
   };
 
+  // Back buttons marked data-back go back in the phone's history when the previous page was the one they lead to,
+  // so the time sheet / inventory opens where you were instead of adding another page to go back through.
+  // data-back="auto": back to whatever app page opened this one; data-back="match": only when that page is the link's target
+  document.addEventListener('click', e => {
+    const a = e.target && e.target.closest && e.target.closest('a[data-back]'); if (!a) return;
+    let ref = null; try { ref = document.referrer ? new URL(document.referrer) : null; } catch(_){}
+    if (!ref || ref.origin !== location.origin || ref.pathname === location.pathname || history.length < 2 || /[?&]embed=1/.test(ref.search)) return;
+    if (!ref.pathname.startsWith(new URL(BC.home).pathname)) return;
+    const clean = p => p.replace(/index\.html$/, '');
+    if (a.dataset.back === 'match' && clean(ref.pathname) !== clean(new URL(a.href, location.href).pathname)) return;
+    e.preventDefault(); history.back();
+  });
+
   // Offline support for the whole app
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register(BC.home + 'sw.js', { scope: BC.home }).catch(() => {});
 })();

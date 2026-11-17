@@ -196,7 +196,7 @@
 <body>
 <header>
   <div class="hrow">
-    <a href="../timesheet/" class="homebtn" id="backBtn" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
+    <a href="../timesheet/" data-back="auto" class="homebtn" id="backBtn" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
     <img id="logoImg" alt="Blue Cranes – Material Handling Lifting Equipment">
     <div class="htitle"><span id="hType">Crane / Hoist</span><small id="hSub">Inspection report</small></div>
     <button id="repBtn" class="repbtn" aria-label="Saved reports"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="repCount">0</span></button>
@@ -365,6 +365,7 @@ function build(){
   itemsEl.querySelectorAll("[data-addnote]").forEach(b=>b.onclick=()=>{showNote(b.dataset.addnote,true);b.parentNode.querySelector("[data-note]").focus();});
 }
 function showNote(id,on){const d=$("it-"+id);if(!d)return;d.querySelector(".notewrap").style.display=on?"flex":"none";d.querySelector(".notebtn").style.display=on?"none":"block";}
+function autoStatus(all,anyX){if(state.status&&state.stAuto!==true)return;const s=anyX?"UNSAFE":all?"SAFE":null;if(state.status!==s){state.status=s;state.stAuto=!!s;const u=s==="UNSAFE";state.wr={insp:u,load:u};}}
 function render(){
   let done=0,tot=0;
   $("parts").querySelectorAll("[data-part]").forEach(c=>c.checked=!!state.parts[c.dataset.part]);
@@ -387,6 +388,7 @@ function render(){
   {const per={};ROWS.forEach(r=>{if(!rowVisible(r))return;const p=per[r.sec]||(per[r.sec]={d:0,t:0});p.t++;if(rowDone(r))p.d++;});
     itemsEl.querySelectorAll("[data-sec]").forEach(b=>{const k=b.dataset.sec,p=per[k]||{d:0,t:0},o=openSec.has(k),sc=$("sc-"+k);sc.textContent=p.t&&p.d===p.t?"✓ "+p.d+" / "+p.t:p.d+" / "+p.t;sc.classList.toggle("full",!!p.t&&p.d===p.t);
       b.classList.toggle("open",o);b.setAttribute("aria-expanded",o);$("sb-"+k).style.display=o?"":"none";});}
+  autoStatus(tot>0&&done===tot,ROWS.some(r=>rowVisible(r)&&r.kind!=="meas"&&xOf(r,state)));
   $("prog").textContent=done+" / "+tot;$("bar").style.width=(tot?done/tot*100:0)+"%";
   document.querySelectorAll(".seg button").forEach(b=>b.classList.toggle("on",b.dataset.s===state.status));
   document.querySelectorAll(".rtype button[data-t]").forEach(b=>b.classList.toggle("on",b.dataset.t===state.type));
@@ -426,7 +428,7 @@ FIELDS.forEach(f=>$(f).addEventListener("input",save));
 document.querySelectorAll("[data-v2]").forEach(inp=>inp.oninput=()=>{state.val[inp.dataset.v2]=inp.value;save();});
 document.querySelectorAll("[data-vna]").forEach(b=>b.addEventListener("click",e=>{e.preventDefault();const k=b.dataset.vna;state.val[k]=/^n\/a$/i.test(state.val[k]||"")?"":"N/A";render();save();}));
 document.querySelectorAll(".rtype button[data-t]").forEach(b=>b.onclick=()=>{state.type=b.dataset.t;render();save();});
-document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.status=state.status===b.dataset.s?null:b.dataset.s;const uns=state.status==="UNSAFE";state.wr={insp:uns,load:uns};render();save();});
+document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.status=state.status===b.dataset.s?null:b.dataset.s;state.stAuto=false;const uns=state.status==="UNSAFE";state.wr={insp:uns,load:uns};render();save();});
 document.querySelectorAll("[data-wr]").forEach(c=>c.onchange=()=>{state.wr[c.dataset.wr]=c.checked;render();save();});
 $("date").addEventListener("change",()=>{const d=$("date").value;if(!d)return;$("nextInsp").value=addMonths(d,6);$("nextLoad").value=addMonths(d,12);save();});
 $("allOk").onclick=()=>{let c=0;ROWS.forEach(r=>{if(!rowVisible(r)||r.kind==="meas")return;if(r.kind==="four")activeCols(r.n).forEach(k=>{if(!state.res[r.id+"_"+k]){state.res[r.id+"_"+k]="ok";c++;}});else if(!state.res[r.id]){state.res[r.id]="ok";c++;}});render();save();toast(c?`${c} marked ✓`:"All items already marked");};
@@ -578,7 +580,7 @@ $("pdfBtn").onclick=()=>{readFields();const ph=photosNeeded();if(ph.length){phot
 function afterSave(){const job=(state.f.jobno||"").trim();
   if(!job){toast("PDF saved");return;}
   modal(`<h3>PDF saved</h3><p>${state.list?"The client's inventory is updated with this result.":""}</p>
-    ${state.list?`<a class="primary" href="../equipment/" style="display:block;width:100%;padding:13px;border-radius:10px;font-weight:800;font-size:15px;margin-bottom:8px;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Back to the client's inventory</a>`:`<button class="primary" id="aNext" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">Next crane / hoist → ${nextDoc(job,true)}</button>`}
+    ${state.list?`<a class="primary" href="../equipment/" data-back="match" style="display:block;width:100%;padding:13px;border-radius:10px;font-weight:800;font-size:15px;margin-bottom:8px;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Back to the client's inventory</a>`:`<button class="primary" id="aNext" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">Next crane / hoist → ${nextDoc(job,true)}</button>`}
     <div class="btns"><button class="secondary" id="aStay">Stay on this report</button></div>`);
   $("aStay").onclick=closeModal;if($("aNext"))$("aNext").onclick=()=>{closeModal();nextSameJob();};}
 const kgN=v=>{const n=Number(String(v==null?"":v).replace(/\s/g,"").replace(",","."));return isFinite(n)&&String(v).trim()!==""?n:null;};

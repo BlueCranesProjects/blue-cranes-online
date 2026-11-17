@@ -333,6 +333,12 @@
   let pdfLibReady = null;
   function pdfLib(){ return pdfLibReady = pdfLibReady || new Promise((res, rej) => { if (window.PDFLib) return res(window.PDFLib); const sc = document.createElement('script'); sc.src = '../vendor/pdf-lib.min.js'; sc.onload = () => res(window.PDFLib); sc.onerror = () => { pdfLibReady = null; rej(new Error('pdf-lib not loaded')); }; document.head.appendChild(sc); }); }
   const certNum = no => { const m = /\/(\d+)\s*$/.exec(String(no || '')); return m ? Number(m[1]) : 9999; };
+  async function onePdf(list, name){
+    if (list.length === 1) return { blob:list[0].blob, name };
+    const P = await pdfLib(); const out = await P.PDFDocument.create();
+    for (const f of list){ const src = await P.PDFDocument.load(new Uint8Array(await f.blob.arrayBuffer())); (await out.copyPages(src, src.getPageIndices())).forEach(pg => out.addPage(pg)); }
+    return { blob:new Blob([await out.save()], { type:'application/pdf' }), name };
+  }
   async function mergeCerts(l, parts){
     if (!parts.length) return null; parts.sort((a, b) => certNum(a.no) - certNum(b.no));
     if (parts.length === 1) return { blob:parts[0].blob, name:parts[0].name };
@@ -378,7 +384,7 @@
 
   // ---------- views ----------
   function head(sub, title, left, right){ return `<header>${left || ''}<div style="flex:1;min-width:0"><div class="sub">${esc(sub)}</div><h1>${esc(title)}</h1></div>${right || ''}</header>`; }
-  const backBtn = (href, label) => `<a class="ib" href="${href}" aria-label="${esc(label)}">${ICON.back}</a>`;
+  const backBtn = (href, label) => `<a class="ib" href="${href}" data-back="match" aria-label="${esc(label)}">${ICON.back}</a>`;
 
   function vList(){
     const l = S.cur; const inv = inventory()[norm(l.customer)]; const known = inv ? inv.items : {};
@@ -836,7 +842,7 @@
       busy("Client's inventory…"); const files = [await listDoc(l)];
       try { busy('Inventory Excel…'); files.push(await listXlsx(l)); } catch(e){ console.error(e); }
       { const sk = sheetDateOf(l); if (sk){ let st = null; try { busy('Time sheet…'); st = await sheetTools(); const f = await st.api.sheetPdf(sk); if (f) files.push(f); } catch(e){ console.error(e); } finally { if (st) st.done(); } } }
-      let reps = [], tools = null; const flCerts = [];
+      let reps = [], tools = null; const flCerts = [], flPdfs = [], crPdfs = [];
       try {
         busy('Finding forklift reports…'); tools = await forkliftTools();
         const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
@@ -844,7 +850,7 @@
           .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
         for (let k = 0; k < reps.length; k++){
           const st = reps[k].state; busy(`Forklift report ${k + 1} of ${reps.length} (${st.f.docno || ''})…`);
-          const a = await tools.api.buildPdf(JSON.parse(JSON.stringify(st))); files.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
+          const a = await tools.api.buildPdf(JSON.parse(JSON.stringify(st))); flPdfs.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
           if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(JSON.parse(JSON.stringify(st))); flCerts.push({ no:'/' + ((/\.(\d+)$/.exec(st.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); }
         }
       } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
@@ -855,9 +861,12 @@
           if (linked.size || l.job){ busy('Finding crane / hoist reports…'); ct = await hiddenPage('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
             const cr = (await ct.reports()).filter(r => r && r.state && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))
               .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
-            for (let k = 0; k < cr.length; k++){ busy(`Crane / hoist report ${k + 1} of ${cr.length}…`); const a = await ct.buildPdf(JSON.parse(JSON.stringify(cr[k].state))); files.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); } }
+            for (let k = 0; k < cr.length; k++){ busy(`Crane / hoist report ${k + 1} of ${cr.length}…`); const a = await ct.buildPdf(JSON.parse(JSON.stringify(cr[k].state))); crPdfs.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); } }
         } catch(e){ console.error(e); toast('Crane / hoist reports could not be added'); }
         finally { if (ct) ct.done(); } }
+      // all forklift reports in one PDF, all crane / hoist reports in one PDF
+      for (const [list, what] of [[flPdfs, 'Forklift_reports'], [crPdfs, 'Crane_hoist_reports']]){ if (!list.length) continue;
+        try { busy(what.replace(/_/g, ' ') + ' – one PDF…'); files.push(await onePdf(list, `${what}_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`)); } catch(e){ console.error(e); files.push(...list); } }
       try { busy('Certificates…'); const c = await mergeCerts(l, (await itemCertParts(l)).concat(flCerts)); if (c) files.splice(Math.min(files.length, 3), 0, c); } catch(e){ console.error(e); toast('Certificates could not be added'); }
       const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.(pdf|xlsx)$/, `_${++used[n]}.$1`); else used[n] = 1; f.name = n; f.type = f.type || 'application/pdf'; });
       const pdfs = files.map(f => new File([f.blob], f.name, { type:f.type }));
