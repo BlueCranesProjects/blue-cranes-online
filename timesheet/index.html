@@ -332,7 +332,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (F)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (G)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -897,6 +897,7 @@
         <div class="card" style="padding:10px 12px"><div class="k">Job hrs</div><div class="big" style="font-size:22px;white-space:nowrap">${fmtHMs(mH)}</div></div>
       </div>
       <a class="btn" href="../forklift/?reports=1" style="background:var(--navyDeep);color:#fff;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Forklift reports &amp; certificates</a>
+      <a class="btn" href="../crane/?reports=1" style="background:#fff;color:var(--navyDeep);border:2px solid var(--navy);text-decoration:none">🏗 Crane / hoist reports</a>
       <a class="btn" href="../equipment/?inventory=1" style="background:#fff;color:var(--navyDeep);border:2px solid var(--navy);text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg> All client inventories</a>
       ${keys.length ? keys.map(k=>{ const s = state.sheets[k]; const f = condFlags(s);
         const km = (s.lastOdo? Number(s.lastOdo):lastOdo(s)) - Number(s.firstOdo);
@@ -1039,7 +1040,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 17 Nov (F)</span>
+        <span class="hint">App version 17 Nov (G)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>

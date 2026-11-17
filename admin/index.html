@@ -253,10 +253,11 @@
     return `<div class="row" style="gap:8px;margin-top:4px;flex-wrap:wrap">${g.total ? `<span class="pill ${g.open ? 'warn' : 'ok'}">Inventory ${g.done} of ${g.total} checked</span>${g.unsafe ? `<span class="pill bad">${g.unsafe} unsafe</span>` : ''}` : ''}
       ${g.total ? B('data-invpdf', '⬇ Inventory PDF') + B('data-cen', '⬇ Excel') + B('data-certs', '⬇ Certificates') : ''}
       ${nfl ? B('data-flpdf', `⬇ Forklift reports (${nfl})`) : ''}
-      ${g.total || nfl ? B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
+      ${(g.cr || []).length ? B('data-crpdf', `⬇ Crane / hoist reports (${g.cr.length})`) : ''}
+      ${g.total || nfl || (g.cr || []).length ? B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
   let progBusy = false, progAt = 0;
   async function loadProgress(){
-    if (progBusy || Date.now() - progAt < 20000) return; progBusy = true; progAt = Date.now(); const cache = {}, flc = {}; let changed = false;
+    if (progBusy || Date.now() - progAt < 20000) return; progBusy = true; progAt = Date.now(); const cache = {}, flc = {}, crc = {}; let changed = false;
     try { if (!S.users.length) await refreshUsers();
       for (const j of S.jobs){ if (!(j.inv || []).length && !j.sheetDate) continue;
         const u = S.users.find(x => x.email === j.tech); if (!u) continue;
@@ -264,9 +265,12 @@
         if (!flc[u.uid]){ try { flc[u.uid] = (await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f); } catch(e){ flc[u.uid] = []; } }
         const core = c => String(c || '').trim().toUpperCase().replace(/\s+/g, '').replace(/^C(?=\d)/, ''); const fl = j.card ? flc[u.uid].filter(r => core(r.job || r.state.f.jobno) === core(j.card)) : [];
         if (fl.length){ const o = S.invProg[j.id] || {}; if ((o.fl || []).length !== fl.length) changed = true; S.invProg[j.id] = Object.assign(o, { fl, uid:u.uid }); }
+        if (!crc[u.uid]){ try { crc[u.uid] = (await window.Cloud.listKindOf(u.uid, 'crane')).map(d => d.data || {}).filter(r => r && r.state && r.state.f); } catch(e){ crc[u.uid] = []; } }
+        const cr = j.card ? crc[u.uid].filter(r => core(r.job || r.state.f.jobno) === core(j.card)) : [];
+        if (cr.length){ const o = S.invProg[j.id] || {}; if ((o.cr || []).length !== cr.length) changed = true; S.invProg[j.id] = Object.assign(o, { cr, uid:u.uid }); }
         const l = cache[u.uid].find(x => x.sched === 'A_' + j.id) || (j.sheetDate ? cache[u.uid].find(x => x.id === listIdOf(j.sheetDate, j)) : null); if (!l) continue;
         const rows = (l.rows || []).filter(r => r.serial || r.desc); if (!rows.length) continue;
-        const g = { fl:(S.invProg[j.id] || {}).fl || [], total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
+        const g = { fl:(S.invProg[j.id] || {}).fl || [], cr:(S.invProg[j.id] || {}).cr || [], total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
         const o = S.invProg[j.id]; if (!o || o.done !== g.done || o.total !== g.total || o.unsafe !== g.unsafe) changed = true; S.invProg[j.id] = g; }
     } finally { progBusy = false; }
     if (changed && S.tab === 'jobs') render();
@@ -324,6 +328,11 @@
           if (st.type === 'LOAD TEST' && !g.list){ const c = await t.api.buildCert(JSON.parse(JSON.stringify(r.state))); files.push({ blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
       } finally { t.done(); }
     }
+    if ((g.cr || []).length && (which === 'cr' || which === 'all')){
+      const t = await hiddenTool('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
+      try { for (const r of g.cr.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){ const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); files.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); } }
+      finally { t.done(); }
+    }
     return files;
   }
   // phones (also the installed app): a plain download often goes nowhere, so offer the share menu (open with a PDF viewer, WhatsApp, email, Drive, Files)
@@ -354,7 +363,8 @@
       for (const u of S.users){
         let lists = [], reps = [], prof = {};
         try { lists = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => d.data || {}).filter(l => l.date >= from && l.date <= to && (l.rows || []).some(r => r.serial || r.desc)); } catch(e){}
-        try { reps = (await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to); } catch(e){}
+        try { (await window.Cloud.listKindOf(u.uid, 'crane')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to).forEach(r => { r._cr = true; reps.push(r); }); } catch(e){}
+        try { reps = reps.concat((await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to)); } catch(e){}
         if (!lists.length && !reps.length) continue;
         try { const ps = await window.Cloud.listKindOf(u.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
         const mine = lists.map(l => ({ u, prof, l, reps:[] }));
@@ -376,13 +386,14 @@
     const old = btn.textContent; btn.disabled = true; let box = null;
     const say = t => { btn.textContent = t; box = exportBox(`<h2>Exporting…</h2><span class="hint" style="font-size:14px">${esc(t)}<br>Keep this page open.</span>`); try { sessionStorage.setItem('bco-admin-export', from + ' to ' + to + ', ' + t); } catch(e){} };
     const end = () => { try { sessionStorage.removeItem('bco-admin-export'); } catch(e){} };
-    let eq = null, fk = null;
+    let eq = null, fk = null, cz = null;
     try {
       say('Collecting…'); const groups = pre || await collectGroups(from, to);
       if (!groups.length){ end(); if (box) box.remove(); toast('Nothing found for those dates'); return; }
       say('Loading tools…');
       eq = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
-      if (groups.some(g => g.reps.length)) fk = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
+      if (groups.some(g => g.reps.some(r => !r._cr))) fk = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
+      if (groups.some(g => g.reps.some(r => r._cr))) cz = await hiddenTool('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
       for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
       const top = label || `Blue Cranes ${from} to ${to}`, zip = new JSZip(), root = zip.folder(top); const own = async b => new Uint8Array(await b.arrayBuffer());
       const usedDir = {}; let nFiles = 0;
@@ -394,6 +405,7 @@
         try {
           if (l.rows){ await put(await eq.api.listDoc(l)); try { await put(await eq.api.listXlsx(l)); } catch(e){} parts.push(...(await eq.api.itemCertParts(l, tech, await utFor(g.u.uid, l, null)))); }
           for (const r of g.reps.sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
+            if (r._cr){ const a = await cz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); await put({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); continue; }
             const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); await put({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
             if (r.state.type === 'LOAD TEST'){ const c = await fk.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
           if (parts.length){ const c = await eq.api.mergeCerts(l, parts); if (c) await put(c); }
@@ -407,7 +419,7 @@
       m.querySelector('#xbSave').onclick = () => { dlFile({ blob, name:top + '.zip' }); toast('Saved to Downloads'); };
       m.querySelector('#xbClose').onclick = () => m.remove();
     } catch(e){ console.error(e); end(); const m = exportBox(`<h2>Export failed</h2><span class="hint" style="font-size:14px">${esc((e && (e.code || e.message)) || String(e))}</span><button class="btn secondary" id="xbClose">Close</button>`); m.querySelector('#xbClose').onclick = () => m.remove(); }
-    finally { if (eq) eq.done(); if (fk) fk.done(); btn.disabled = false; btn.textContent = old; }
+    finally { if (eq) eq.done(); if (fk) fk.done(); if (cz) cz.done(); btn.disabled = false; btn.textContent = old; }
   }
   async function downloadJob(id, which, btn){
     const j = S.jobs.find(x => x.id === id); const old = btn.textContent; btn.disabled = true; btn.textContent = 'Working…';
@@ -506,7 +518,7 @@
       <div class="scroll"><table><thead><tr><th>Date</th><th>Job nr</th><th>Client</th><th>Technician</th><th>Has</th><th></th></tr></thead><tbody>
       ${list.map((g, i) => { const n = (g.l.rows || []).filter(r => r.serial || r.desc).length;
         return `<tr><td style="white-space:nowrap">${esc(niceDate(g.l.date))}</td><td>${esc(g.l.job || '–')}</td><td><b>${esc(g.l.customer || '–')}</b></td><td>${esc(g.u.name || g.u.email)}</td>
-          <td>${[n ? n + ' inventory items' : '', g.reps.length ? g.reps.length + ' forklift ' + (g.reps.length === 1 ? 'report' : 'reports') : ''].filter(Boolean).join(' · ')}</td>
+          <td>${[n ? n + ' inventory items' : '', (() => { const f = g.reps.filter(r => !r._cr).length, c = g.reps.length - f; return [f ? f + ' forklift ' + (f === 1 ? 'report' : 'reports') : '', c ? c + ' crane / hoist ' + (c === 1 ? 'report' : 'reports') : ''].filter(Boolean).join(' · '); })()].filter(Boolean).join(' · ')}</td>
           <td><button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-xone="${i}">⬇ Export</button></td></tr>`; }).join('')}
       </tbody></table></div>`;
   }
@@ -561,6 +573,7 @@
     app.querySelectorAll('[data-cen]').forEach(b => b.onclick = () => censusOfJob(b.dataset.cen, b));
     app.querySelectorAll('[data-certs]').forEach(b => b.onclick = () => downloadJob(b.dataset.certs, 'certs', b));
     app.querySelectorAll('[data-invpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.invpdf, 'inv', b));
+    app.querySelectorAll('[data-crpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.crpdf, 'cr', b));
     app.querySelectorAll('[data-flpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.flpdf, 'fl', b));
     app.querySelectorAll('[data-allpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.allpdf, 'all', b));
     if (S.tab === 'jobs') loadProgress();

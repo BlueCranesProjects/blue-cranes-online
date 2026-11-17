@@ -741,7 +741,7 @@ function toEquipment(st){
 }
 // ---- one-time: old report numbers (7001.1) get the F prefix (F7001.1), also on equipment lists ----
 const NOF=/^(?!F)(.+\.\d+)$/i;
-function fixNo(no){const t=String(no||"").trim();if(!/\.\d+$/.test(t))return t;if(/^F/i.test(t))return "F"+jobCore(t.slice(1));return "F"+jobCore(t);}
+function fixNo(no){const t=String(no||"").trim();if(!/\.\d+$/.test(t)||/^CR/i.test(t))return t;if(/^F/i.test(t))return "F"+jobCore(t.slice(1));return "F"+jobCore(t);}
 function fixCert(c){return String(c||"").replace(/^CC(?=\d)/i,"C");}
 const needsFix=no=>{const t=String(no||"").trim();return !!t&&fixNo(t)!==t;};
 async function fixEquipmentNos(){let eq={};try{eq=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){return 0;}let n=0;

@@ -182,7 +182,7 @@
       Object.values(S.lists).forEach(l => { if (!seen[l.id]) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); });
       if (S.cur && S.lists[S.cur.id] && S.lists[S.cur.id] !== S.cur){ S.cur = S.lists[S.cur.id]; lsSave(); render(); return; }
       let fixed = false; const core = j => String(j || '').trim().replace(/\s+/g, '').replace(/^C(?=\d)/i, '');
-      const fixNo = no => { const t = String(no || '').trim(); if (!/\.\d+$/.test(t)) return t; return 'F' + core(/^F/i.test(t) ? t.slice(1) : t); };
+      const fixNo = no => { const t = String(no || '').trim(); if (!/\.\d+$/.test(t) || /^CR/i.test(t)) return t; return 'F' + core(/^F/i.test(t) ? t.slice(1) : t); };
       Object.values(S.lists).forEach(l => { let c = false; (l.rows || []).forEach(x => {
         if (x.report && x.report.no && fixNo(x.report.no) !== x.report.no){ x.report.no = fixNo(x.report.no); c = true; }
         if (x.report && x.report.cert && /^CC(?=\d)/i.test(x.report.cert)){ x.report.cert = 'C' + x.report.cert.slice(2); c = true; }
@@ -235,6 +235,24 @@
     try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:st.k, idx:st.i, card:st.j.card || '', customer:st.j.customer || st.j.desc || '', contact:st.j.contact || '', at:new Date().toISOString() }, st.edit ? { edit:true } : {})));
       localStorage.setItem('bco-fl-item', JSON.stringify({ serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', no:r.cno, type, at:Date.now() })); } catch(e){}
     location.href = '../forklift/?type=' + encodeURIComponent(type);
+  }
+  // cranes, hoists, beams with chain hoists and winches get the crane / hoist inspection and load test report
+  const isCrane = r => { const d = r.desc || ''; if (isForklift(r)) return false; if (r.cr) return true;
+    return /crane|hoist|chain\s*block|lever\s*block|winch|tirfor|gantry|monorail|runway|beam/i.test(d) && !/clamp|spreader|lifting\s*beam|sling|shackle|harness|lanyard/i.test(d) && !(/trolley/i.test(d) && !/hoist|crane/i.test(d)); };
+  function openCrane(i, type){
+    const l = S.cur; const r = l && l.rows[i]; if (!r) return;
+    const st = startedJob();
+    if (!st){
+      const sid = (S.active && S.active.sched) || (l && l.sched) || '';
+      const m = document.createElement('div'); m.className = 'modal-bg';
+      m.innerHTML = `<div class="modal"><div style="font-size:16px;font-weight:700">Start the job first</div>
+        <div class="hint" style="font-size:14px">Crane and hoist inspection and load test reports open once the job is started. Start the job, then come back to this item.</div>
+        <a class="btn primary" href="../timesheet/${sid ? '?job=' + encodeURIComponent(sid) : ''}">Go to the job</a><button class="btn secondary" type="button" id="flNo">Cancel</button></div>`;
+      document.body.appendChild(m); m.querySelector('#flNo').onclick = () => m.remove(); m.onclick = e => { if (e.target === m) m.remove(); }; return; }
+    if (!r.cno) r.cno = certN(l, i); saveList(l, true);
+    try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:st.k, idx:st.i, card:st.j.card || '', customer:st.j.customer || st.j.desc || '', contact:st.j.contact || '', at:new Date().toISOString() }, st.edit ? { edit:true } : {})));
+      localStorage.setItem('bco-cr-item', JSON.stringify({ row:r.id, list:l.id, serial:r.serial || '', desc:r.desc || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', no:r.cno, type, at:Date.now() })); } catch(e){}
+    location.href = '../crane/?type=' + encodeURIComponent(type);
   }
   // gantries and load / lifting beams get a deflection test (span, test load, measured deflection, allowed = span ÷ ratio)
   const isBeam = r => /gantry|beam|monorail|runway|crane/i.test(r.desc || '') && !/clamp|trolley|spreader/i.test(r.desc || '');
@@ -398,6 +416,7 @@
           ${r.office && !r.status ? `<div class="from" style="background:#FFF3B0;color:var(--navyDeep)"><span>Loaded by the office – check it and mark <b>Safe</b> or <b>Unsafe</b></span></div>` : ''}
           ${r.note ? `<span class="hint"><b>Office note:</b> ${esc(r.note)}</span>` : ''}
           ${isForklift(r) ? `<div class="flbar"><span>${FL} Forklift – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
+          ${isCrane(r) ? `<div class="flbar"><span>🏗 Crane / hoist – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-cropen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-cropen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
           <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
@@ -509,6 +528,7 @@
     app.querySelectorAll('[data-df]').forEach(inp => { inp.oninput = inp.onchange = () => { const i = Number(inp.dataset.di); const d = l.rows[i].defl || (l.rows[i].defl = {});
       let v = inp.value; if (inp.dataset.df !== 'ratio'){ const c = v.replace(/[^\d.,]/g, ''); if (c !== v){ v = c; inp.value = c; } } else v = Number(v);
       d[inp.dataset.df] = v; saveList(l); const o = document.getElementById('dres' + i); if (o) o.innerHTML = deflLine(d); }; });
+    app.querySelectorAll('[data-cropen]').forEach(b => b.onclick = () => openCrane(Number(b.dataset.cropen), b.dataset.type));
     app.querySelectorAll('[data-flopen]').forEach(b => b.onclick = () => openForklift(Number(b.dataset.flopen), b.dataset.type));
     app.querySelectorAll('[data-cust]').forEach(b => b.onclick = () => { S.cust = b.dataset.cust; S.view = 'customer'; render(); });
     const q = $('q'); if (q){ q.oninput = () => { S.q = q.value; const pos = q.selectionStart; render(); const n = $('q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch(e){} }; }
@@ -749,7 +769,9 @@
       rows.push(['MANUFACTURED BY', /^unknown$/i.test(r.make || '') ? '' : U(r.make)]);
       rows.forEach(([a, v]) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); doc.text(doc.splitTextToSize(String(v || ''), R - VX)[0] || '', VX, y); y += 7.9 * CERT_K; });
       doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN)); doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF TEST' : 'SAFE FOR USE AT TIME OF TEST', VX, y);
-      if (unsafe && r.reason){ doc.setFontSize(10.5); doc.text(doc.splitTextToSize(U(r.reason), R - VX).slice(0, 2), VX, y + 6); }
+      const crNo = r.cr && r.report && r.report.no ? String(r.report.no) : '';
+      if (crNo){ doc.setFontSize(13); doc.text('SEE REPORT ' + crNo, VX, y + 6.5); }
+      if (unsafe && r.reason && !(crNo && /^See report /i.test(r.reason))){ doc.setFontSize(10.5); doc.text(doc.splitTextToSize(U(r.reason), R - VX).slice(0, 2), VX, y + (crNo ? 12 : 6)); }
       doc.setTextColor(...INK); y += 22 * CERT_K; doc.setFontSize(12.5);
       doc.text('TESTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
       y += 18 * CERT_K; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
@@ -786,6 +808,14 @@
   function sheetDateOf(l){ try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); if (!ts) return null;
       for (const [k, sh] of Object.entries(ts.sheets || {})) if ((sh.jobs || []).some(j => (l.sched && j.sched === l.sched) || (k === l.date && jobCore(j.card) === jobCore(l.job) && (j.card || l.job)))) return k;
       return ts.sheets && ts.sheets[l.date] ? l.date : null; } catch(e){ return null; } }
+  function hiddenPage(src, ready){
+    return new Promise((res, rej) => {
+      const fr = document.createElement('iframe'); fr.src = src; fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
+      fr.style.cssText = 'position:fixed;left:-9999px;top:0;width:400px;height:800px;border:0;visibility:hidden'; document.body.appendChild(fr);
+      let n = 0; const t = setInterval(() => { n++; const w = fr.contentWindow; const api = w && ready(w);
+        if (api){ clearInterval(t); res(Object.assign({}, api, { reports:api.reports, buildPdf:api.buildPdf, done:() => fr.remove() })); } else if (n > 200){ clearInterval(t); fr.remove(); rej(new Error(src + ' did not load')); } }, 100);
+    });
+  }
   function forkliftTools(){
     return new Promise((res, rej) => {
       const fr = document.createElement('iframe'); fr.src = '../forklift/?embed=1'; fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
@@ -819,6 +849,15 @@
         }
       } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
       finally { if (tools) tools.done(); }
+      { let ct = null;
+        try {
+          const linked = new Set((l.rows || []).map(x => x.cr).filter(Boolean)); const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, '');
+          if (linked.size || l.job){ busy('Finding crane / hoist reports…'); ct = await hiddenPage('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
+            const cr = (await ct.reports()).filter(r => r && r.state && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))
+              .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
+            for (let k = 0; k < cr.length; k++){ busy(`Crane / hoist report ${k + 1} of ${cr.length}…`); const a = await ct.buildPdf(JSON.parse(JSON.stringify(cr[k].state))); files.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); } }
+        } catch(e){ console.error(e); toast('Crane / hoist reports could not be added'); }
+        finally { if (ct) ct.done(); } }
       try { busy('Certificates…'); const c = await mergeCerts(l, (await itemCertParts(l)).concat(flCerts)); if (c) files.splice(Math.min(files.length, 3), 0, c); } catch(e){ console.error(e); toast('Certificates could not be added'); }
       const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.(pdf|xlsx)$/, `_${++used[n]}.$1`); else used[n] = 1; f.name = n; f.type = f.type || 'application/pdf'; });
       const pdfs = files.map(f => new File([f.blob], f.name, { type:f.type }));
