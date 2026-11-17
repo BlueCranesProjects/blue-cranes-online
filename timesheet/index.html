@@ -332,7 +332,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (C)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (D)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -1039,10 +1039,11 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 17 Nov (C)</span>
+        <span class="hint">App version 17 Nov (D)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
-      ${s.status==='submitted'?`<button class="btn secondary" data-reopen="${k}">Reopen sheet</button>`:''}
+      <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
+      ${s.status==='submitted'?'<div class="hint" style="text-align:center">Editing reopens the sheet. Tap <b>End day</b> again when you are done to submit it.</div>':''}
       <button class="btn ghost" data-delsheet="${k}">Delete this sheet</button>
     </main>`;
   }
@@ -1154,7 +1155,7 @@
       [['A','Good condition'],['W','Fine but needs attention'],['X','Replacement']].forEach(([a,b],i)=>{ doc.setFont('helvetica','bold'); doc.text(a, L + 17, y + 14 + i*4.5); doc.setFont('helvetica','normal'); doc.text(b, L + 24, y + 14 + i*4.5); });
       const svcKm = sheetService(s), left = kmToService(s);
       lineField('Next Service Due:', svcKm != null ? fmtKm(svcKm) + ' km' : '', 112, y + 15, R - 3, 143);
-      lineField('Km left to service:', left == null ? '' : (left < 0 ? 'OVERDUE ' + fmtKm(-left) + ' km' : fmtKm(left) + ' km') + (left == null ? '' : '  (at ' + fmtKm(currentOdo(s)) + ' km)'), 112, y + 23, R - 3, 146);
+      lineField('Km left to service:', left == null ? '' : (left < 0 ? 'OVERDUE ' + fmtKm(-left) + ' km' : fmtKm(left) + ' km'), 112, y + 23, R - 3, 146);
       const gy = y + 30, gap = Math.min(9, (bh - 34) / 3);
       lineField('TYRES:', c.Tyres || '', L + 3, gy, 100, 33); lineField('WINDOWS:', c.Windows || '', 108, gy, R - 3, 130);
       lineField('WATER:', c.Water || '', L + 3, gy + gap, 100, 33); lineField('OIL:', c.Oil || '', 108, gy + gap, R - 3, 130);
@@ -1292,8 +1293,8 @@
     app.querySelectorAll('[data-finishk]').forEach(b => b.onclick = () => { const k = b.dataset.finishk; state.activeDate = k === todayKey() ? null : k; go('job', { jobIdx:Number(b.dataset.finishi), _finishing:true, schedId:null }); });
     app.querySelectorAll('[data-detail]').forEach(b => b.onclick = () => go('detail', { detailKey:b.dataset.detail }));
     app.querySelectorAll('[data-reopen]').forEach(b => b.onclick = () => {
-      const k = b.dataset.reopen; state.sheets[k].status = 'open'; saveSheet(k);
-      state.activeDate = (k === todayKey()) ? null : k; go('today');
+      const k = b.dataset.reopen; if (state.sheets[k].status === 'submitted'){ state.sheets[k].status = 'open'; saveSheet(k); }
+      state.activeDate = (k === todayKey()) ? null : k; go(b.closest('.dark') || state.view === 'detail' ? 'jobs' : 'today');
     });
     app.querySelectorAll('[data-delsheet]').forEach(b => b.onclick = () => confirmBox('Delete the sheet for ' + niceDate(b.dataset.delsheet) + '? This cannot be undone.', 'Delete sheet', () => {
       const k = b.dataset.delsheet; delete state.sheets[k]; deleteSheetRemote(k); go('history');
