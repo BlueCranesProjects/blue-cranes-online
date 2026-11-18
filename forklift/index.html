@@ -274,7 +274,11 @@ const ITEMS=["Capacity displayed","Load chart","Parking brake","Foot brake","Ped
 // items that take a written value (shown always)
 const LOAD_OPTS=["Pallets","Bins","Paper rolls","General use"];
 const ENGINE_OPTS=["Diesel","LP Gas","Gasoline","Battery"];
-const ATTACH=35, ATTACH_OPTS=["Side shift","Paper grab","Bin tip","Bin rotator"];
+const ATTACH=35, MULTI="Multi-pallet handler", ATTACH_OPTS=["Side shift","Paper grab","Bin tip","Bin rotator",MULTI];
+// a multi-pallet handler has four forks: two more fork measurements under the fork thickness, same wear rules
+const isMulti=()=>!!(state&&state.val&&state.val[ATTACH-1]===MULTI);
+function forkSet(){return isMulti()?[["l","Left 1"],["r","Right 1"],["l2","Left 2"],["r2","Right 2"]]:[["l","Left"],["r","Right"]];}
+const FORK_ALL=[["l","Left"],["r","Right"],["l2","Left 2"],["r2","Right 2"]];
 const CRACK=31;
 function itemName(i){if(i===17&&state&&state.val&&["Bin rotator","Paper grab"].includes(state.val[ATTACH-1]))return "Rotator";if(i===CRACK-1){const c=state&&state.crack;return c==="inspected"?"Fork crack inspected":c==="tested"?"Fork crack tested":"Fork crack inspected / tested";}const n=ITEMS[i],a=state&&state.val?state.val[ATTACH-1]:"";if(a&&/^Grab /.test(n))return a+" "+n.slice(5).toLowerCase();return n;}
 const BATT=33;
@@ -293,7 +297,7 @@ const FIELDS=["customer","date","jobno","make","model","serial","swl","lc","mh",
 const KEY="bc-forklift-draft-v1", ENGKEY="bc-forklift-engineer", JOBKEY="bc-forklift-jobs", SESSKEY="bc-forklift-session", TECHKEY="bc-forklift-techs";
 
 let state=blank();
-function blank(){return{batt:{min:"",max:""},crack:"",type:"INSPECTION",wr:{insp:false,load:false},chain:{ln:"",lm:"",rn:"",rm:""},fork:{lv:"",lh:"",rv:"",rh:""},f:{},res:Array(ITEMS.length).fill(null),val:Array(ITEMS.length).fill(""),note:Array(ITEMS.length).fill(""),status:null,photo:{},sig:{sigEng:null,sigCust:null,sigUt:null}};}
+function blank(){return{batt:{min:"",max:""},crack:"",type:"INSPECTION",wr:{insp:false,load:false},chain:{ln:"",lm:"",rn:"",rm:""},fork:{lv:"",lh:"",rv:"",rh:"",l2v:"",l2h:"",r2v:"",r2h:""},f:{},res:Array(ITEMS.length).fill(null),val:Array(ITEMS.length).fill(""),note:Array(ITEMS.length).fill(""),status:null,photo:{},sig:{sigEng:null,sigCust:null,sigUt:null}};}
 function store(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function load(k){try{return localStorage.getItem(k)}catch(e){return null}}
 
@@ -316,7 +320,7 @@ function build(){
       ${hasVal?`<div class="sub"><input data-val="${i}" placeholder="${VALUE_ITEMS[n]}"${n===HOURS?' inputmode="decimal"':""}></div>`:""}
       ${UNIT_ITEMS[n]?`<div class="sub"><div class="unit" style="flex:1"><input data-val="${i}" inputmode="decimal" placeholder="${UNIT_PH[n]}"><span>${UNIT_ITEMS[n]}</span></div></div>`:""}
       ${n===7?`<div class="fork"><div class="fh">Measure in mm. Wear = (vertical − horizontal) ÷ vertical. Under 5% = ✓, 5% or more = W, 10% or more = X. The worse fork sets the result.</div>
-        ${[["l","Left"],["r","Right"]].map(([k,t])=>`<div class="frow"><span class="l">${t}</span>
+        ${FORK_ALL.map(([k,t])=>`<div class="frow" id="frow-${k}"><span class="l" id="fl-${k}">${t}</span>
           <div><label>Vertical (mm)</label><input inputmode="decimal" data-fork="${k}v"></div>
           <div><label>Horizontal (mm)</label><input inputmode="decimal" data-fork="${k}h"></div>
           <div class="wear" id="wear-${k}">–</div></div>`).join("")}</div>`:""}
@@ -336,7 +340,7 @@ function build(){
     itemsEl.appendChild(d);
   });
   wirePhotos(itemsEl);
-  itemsEl.querySelectorAll("[data-val]").forEach(inp=>inp.oninput=inp.onchange=()=>{state.val[+inp.dataset.val]=inp.value;render();save();if(+inp.dataset.val===ATTACH-1&&inp.value&&!$("aserial").value)toast("Add the "+inp.value.toLowerCase()+" details under SWL");});
+  itemsEl.querySelectorAll("[data-val]").forEach(inp=>inp.oninput=inp.onchange=()=>{state.val[+inp.dataset.val]=inp.value;if(+inp.dataset.val===ATTACH-1)forkCalc(true);render();save();if(+inp.dataset.val===ATTACH-1&&inp.value&&!$("aserial").value)toast("Add the "+inp.value.toLowerCase()+" details under SWL");});
   $("crackSel").onchange=()=>{state.crack=$("crackSel").value;render();save();};
   itemsEl.querySelectorAll("[data-batt]").forEach(inp=>inp.oninput=()=>{state.batt[inp.dataset.batt]=inp.value;render();save();});
   itemsEl.querySelectorAll("[data-chain]").forEach(inp=>inp.oninput=()=>{state.chain[inp.dataset.chain]=inp.value;chainCalc(true);render();save();});
@@ -362,7 +366,8 @@ function render(){subBtn();
     if(state.note[i])showNote(i,true);
   });
   itemsEl.querySelectorAll("[data-fork]").forEach(inp=>{const v=state.fork[inp.dataset.fork]||"";if(inp.value!==v)inp.value=v;});
-  const fc=forkCalc(false);["l","r"].forEach(k=>{const e=$("wear-"+k),w=fc[k];e.className="wear"+(w?" "+w.g:"");e.textContent=w?w.p.toFixed(1)+"%":"–";});
+  {const fs=forkSet(),on=fs.map(x=>x[0]);FORK_ALL.forEach(([k])=>{$("frow-"+k).style.display=on.includes(k)?"":"none";});fs.forEach(([k,t])=>{$("fl-"+k).textContent=t;});}
+  const fc=forkCalc(false);forkSet().map(x=>x[0]).forEach(k=>{const e=$("wear-"+k),w=fc[k];e.className="wear"+(w?" "+w.g:"");e.textContent=w?w.p.toFixed(1)+"%":"–";});
   itemsEl.querySelectorAll("[data-batt]").forEach(inp=>{const v=state.batt[inp.dataset.batt]||"";if(inp.value!==v)inp.value=v;});
   itemsEl.querySelectorAll("[data-chain]").forEach(inp=>{const v=state.chain[inp.dataset.chain]||"";if(inp.value!==v)inp.value=v;});
   const cc=chainCalc(false);["l","r"].forEach(k=>{const e=$("str-"+k),w=cc[k];e.className="wear"+(w?" "+w.g:"");e.textContent=w?w.p.toFixed(1)+"%":"–";});
@@ -388,7 +393,7 @@ function render(){subBtn();
 
 function forkCalc(apply){
   const out={};let worst=null;const rank={ok:0,w:1,x:2};
-  ["l","r"].forEach(k=>{const v=parseFloat(String(state.fork[k+"v"]).replace(",",".")),h=parseFloat(String(state.fork[k+"h"]).replace(",","."));
+  forkSet().map(x=>x[0]).forEach(k=>{const v=parseFloat(String(state.fork[k+"v"]).replace(",",".")),h=parseFloat(String(state.fork[k+"h"]).replace(",","."));
     if(v>0&&h>=0&&!isNaN(h)){const p=Math.max(0,(v-h)/v*100),g=p>=10?"x":p>=5?"w":"ok";out[k]={p,g};if(!worst||rank[g]>rank[worst])worst=g;}});
   if(apply&&worst){state.res[6]=worst;if(worst!=="ok")showNote(6,true);}
   return out;
@@ -565,7 +570,7 @@ async function buildPdf(st){const prev=state;state=st;try{
     for(let r=0;r<per;r++){
       const V=VV,k=c*per+r;const yy=y+5+r*ih;if(k>=V.length){doc.setDrawColor(150,156,170);doc.rect(x,yy,colW,ih);doc.line(x+8,yy,x+8,yy+ih);doc.line(x+colW-20,yy,x+colW-20,yy+ih);continue;}const i=V[k];doc.setDrawColor(150,156,170);doc.rect(x,yy,colW,ih);doc.line(x+8,yy,x+8,yy+ih);doc.line(x+colW-20,yy,x+colW-20,yy+ih);
       doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(30,34,51);doc.text(String(k+1),x+4,yy+3.9+ty,{align:"center"});
-      let label=itemName(i).toUpperCase();if(i===6){const fc=forkCalc(false),parts=[];if(fc.l)parts.push("L "+fc.l.p.toFixed(1)+"%");if(fc.r)parts.push("R "+fc.r.p.toFixed(1)+"%");if(parts.length){state.val[6]="Wear "+parts.join("  ");}else state.val[6]="";}
+      let label=itemName(i).toUpperCase();if(i===6){const fc=forkCalc(false),parts=[],m=isMulti();forkSet().forEach(([k])=>{if(fc[k])parts.push((k[0]==="l"?"L":"R")+(m?(k.length>1?"2":"1"):"")+" "+fc[k].p.toFixed(1)+"%");});if(parts.length){state.val[6]="Wear "+parts.join("  ");}else state.val[6]="";}
       if(i===BATT-1){const b=state.batt||{};state.val[i]=b.min&&b.max?b.min+" - "+b.max+" kg":b.min?"Min "+b.min+" kg":b.max?"Max "+b.max+" kg":"";}
       if(i===14){const cc=chainCalc(false),parts=[];if(cc.l)parts.push("L "+cc.l.p.toFixed(1)+"%");if(cc.r)parts.push("R "+cc.r.p.toFixed(1)+"%");state.val[14]=parts.length?"Stretch "+parts.join("  "):"";}
       const inRes=i===CRACK-1||VALUE_ONLY.includes(i+1);
@@ -578,7 +583,7 @@ async function buildPdf(st){const prev=state;state=st;try{
         continue;
       }
       if(state.val[i])label+=":  ";doc.setFontSize(7.6);doc.text(label,x+9.5,yy+3.9+ty);
-      if(state.val[i]){const lw=doc.getTextWidth(label);doc.setFont("helvetica","bold");doc.setTextColor(10,20,90);doc.text(doc.splitTextToSize(state.val[i]+(UNIT_ITEMS[i+1]&&/^[\d.,\s]+$/.test(state.val[i])?" "+UNIT_ITEMS[i+1]:""),colW-31-lw)[0],x+9.5+lw,yy+3.9+ty);}
+      if(state.val[i]){const lw=doc.getTextWidth(label);doc.setFont("helvetica","bold");doc.setTextColor(10,20,90);const vt=state.val[i]+(UNIT_ITEMS[i+1]&&/^[\d.,\s]+$/.test(state.val[i])?" "+UNIT_ITEMS[i+1]:"");let vf=7.6;while(doc.getTextWidth(vt)>colW-31-lw&&vf>5){vf-=0.2;doc.setFontSize(vf);}doc.text(doc.splitTextToSize(vt,colW-31-lw)[0],x+9.5+lw,yy+3.9+ty);doc.setFontSize(7.6);}
       const v=state.res[i],cx=x+colW-10,cy=yy+ih/2;
       if(v==="ok"){doc.setDrawColor(29,138,74);doc.setLineWidth(0.7);doc.line(cx-2,cy,cx-0.6,cy+1.5);doc.line(cx-0.6,cy+1.5,cx+2.2,cy-1.6);doc.setLineWidth(0.25);}
       else if(v){doc.setFont("helvetica","bold");doc.setFontSize(v==="na"?7:10);doc.setTextColor(...(v==="w"?[201,138,0]:v==="x"?[198,40,40]:[107,114,128]));doc.text(v==="w"?"W":v==="x"?"X":"N/A",cx,cy+1.4,{align:"center"});}
@@ -593,7 +598,7 @@ async function buildPdf(st){const prev=state;state=st;try{
   // remarks
   const notes=state.note.map((n,i)=>n&&visible(i)?`#${dnum(i)} ${itemName(i)}${state.res[i]?" ("+({ok:"OK",w:"W",x:"X",na:"N/A"}[state.res[i]])+")":""}: ${n}`:null).filter(Boolean);
   let rem=[];if(f.remarks)rem.push(...f.remarks.split("\n"));
-  if(["w","x"].includes(state.res[6])){const fc=forkCalc(false),fp=[];[["l","Left"],["r","Right"]].forEach(([k,t])=>{if(fc[k])fp.push(`${t} fork V ${state.fork[k+"v"]} mm / H ${state.fork[k+"h"]} mm = ${fc[k].p.toFixed(1)}% wear`);});if(fp.length)rem.push("Fork thickness: "+fp.join("; ")+(state.res[6]==="x"?" - forks to be replaced":""));}
+  if(["w","x"].includes(state.res[6])){const fc=forkCalc(false),fp=[];forkSet().forEach(([k,t])=>{if(fc[k])fp.push(`${t} fork V ${state.fork[k+"v"]} mm / H ${state.fork[k+"h"]} mm = ${fc[k].p.toFixed(1)}% wear`);});if(fp.length)rem.push("Fork thickness: "+fp.join("; ")+(state.res[6]==="x"?" - forks to be replaced":""));}
   if(["w","x"].includes(state.res[14])){const cc=chainCalc(false),cp=[];[["l","Left"],["r","Right"]].forEach(([k,t])=>{if(cc[k])cp.push(`${t} chain original ${state.chain[k+"n"]} mm / measured ${state.chain[k+"m"]} mm = ${cc[k].p.toFixed(1)}% stretch`);});if(cp.length)rem.push("Chain: "+cp.join("; "));}
   rem.push(...notes);
   doc.setFontSize(8.3);let lines=[];rem.forEach(t=>lines.push(...doc.splitTextToSize(t,W-4)));
