@@ -333,7 +333,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 17 Nov (W)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 18 Nov (A)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -668,7 +668,7 @@
     const finishing = editing && !!state._finishing && !j.done;
     if (finishing && !(Number(j.hrs) > 0)) state._hrs = hoursSince(j.startedAt);
     const hide = quick ? 'style="display:none"' : '';
-    return headerBack((finishing ? 'FINISH JOB ' : editing ? 'JOB ' : 'START JOB ') + n, editing && !j.done ? 'jobpage' : 'today') + `<main>
+    return headerBack((finishing ? 'FINISH JOB ' : editing ? 'JOB ' : 'START JOB ') + n, state._jobBack || (editing && !j.done ? 'jobpage' : 'today')) + `<main>
       ${finishing ? `<div class="card" style="padding:12px 14px"><div style="font-weight:700;font-size:16px">${esc(j.customer || j.desc || '')}</div><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact].filter(Boolean).join(' · '))}</div></div>` : ''}
       <form id="jobForm" style="display:flex;flex-direction:column;gap:18px">
         <div ${finishing ? 'style="display:none"' : ''} style="display:flex;flex-direction:column;gap:18px">
@@ -805,7 +805,7 @@
       return { total:rows.length, open:rows.filter(r => !r.status).length }; } catch(e){ return {}; } }
   // opening an inventory or report remembers where you were (e.g. a day in History), so coming back opens there again
   const PLACE = 'bco-ts-place';
-  function keepPlace(){ try { sessionStorage.setItem(PLACE, JSON.stringify({ view:state.view, detailKey:state.detailKey, jobIdx:state.jobIdx, schedId:state.schedId, schedDate:state.schedDate, schedWeek:state.schedWeek, activeDate:state.activeDate, _schedBack:state._schedBack, y:window.scrollY, at:Date.now() })); } catch(e){} }
+  function keepPlace(){ try { sessionStorage.setItem(PLACE, JSON.stringify({ view:state.view, detailKey:state.detailKey, jobIdx:state.jobIdx, schedId:state.schedId, schedDate:state.schedDate, schedWeek:state.schedWeek, activeDate:state.activeDate, _schedBack:state._schedBack, pjKey:state.pjKey, pjIdx:state.pjIdx, y:window.scrollY, at:Date.now() })); } catch(e){} }
   // read the remembered place before the page is first drawn, so the time sheet opens straight on it (no flash of Today)
   function takePlace(){
     let p = null; try { p = JSON.parse(sessionStorage.getItem(PLACE) || 'null'); sessionStorage.removeItem(PLACE); } catch(e){}
@@ -813,13 +813,13 @@
     let ref = ''; try { ref = new URL(document.referrer).pathname; } catch(e){}
     let nav = ''; try { nav = performance.getEntriesByType('navigation')[0].type; } catch(e){}
     if (nav !== 'back_forward' && !/\/(equipment|forklift|crane)\/?/.test(ref)) return null;
-    if (!['today', 'jobs', 'history', 'detail', 'schedjob', 'schedule', 'jobpage'].includes(p.view)) return null;
+    if (!['today', 'jobs', 'history', 'detail', 'schedjob', 'schedule', 'jobpage', 'pastjob'].includes(p.view)) return null;
     const y = p.y || 0; delete p.y; delete p.at; Object.assign(state, p); return { y };
   }
   // once everything is loaded: check the page still exists and scroll back to where you were
   function settlePlace(pl){
     if (!pl) return;
-    if ((state.view === 'detail' && !(state.detailKey && state.sheets[state.detailKey])) || (state.view === 'schedjob' && !(state.schedId && state.schedule[state.schedId]))){ state.view = 'today'; render(); return; }
+    if ((state.view === 'pastjob' && !(state.pjKey && state.sheets[state.pjKey] && (state.sheets[state.pjKey].jobs || [])[state.pjIdx])) || (state.view === 'detail' && !(state.detailKey && state.sheets[state.detailKey])) || (state.view === 'schedjob' && !(state.schedId && state.schedule[state.schedId]))){ state.view = 'today'; render(); return; }
     setTimeout(() => window.scrollTo(0, pl.y), 30);
   }
   function openReport(k, i, type, editPast){
@@ -905,6 +905,43 @@
       </form></main>` + (gate ? tabs('today') : '');
   }
 
+  // every job on every time sheet, newest first: tap one to open the whole job (details, inventory, reports) and change or add to it
+  function historyJobs(keys){
+    const all = []; keys.forEach(k => (state.sheets[k].jobs || []).forEach((j, i) => all.push({ k, i, j })));
+    all.reverse(); all.sort((a, b) => b.k.localeCompare(a.k));
+    if (!all.length) return '';
+    const show = state._allJobs ? all : all.slice(0, 15);
+    return `<section class="card" style="display:flex;flex-direction:column;gap:8px"><h2>JOBS</h2>
+      ${all.length > 5 ? `<input id="jobSearch" type="search" placeholder="Search job card no. or customer" aria-label="Search jobs" style="height:46px;border:1.5px solid var(--line);border-radius:10px;padding:0 12px;font:inherit;font-size:15px">` : ''}
+      ${show.map(({ k, i, j }) => `<button type="button" data-pjk="${k}" data-pji="${i}" data-text="${esc([j.card, j.customer || j.desc, j.contact].join(' ').toLowerCase())}" style="display:flex;align-items:center;gap:10px;text-align:left;width:100%;border:1.5px solid var(--line);border-radius:12px;background:#fff;padding:10px;font-family:inherit;cursor:pointer;color:var(--ink)">
+        <span style="background:var(--navyDeep);color:#fff;border-radius:8px;padding:6px 8px;font-weight:800;font-size:13px;min-width:58px;text-align:center;line-height:1.2">${esc(niceDate(k).replace(/,? \d{4}$/, '').replace(/^\w+,? /, ''))}</span>
+        <span style="flex:1;min-width:0"><b style="font-size:15px">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · ') || 'Job')}</b>
+          <span class="hint" style="display:block">${esc([fmtHM(Number(j.hrs) || 0), j.contact ? 'Contact: ' + j.contact : ''].filter(Boolean).join(' · '))}</span></span>
+        ${j.done ? '<span class="pill ok">✓ Done</span>' : '<span class="pill prog">Busy</span>'}</button>`).join('')}
+      ${all.length > show.length ? `<button type="button" class="btn secondary" id="allJobs" style="height:44px;font-size:14px;border-width:1.5px">Show all ${all.length} jobs</button>` : ''}
+      <span class="hint">Tap a job to open it – change its details, inventory and reports, or add new ones.</span></section>`;
+  }
+  // a job from History: everything about it in one place, open for changes
+  function viewPastJob(){
+    const k = state.pjKey; const sh = state.sheets[k]; const i = state.pjIdx; const j = sh && sh.jobs && sh.jobs[i]; if (!j) return viewHistory();
+    const tile = (type, ic, tt, ss, id, light) => `<button class="tile${light ? ' light' : ''}" data-pj="${i}" data-type="${type}"><span class="ic">${ic}</span><span><span class="tt" style="display:block">${tt}</span><span class="ss" style="display:block">${ss}</span></span><span class="cnt" id="${id}"></span></button>`;
+    return headerBack('JOB', 'history') + `<main>
+      <section class="card" style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${j.done ? '<span class="pill ok">✓ Completed</span>' : '<span class="pill prog">Not finished</span>'}<span class="hint">${esc(niceDate(k, true))} · Job ${i + 1} on the sheet</span></div>
+        <div style="font-size:19px;font-weight:700">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · ') || 'Job')}</div>
+        ${j.contact ? `<div class="hint" style="font-size:14px;color:var(--label)">Contact: <b>${esc(j.contact)}</b></div>` : ''}
+        <div class="hint" style="font-size:14px">${esc(fmtHM(Number(j.hrs) || 0))} on the job${j.odo !== '' && j.odo != null ? ' · odometer ' + esc(fmtKm(j.odo)) + ' km' : ''}</div>
+        ${j.notes ? `<div class="hint" style="font-size:14px">${esc(j.notes)}</div>` : ''}
+        <button class="btn secondary" type="button" data-pjedit="${i}" style="height:46px;font-size:14px;border-width:1.5px;margin-top:4px">✎ Edit job details (hours, notes, status)</button>
+      </section>
+      <h2 style="padding:4px 2px 0">REPORTS</h2>
+      ${tile('EQUIPMENT', ICON.list, "Client's inventory", 'Add or change items. Crane / hoist reports open from the crane or hoist here.', 'cntE', true)}
+      ${tile('INSPECTION', ICON.forklift, 'Forklift inspection', 'Open saved reports or add a new one', 'cntI')}
+      ${tile('LOAD TEST', ICON.loadtest, 'Load test', 'Report + certificate', 'cntL')}
+      <div class="hint">Certificates are made again from your changes.</div>
+    </main>`;
+  }
+
   function viewHistory(){
     const keys = Object.keys(state.sheets).sort().reverse();
     const now = new Date(); const ym = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
@@ -917,9 +954,8 @@
         <div class="card" style="padding:10px 12px"><div class="k">Km</div><div class="big" style="font-size:24px">${fmtKm(mKm)}</div></div>
         <div class="card" style="padding:10px 12px"><div class="k">Job hrs</div><div class="big" style="font-size:22px;white-space:nowrap">${fmtHMs(mH)}</div></div>
       </div>
-      <a class="btn" href="../forklift/?reports=1" style="background:var(--navyDeep);color:#fff;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg> Forklift reports &amp; certificates</a>
-      <a class="btn" href="../crane/?reports=1" style="background:#fff;color:var(--navyDeep);border:2px solid var(--navy);text-decoration:none">🏗 Crane / hoist reports</a>
-      <a class="btn" href="../equipment/?inventory=1" style="background:#fff;color:var(--navyDeep);border:2px solid var(--navy);text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg> All client inventories</a>
+      ${historyJobs(keys)}
+      <h2 style="padding:6px 2px 0">TIME SHEETS</h2>
       ${keys.length ? keys.map(k=>{ const s = state.sheets[k]; const f = condFlags(s);
         const km = (s.lastOdo? Number(s.lastOdo):lastOdo(s)) - Number(s.firstOdo);
         let pill = s.status!=='submitted' ? '<span class="pill prog">In progress</span>' : f.x.length ? `<span class="pill bad">X · ${esc(f.x.join(', '))}</span>` : f.w.length ? `<span class="pill warn">W · ${esc(f.w.join(', '))}</span>` : '<span class="pill ok">All A</span>';
@@ -1061,7 +1097,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 17 Nov (W)</span>
+        <span class="hint">App version 18 Nov (A)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
@@ -1212,14 +1248,15 @@
   // ---------- render & wire ----------
   function render(){
     const v = state.view;
-    app.innerHTML = v==='signin' ? viewSignIn() : v==='schedule' ? viewSchedule() : v==='schedjob' ? viewSchedJob() : v==='check' ? viewCheck() : v==='job' ? viewJob() : v==='jobpage' ? viewJobPage() : v==='vehicle' ? viewVehicle() : v==='end' ? viewEnd() : v==='history' ? viewHistory() : v==='detail' ? viewDetail() : viewToday();
+    app.innerHTML = v==='signin' ? viewSignIn() : v==='schedule' ? viewSchedule() : v==='schedjob' ? viewSchedJob() : v==='check' ? viewCheck() : v==='job' ? viewJob() : v==='jobpage' ? viewJobPage() : v==='vehicle' ? viewVehicle() : v==='end' ? viewEnd() : v==='history' ? viewHistory() : v==='detail' ? viewDetail() : v==='pastjob' ? viewPastJob() : viewToday();
     wire();
   }
 
   function wire(){
     // links to the inventories and report lists remember where you were, so coming back opens the same page (e.g. History)
     app.querySelectorAll('a[href^="../equipment/"], a[href^="../forklift/"], a[href^="../crane/"]').forEach(x => x.addEventListener('click', keepPlace));
-    app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'jobpage' ? go('jobpage', { _finishing:false }) : go(b.dataset.go, { jobIdx:null, prefill:null, schedId:null, _finishing:false, _editDay:false }));
+    app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { if (state._jobBack){ state.activeDate = null; state._jobBack = null; }   // leaving a job opened from History: back to today's date
+      b.dataset.go === 'jobpage' ? go('jobpage', { _finishing:false }) : go(b.dataset.go, { jobIdx:null, prefill:null, schedId:null, _finishing:false, _editDay:false }); });
     app.querySelectorAll('[data-addjob]').forEach(b => b.onclick = () => go('job', { jobIdx:null, prefill:null, _finishing:false }));
     // account, backup, install
     const so = document.getElementById('signOut');
@@ -1310,12 +1347,19 @@
     }
     app.querySelectorAll('[data-editjob]').forEach(b => b.onclick = () => { const i = Number(b.dataset.editjob); const sh = state.sheets[curKey()]; const j = sh && sh.jobs[i];
       if (j && !j.done) go('jobpage', { jobIdx:i, _finishing:false }); else go('job', { jobIdx:i, _finishing:false }); });
-    app.querySelectorAll('[data-jobedit]').forEach(b => b.onclick = () => go('job', { jobIdx:Number(b.dataset.jobedit), _finishing:false }));
+    app.querySelectorAll('[data-jobedit]').forEach(b => b.onclick = () => go('job', { jobIdx:Number(b.dataset.jobedit), _finishing:false, _jobBack:null }));
     app.querySelectorAll('[data-jobfinish]').forEach(b => b.onclick = () => { const i = Number(b.dataset.jobfinish); const fin = () => go('job', { jobIdx:i, _finishing:true });
       const left = invLeft(curKey(), i); if (!left.total || !left.open) return fin();
       confirmBox(left.open + ' of ' + left.total + ' inventory items are not marked Safe or Unsafe yet. Finish the job anyway?', 'Finish anyway', fin); });
     app.querySelectorAll('[data-finishk]').forEach(b => b.onclick = () => { const k = b.dataset.finishk; state.activeDate = k === todayKey() ? null : k; go('job', { jobIdx:Number(b.dataset.finishi), _finishing:true, schedId:null }); });
     app.querySelectorAll('[data-detail]').forEach(b => b.onclick = () => go('detail', { detailKey:b.dataset.detail }));
+    app.querySelectorAll('[data-pjk]').forEach(b => b.onclick = () => go('pastjob', { pjKey:b.dataset.pjk, pjIdx:Number(b.dataset.pji) }));
+    app.querySelectorAll('[data-pj]').forEach(b => b.onclick = () => openReport(state.pjKey, Number(b.dataset.pj), b.dataset.type, true));
+    app.querySelectorAll('[data-pjedit]').forEach(b => b.onclick = () => { const k = state.pjKey; state.activeDate = k === todayKey() ? null : k; go('job', { jobIdx:Number(b.dataset.pjedit), _finishing:false, _jobBack:'pastjob' }); });
+    const aj = document.getElementById('allJobs'); if (aj) aj.onclick = () => { state._allJobs = true; render(); };
+    const js = document.getElementById('jobSearch'); if (js) js.oninput = () => { const q = js.value.trim().toLowerCase();
+      if (q && !state._allJobs){ state._allJobs = true; render(); const n = document.getElementById('jobSearch'); n.value = js.value; n.focus(); n.oninput(); return; }
+      app.querySelectorAll('[data-pjk]').forEach(r => { r.style.display = !q || r.dataset.text.includes(q) ? '' : 'none'; }); };
     app.querySelectorAll('[data-reopen]').forEach(b => b.onclick = () => {
       const k = b.dataset.reopen; if (state.sheets[k].status === 'submitted'){ state.sheets[k].status = 'open'; saveSheet(k); }
       state.activeDate = (k === todayKey()) ? null : k; go(b.closest('.dark') || state.view === 'detail' ? 'jobs' : 'today');
@@ -1365,7 +1409,7 @@
     }
     // ---- job page: how many reports are already saved for this job ----
     if (document.getElementById('cntI')){
-      const k = curKey(); const j = (state.sheets[k].jobs || [])[state.jobIdx];
+      const pj = state.view === 'pastjob'; const k = pj ? state.pjKey : curKey(); const j = ((state.sheets[k] || {}).jobs || [])[pj ? state.pjIdx : state.jobIdx];
       if (j){
         const core = v => String(v || '').trim().toUpperCase().replace(/^C(?=\d)/, '');
         try { const eq = JSON.parse(localStorage.getItem('bco-equipment') || '{}'); const id = (k + '_' + (j.card || j.customer || 'job')).replace(/[^\w\-]+/g, '_');
@@ -1475,7 +1519,7 @@
       if (del) del.onclick = () => confirmBox('Delete job ' + (state.jobIdx+1) + '?', 'Delete job', () => {
         const k = curKey(); const gone = state.sheets[k].jobs.splice(state.jobIdx,1)[0];
         if (gone && gone.sched && state.schedule[gone.sched]){ delete state.schedule[gone.sched].addedTo; delete state.schedule[gone.sched].done; saveSched(gone.sched); }
-        saveSheet(k); go('today', { jobIdx:null });
+        saveSheet(k); if (state._jobBack){ state.activeDate = null; state._jobBack = null; go('history', { jobIdx:null }); return; } go('today', { jobIdx:null });
       });
       jf.onsubmit = e => {
         e.preventDefault();
@@ -1495,7 +1539,7 @@
         if (needOdo && isNaN(odo)){ err.textContent = 'Enter the odometer reading at this job.'; return; }
         if (needOdo && odo < Number(sh.firstOdo)){ err.textContent = 'That reading is lower than this morning\'s first reading (' + fmtKm(sh.firstOdo) + ' km). Check the number.'; return; }
         const job = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '', odo: needOdo ? odo : '', hrs: state._hrs, notes: jf.notes.value.trim(), done: !!state._done };
-        if (state.jobIdx != null){ const was = sh.jobs[state.jobIdx]; if (was && was.startedAt) job.startedAt = was.startedAt;
+        if (state.jobIdx != null){ const was = sh.jobs[state.jobIdx]; if (was && was.startedAt) job.startedAt = was.startedAt; if (was && was.arrOdo != null) job.arrOdo = was.arrOdo;
           if (was && was.sched){ Object.assign(job, { sched: was.sched, card: was.card || '', customer: was.customer || '', contact: was.contact || '' }); }
           if (was && was.done && job.done) job.doneAt = was.doneAt;
           sh.jobs[state.jobIdx] = job; }
@@ -1507,7 +1551,9 @@
         if (job.done && !job.doneAt) job.doneAt = new Date().toISOString();
         if (!job.done) delete job.doneAt;
         syncSchedDone(job);
-        saveSheet(k); toast(finishing ? 'Job finished' : 'Job saved'); go('today', { jobIdx:null, prefill:null, _finishing:false });
+        saveSheet(k); toast(finishing ? 'Job finished' : 'Job saved');
+        if (state._jobBack){ state.activeDate = null; state._jobBack = null; go('pastjob', { jobIdx:null, prefill:null, _finishing:false }); return; }
+        go('today', { jobIdx:null, prefill:null, _finishing:false });
       };
     }
 
