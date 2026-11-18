@@ -85,6 +85,34 @@
     e.preventDefault(); history.back();
   });
 
+  // Spell check on every page: words are checked (red underline, tap for the right spelling) and the phone's keyboard
+  // corrects typing in notes, descriptions, locations and remarks. Numbers, codes, serial / job / cert numbers, emails and
+  // registrations are left alone; names (customer, contact, technician, manufacturer) are underlined but never changed automatically.
+  // A field can opt out with data-nospell.
+  const SKIP_TYPE = /^(email|password|number|tel|url|date|time|datetime-local|month|week|color|range|file|checkbox|radio|hidden|button|submit|reset|image|search)$/i;
+  const CODE = /serial|card|job|docno|doc|cert|reg|odo|swl|wll|lmi|ton|kg|mass|load|year|dom|phone|cell|tel|email|mail|pass|code|vin|plate|qty|count|hrs|hour|km|no$|nr|num|item|ref|search|model|^q$/i;
+  const NAME = /name|cust|contact|client|tech|assist|company|who|sign|witness|eng|under|make|manuf/i;
+  function tuneField(el){
+    if (!el || el.dataset.spell || el.hasAttribute('data-nospell')) return;
+    el.dataset.spell = '1';
+    if (el.tagName === 'INPUT' && SKIP_TYPE.test(el.type || 'text')) return;
+    const im = el.getAttribute('inputmode'); if (im && im !== 'text') return;
+    if (el.classList.contains('num') || el.readOnly) return;
+    const key = [el.id, el.name, el.dataset.f, el.dataset.k, el.getAttribute('autocomplete')].filter(Boolean).join(' ');
+    if (el.tagName === 'INPUT' && CODE.test(key) && !/desc|note|remark|reason|loc|comment/i.test(key)) { el.spellcheck = false; el.setAttribute('autocorrect', 'off'); return; }
+    el.spellcheck = true;
+    if (el.tagName === 'INPUT' && NAME.test(key)) { el.setAttribute('autocorrect', 'off'); if (!el.hasAttribute('autocapitalize')) el.setAttribute('autocapitalize', 'words'); return; }
+    if (!el.hasAttribute('autocorrect')) el.setAttribute('autocorrect', 'on');
+    if (!el.hasAttribute('autocapitalize')) el.setAttribute('autocapitalize', 'sentences');
+  }
+  const tuneAll = root => { (root.querySelectorAll ? root.querySelectorAll('input, textarea') : []).forEach(tuneField); if (root.matches && root.matches('input, textarea')) tuneField(root); };
+  function startSpell(){
+    if (!document.documentElement.lang || document.documentElement.lang === 'en') document.documentElement.lang = 'en-ZA';   // South African English spelling (colour, metre…)
+    tuneAll(document);
+    new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) tuneAll(n); }))).observe(document.documentElement, { childList:true, subtree:true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startSpell, { once:true }); else startSpell();
+
   // Offline support for the whole app
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register(BC.home + 'sw.js', { scope: BC.home }).catch(() => {});
 })();

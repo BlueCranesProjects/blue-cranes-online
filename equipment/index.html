@@ -728,8 +728,8 @@
   const kgText = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').trim(); return t ? t + 'KG' : ''; };
   const mmText = v => { const n = num(v); if (n == null) return ''; const [a, b] = String(n).split('.'); return String(Number(a)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (b ? ',' + b : '') + 'mm'; };
   // safety harnesses and lanyards: inspection certificate (Construction Regulation 10(d)), no understudy
-  // certificates are printed on the company letterhead: the text starts 70 mm from the top, spacing tightened to fit
-  const CERT_TOP = 75, CERT_K = 0.82;
+  // certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
+  const CERT_TOP = 70, CERT_K = 0.82;
   function harnessPage(doc, l, r, no, tech, sigImg, dots){
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 20, R = 190, U = s => String(s || '').toUpperCase(), unsafe = r.status === 'UNSAFE';
     let y = CERT_TOP; doc.setFont('times', 'bold'); doc.setTextColor(...INK); doc.setFontSize(20); doc.text('INSPECTION CERTIFICATE', 105, y, { align:'center' });

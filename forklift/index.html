@@ -833,8 +833,8 @@ function utSaved(){try{return JSON.parse(load(UTKEY)||"{}")}catch(e){return{}}}
 let utCloudT;function utStore(p){store(UTKEY,JSON.stringify(Object.assign(utSaved(),p)));clearTimeout(utCloudT);utCloudT=setTimeout(()=>{try{if(cloudOK()){const u=utSaved();window.Cloud.putItem("understudy",{kind:"understudy",name:u.name||"",lmi:u.lmi||"",sig:u.sig||"",updated:new Date().toISOString()});}}catch(e){}},1000);}
 function certNo(f){const d=parseDoc(f.docno);return d?`C${d.job}/${d.n}`:(f.docno?"C"+String(f.docno).replace(".","/"):"");}
 function monthYear(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s||""))return(s||"").toUpperCase();const [y,m]=s.split("-");return ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"][+m-1]+" "+y;}
-// certificates are printed on the company letterhead: the text starts 70 mm from the top, spacing tightened to fit
-const CERT_TOP=75,CERT_K=0.82;
+// certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
+const CERT_TOP=70,CERT_K=0.82;
 async function buildCert(st){
   const {jsPDF}=window.jspdf,f=st.f,doc=new jsPDF({unit:"mm",format:"a4"});
   const NAVY=[27,47,110],YEL=[245,196,0],RED=[190,30,30],INK=[20,24,40],L=20,R=190;
