@@ -872,7 +872,7 @@ async function buildCert(st){
   rows.push(["OVERLOAD APPLIED","10%"],["MANUFACTURED BY",U([f.make,f.model].filter(Boolean).join(" "))]);
   rows.forEach(([l,v])=>{doc.setFont("times","bold");doc.setFontSize(11.5);doc.setTextColor(...INK);doc.text(l,L,y);doc.text(String(v||""),VX,y);y+=7.9 * CERT_K;});
   doc.setFont("times","bold");doc.setFontSize(11.5);doc.setTextColor(...INK);doc.text("REMARKS",L,y);
-  if(st.status){doc.setTextColor(...(unsafe?RED:[29,110,60]));doc.text(unsafe?"UNSAFE FOR USE AT TIME OF TEST":"SAFE FOR USE AT TIME OF TEST",VX,y);}
+  if(st.status){doc.setTextColor(...(unsafe?RED:[0,0,0]));doc.text(unsafe?"UNSAFE FOR USE AT TIME OF TEST":"SAFE FOR USE AT TIME OF TEST",VX,y);}
   if(f.docno){doc.setFontSize(13);doc.text("SEE REPORT "+f.docno,VX,y+6.5);if(!st.status)doc.setTextColor(...INK);}
   y+=22 * CERT_K;
   function sigImg(img,x,base){if(!img)return;try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(42/d.w,14/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+(42-w)/2,base-h+1,w,h,undefined,"FAST");}catch(e){}}

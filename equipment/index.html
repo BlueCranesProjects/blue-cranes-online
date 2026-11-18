@@ -762,7 +762,7 @@
   // certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
   const CERT_TOP = 70, CERT_K = 0.82;
   function harnessPage(doc, l, r, no, tech, sigImg, dots){
-    const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 20, R = 190, U = s => String(s || '').toUpperCase(), unsafe = r.status === 'UNSAFE';
+    const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [0, 0, 0], L = 20, R = 190, U = s => String(s || '').toUpperCase(), unsafe = r.status === 'UNSAFE';
     let y = CERT_TOP; doc.setFont('times', 'bold'); doc.setTextColor(...INK); doc.setFontSize(20); doc.text('INSPECTION CERTIFICATE', 105, y, { align:'center' });
     y += 7 * CERT_K; doc.setFontSize(14); doc.text('Safety Harnesses', 105, y, { align:'center' });
     y += 8 * CERT_K; doc.setFontSize(9.5); doc.text(doc.splitTextToSize('CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993, CONSTRUCTION REGULATION 10(d).', R - L), L, y);
@@ -782,7 +782,7 @@
   }
   async function certDoc(l, idx, opts){ opts = opts || {};
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-    const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [29, 110, 60], L = 15 + 5, R = 190, U = s => String(s || '').toUpperCase();
+    const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [0, 0, 0], L = 15 + 5, R = 190, U = s => String(s || '').toUpperCase();
     const tech = opts.tech || S.profile || {}; let ut = {}; try { ut = JSON.parse(localStorage.getItem('bc-forklift-understudy') || '{}') || {}; } catch(e){}
     if (opts.ut !== undefined) ut = opts.ut || {};
     else if (l.ut && (l.ut.name || l.ut.sig)) ut = l.ut;
