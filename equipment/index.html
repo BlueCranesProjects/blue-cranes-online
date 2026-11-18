@@ -74,6 +74,14 @@
   .lc small{font-weight:600;opacity:.75;margin-left:4px}
   .pick{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;color:var(--navyDeep)} .pick input{width:24px;height:24px;accent-color:var(--navyDeep)}
   .item.sel{outline:3px solid var(--navyDeep)}
+  .isum{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;padding:0;font:inherit;color:var(--ink);text-align:left;cursor:pointer;min-height:44px}
+  .isum .it{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .isum .it b{font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .isum .it .hint{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .isum .chev{font-size:18px;color:var(--navy);transition:transform .15s;flex-shrink:0}
+  .isum[aria-expanded="true"] .chev{transform:rotate(180deg)}
+  .item.shut{padding:8px 12px}
+  .pill.todo{background:#FFF3B0;color:#6B5200}
   .locrow{background:#E6EAF2;border-radius:10px;padding:8px 12px;font-weight:800;color:var(--navyDeep);font-size:14px;display:flex;justify-content:space-between}
   input[type=search]{height:46px;border-radius:10px;border:1.5px solid var(--field);padding:0 12px;font-size:16px;font-family:inherit;width:100%}
   .flbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:#E8EEF8;border-radius:10px;padding:8px 10px;font-size:13px;font-weight:700;color:var(--navyDeep)}
@@ -110,6 +118,11 @@
 
   // ---------- data ----------
   const S = { lists:{}, view:'list', cur:null, active:null, profile:null, cust:null, q:'' };
+  // items fold up to one line; the ones you opened stay open (also after coming back from a report)
+  const openKey = () => 'bco-eq-open:' + (S.cur ? S.cur.id : '');
+  function openSet(){ if (!S.open || S.openFor !== openKey()){ S.openFor = openKey(); try { S.open = new Set(JSON.parse(sessionStorage.getItem(S.openFor) || '[]')); } catch(e){ S.open = new Set(); } } return S.open; }
+  function keepOpen(){ try { sessionStorage.setItem(openKey(), JSON.stringify([...openSet()])); } catch(e){} }
+  function openRow(id){ if (id){ openSet().add(id); keepOpen(); } }
   function lsLoad(){ try { S.lists = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ S.lists = {}; } }
   function lsSave(){ try { localStorage.setItem(LKEY, JSON.stringify(S.lists)); } catch(e){} }
   let MAKES = (() => { try { return JSON.parse(localStorage.getItem('bco-eq-makes') || '[]'); } catch(e){ return []; } })();
@@ -173,6 +186,14 @@
   // leaving the page (back to the job, app closed) sends the last change straight away
   let pending = null; const flush = () => { if (pending){ clearTimeout(saveT); pending(); } };
   window.addEventListener('pagehide', flush); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+  // back from a report (page restored from memory): take the newer lists from the phone, e.g. a manufacturer typed on the report
+  function pickUpChanges(){
+    let disk = {}; try { disk = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ return; }
+    let changed = false; Object.values(disk).forEach(d => { if (!d || !d.id) return; const m = S.lists[d.id]; if (!m || (d.savedAt || 0) > (m.savedAt || 0)){ S.lists[d.id] = d; changed = true; } });
+    if (!changed) return; if (S.cur && S.lists[S.cur.id]) S.cur = S.lists[S.cur.id]; if (typeof render === 'function' && S.view) render();
+  }
+  window.addEventListener('pageshow', e => { if (e.persisted) pickUpChanges(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pickUpChanges(); });
   async function syncCloud(){
     if (!cloudOK()) return;
     try {
@@ -233,7 +254,7 @@
       document.body.appendChild(m); m.querySelector('#flNo').onclick = () => m.remove(); m.onclick = e => { if (e.target === m) m.remove(); }; return; }
     if (!r.cno) r.cno = certN(l, i); saveList(l, true);
     try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:st.k, idx:st.i, card:st.j.card || '', customer:st.j.customer || st.j.desc || '', contact:st.j.contact || '', at:new Date().toISOString() }, st.edit ? { edit:true } : {})));
-      localStorage.setItem('bco-fl-item', JSON.stringify({ serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', no:r.cno, type, at:Date.now() })); } catch(e){}
+      localStorage.setItem('bco-fl-item', JSON.stringify({ row:r.id, list:l.id, serial:r.serial || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', no:r.cno, type, at:Date.now() })); } catch(e){}
     location.href = '../forklift/?type=' + encodeURIComponent(type);
   }
   // cranes, hoists, beams with chain hoists and winches get the crane / hoist inspection and load test report (chain blocks and lever hoists have their own report)
@@ -391,7 +412,7 @@
     const MK = makesList(); const dupes = {}; (l.rows || []).forEach(r => { const k = norm(r.serial); if (k) dupes[k] = (dupes[k] || 0) + 1; });
     const LOCS = locsOf(l); const cur = l.curLoc || ''; const show = (r) => !cur || (cur === '__none' ? !r.loc : r.loc === cur);
     const cnt = v => (l.rows || []).filter(r => v === '__none' ? !r.loc : r.loc === v).length;
-    const sel = S.sel || null;
+    const sel = S.sel || null; const OPEN = openSet(); (l.rows || []).forEach(r => { if (!r.id) r.id = rowId(); });
     return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Client's inventory", backBtn('../timesheet/', 'Back to the time sheet'),
         `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main>
       <section class="card">
@@ -413,18 +434,25 @@
           <button type="button" class="lc add" id="newLocBtn">+ Location</button></div>
         <span class="hint">${cur && cur !== '__none' ? `Showing <b>${esc(cur)}</b> – new items are added here.` : LOCS.length ? 'Tap a location to see only its items; new items then go there.' : 'Add the places where equipment is, e.g. Workshop, Cellar 2, Yard.'}${(l.rows || []).length ? ' Use <b>Select items</b> to give many items the same location at once.' : ''}</span>
       </section>
-      <div class="row" style="justify-content:space-between;padding:2px"><h2>Items</h2><span class="hint">${cur ? (l.rows || []).filter(show).length + ' of ' : ''}${(l.rows||[]).length} ${(l.rows||[]).length === 1 ? 'item' : 'items'}</span></div>
+      <div class="row" style="justify-content:space-between;padding:2px;gap:8px"><h2>Items</h2><span class="hint" style="flex:1">${cur ? (l.rows || []).filter(show).length + ' of ' : ''}${(l.rows||[]).length} ${(l.rows||[]).length === 1 ? 'item' : 'items'}${(l.rows||[]).length ? ' · ' + (l.rows||[]).filter(r => r.status).length + ' done' : ''}</span>
+        ${(l.rows || []).length && !sel ? `<button type="button" class="btn secondary small" id="togAll" style="width:auto;padding:0 12px">${(l.rows || []).filter(show).some(r => !OPEN.has(r.id)) ? 'Open all' : 'Close all'}</button>` : ''}</div>
       ${(l.rows || []).map((r, i) => { if (!show(r)) return ''; const k = norm(r.serial); if (r.make && !MK.includes(r.make)) MK.push(r.make); const seen = k && known[k] && known[k].job !== l.job;
         const ro = r.auto ? 'readonly' : ''; const rep = r.report && r.report.no ? r.report : null;
-        const on = sel && sel.has(r.id);
-        return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}${on ? ' sel' : ''}" data-i="${i}">
-          ${sel ? `<label class="pick"><input type="checkbox" data-pick="${i}" ${on ? 'checked' : ''}> Select item ${i + 1}${r.desc ? ' – ' + esc(r.desc) : ''}</label>` : ''}
+        const on = sel && sel.has(r.id); const isOpen = !sel && OPEN.has(r.id);
+        const sub = [r.serial, r.make && !/^unknown$/i.test(r.make) ? r.make : '', r.loc ? '📍 ' + r.loc : '', rep ? '📄 ' + rep.no : ''].filter(Boolean).join(' · ');
+        const chip = r.status === 'SAFE' ? '<span class="pill ok">✓ Safe</span>' : r.status === 'UNSAFE' ? '<span class="pill bad">✕ Unsafe</span>' : '<span class="pill todo">Not done</span>';
+        const summary = `<button type="button" class="isum" data-tog="${esc(r.id)}" aria-expanded="${isOpen}"><span class="num">${i+1}</span>
+            <span class="it"><b>${esc(r.desc || r.serial || 'New item')}</b><span class="hint">${esc(sub) || 'Tap to fill in'}</span></span>${chip}${sel ? '' : '<span class="chev" aria-hidden="true">▾</span>'}</button>`;
+        if (!isOpen) return `<div class="item shut${r.status === 'UNSAFE' ? ' unsafe' : ''}${on ? ' sel' : ''}" data-i="${i}">
+          ${sel ? `<label class="pick"><input type="checkbox" data-pick="${i}" ${on ? 'checked' : ''}> Select item ${i + 1}${r.desc ? ' – ' + esc(r.desc) : ''}</label>` : ''}${summary}</div>`;
+        return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}" data-i="${i}">
+          ${summary}
           ${r.office && !r.status ? `<div class="from" style="background:#FFF3B0;color:var(--navyDeep)"><span>Loaded by the office – check it and mark <b>Safe</b> or <b>Unsafe</b></span></div>` : ''}
           ${r.note ? `<span class="hint"><b>Office note:</b> ${esc(r.note)}</span>` : ''}
           ${isForklift(r) ? `<div class="flbar"><span>${FL} Forklift – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${isCrane(r) ? `<div class="flbar"><span>🏗 Crane / hoist – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-cropen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-cropen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
-          <div class="top"><span class="num">${i+1}</span><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
+          <div class="top"><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
           ${dupes[k] > 1 ? '<span class="warn">This serial nr is on the list more than once.</span>' : ''}
           ${seen ? `<span class="hint" style="color:var(--ok)">Already in ${esc(l.customer)}'s inventory (job ${esc(known[k].job)}, ${esc(niceDate(known[k].date))}).</span>` : ''}
@@ -556,7 +584,10 @@
     app.querySelectorAll('[data-addmake]').forEach(b => { const i = Number(b.dataset.addmake); const inp = document.getElementById('mni' + i);
       const add = () => { const v = addMake(inp.value); if (!v){ inp.focus(); return; } l.rows[i].make = v; saveList(l); render(); toast(v + ' added to the list'); const n = document.getElementById('w' + i); if (n && !n.value) n.focus(); };
       b.onclick = add; inp.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } }; });
-    const addRow = r => { l.rows = l.rows || []; l.rows.push(r); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
+    app.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { const id = b.dataset.tog, o = openSet(); if (o.has(id)) o.delete(id); else o.add(id); keepOpen(); render(); });
+    const ta = $('togAll'); if (ta) ta.onclick = () => { const shown = l.rows.filter(r => !l.curLoc || (l.curLoc === '__none' ? !r.loc : r.loc === l.curLoc)); const o = openSet();
+      if (shown.some(r => !o.has(r.id))) shown.forEach(r => o.add(r.id)); else shown.forEach(r => o.delete(r.id)); keepOpen(); render(); };
+    const addRow = r => { l.rows = l.rows || []; l.rows.push(r); openRow(r.id); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
     const curLoc = () => (l.curLoc && l.curLoc !== '__none') ? l.curLoc : '';
     $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'', loc:curLoc() });
     const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'', loc:curLoc() || p.loc || '' }); };
@@ -600,12 +631,12 @@
     $('pdf').onclick = () => {
       const used = (l.rows || []).map((r, i) => ({ r, i })).filter(x => x.r.serial || x.r.desc);
       const noReason = used.filter(x => x.r.status === 'UNSAFE' && !String(x.r.reason || '').trim());
-      if (noReason.length){ toast('Give the reason for unsafe item ' + noReason.map(x => x.i + 1).join(', ')); const u = document.getElementById('u' + noReason[0].i); if (u){ u.scrollIntoView({ block:'center' }); u.focus(); } return; }
+      if (noReason.length){ noReason.forEach(x => openRow(x.r.id)); render(); toast('Give the reason for unsafe item ' + noReason.map(x => x.i + 1).join(', ')); const u = document.getElementById('u' + noReason[0].i); if (u){ u.scrollIntoView({ block:'center' }); u.focus(); } return; }
       const open = used.filter(x => !x.r.status);
       const go = () => { saveList(l, true); jobPack(l, $('pdf')); };
       if (open.length){ const m = modal(`<div style="font-size:16px;font-weight:700">Not marked safe or unsafe</div><div style="font-size:14px">Item ${open.map(x => x.i + 1).join(', ')} ${open.length === 1 ? 'has' : 'have'} no Safe / Unsafe yet.</div>
           <button class="btn secondary" id="mBack">Go back</button><button class="btn primary" id="mGo">Save PDF anyway</button>`);
-        m.querySelector('#mBack').onclick = () => { m.remove(); const el = document.querySelector('.item[data-i="' + open[0].i + '"]'); if (el) el.scrollIntoView({ block:'center' }); };
+        m.querySelector('#mBack').onclick = () => { m.remove(); openRow(open[0].r.id); render(); const el = document.querySelector('.item[data-i="' + open[0].i + '"]'); if (el) el.scrollIntoView({ block:'center' }); };
         m.querySelector('#mGo').onclick = () => { m.remove(); go(); }; return; }
       go();
     };

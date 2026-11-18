@@ -705,7 +705,7 @@ function toEquipment(st){
   if(d&&!r.cno&&String(d.n)!=="")r.cno=d.n;
   const xs=ROWS.filter(x=>rowVals(x).includes("x")).map(x=>rname(x,st)+" (X)");
   const auto="See report "+(f.docno||"")+(xs.length?" – "+xs.join(", "):"");
-  Object.assign(r,{cr:rid,serial:String(f.serial||r.serial||"").toUpperCase(),make:r.make||f.make||"",swl:r.swl||String(f.swl||"").replace(/[^\d.,]/g,""),
+  Object.assign(r,{cr:rid,serial:String(f.serial||r.serial||"").toUpperCase(),make:f.make||r.make||"",swl:r.swl||String(f.swl||"").replace(/[^\d.,]/g,""),
     status:st.status==="UNSAFE"?"UNSAFE":st.status==="SAFE"?"SAFE":(r.status||""),
     report:{no:f.docno||"",type:(lt?"Load test":"Inspection")+" (crane / hoist)",cert:d?`C${d.job}/${r.cno||d.n}`:""}});
   if(added){r.auto=true;r.desc=f.details||"Crane / hoist";}
@@ -718,6 +718,21 @@ function toEquipment(st){
   l.savedAt=Date.now();all[id]=l;store("bco-equipment",JSON.stringify(all));
   if(cloudOK())window.Cloud.putItem("eq-"+String(id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));
 }
+// ---- manufacturer typed on the report goes straight onto the item in the client's inventory ----
+function makeToInventory(){
+  const mk=String(($("make")&&$("make").value)||"").trim();if(!mk)return;
+  let all={};try{all=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){return;}
+  const f=state.f||{},N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," "),core=j=>N(j).replace(/\s+/g,"").replace(/^[CF]R?(?=\d)/,"");
+  const sid=(f.date||"")+"_"+(String(f.jobno||"").trim()||String(f.customer||"").trim()||"job");
+  const lists=[state.list&&all[state.list],all[sid.replace(/[^\w\-]+/g,"_")]].concat(Object.values(all).filter(l=>l&&f.jobno&&core(l.job)===core(f.jobno))).filter(Boolean);
+  const rid=state._rid||f.docno||"";
+  for(const l of lists){const rows=l.rows||[];
+    const r=(state.row&&rows.find(x=>x.id===state.row))||(rid&&rows.find(x=>x.fl===rid||x.cr===rid))||(f.serial&&rows.find(x=>N(x.serial)===N(f.serial)));
+    if(!r)continue;if(r.make===mk)return;
+    r.make=mk;l.savedAt=Date.now();all[l.id]=l;store("bco-equipment",JSON.stringify(all));
+    if(cloudOK())window.Cloud.putItem("eq-"+String(l.id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));return;}
+}
+{let mkT;const mi=$("make");if(mi){mi.addEventListener("input",()=>{clearTimeout(mkT);mkT=setTimeout(makeToInventory,800);});mi.addEventListener("change",()=>{clearTimeout(mkT);makeToInventory();});}}
 function loadLib(src,test){return new Promise((res,rej)=>{if(test())return res();const sc=document.createElement("script");sc.src=src;sc.onload=()=>test()?res():rej(new Error("lib"));sc.onerror=()=>rej(new Error("lib"));document.head.appendChild(sc);});}
 async function deliver(blob,name){try{const how=await BC.saveFile(blob,name);if(how)toast(how==="shared"?"Ready to send":"Saved "+name.split(".").pop().toUpperCase());}catch(e){toast("Couldn't save the file here");}}
 function busy(t){modal(`<h3>Please wait</h3><p id="busyTxt">${t}</p>`);}

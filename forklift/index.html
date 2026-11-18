@@ -744,7 +744,7 @@ function toEquipment(st){
   l.rows=(l.rows||[]).filter(r=>r.serial||r.desc||r.make||r.swl||r.fl);
   const N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," ");
   const rid=st._rid||f.docno||"";
-  let r=l.rows.find(x=>x.fl&&x.fl===rid)||(f.serial&&l.rows.find(x=>N(x.serial)===N(f.serial)));
+  let r=(st.row&&l.rows.find(x=>x.id===st.row))||l.rows.find(x=>x.fl&&x.fl===rid)||(f.serial&&l.rows.find(x=>N(x.serial)===N(f.serial)));
   const added=!r;
   if(!r){r={id:"r"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),serial:"",desc:"",make:"",swl:"",status:""};l.rows.push(r);}
   const lt=st.type==="LOAD TEST";
@@ -759,6 +759,21 @@ function toEquipment(st){
   l.savedAt=Date.now();all[id]=l;store("bco-equipment",JSON.stringify(all));
   if(cloudOK())window.Cloud.putItem("eq-"+String(id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));
 }
+// ---- manufacturer typed on the report goes straight onto the item in the client's inventory ----
+function makeToInventory(){
+  const mk=String(($("make")&&$("make").value)||"").trim();if(!mk)return;
+  let all={};try{all=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){return;}
+  const f=state.f||{},N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," "),core=j=>N(j).replace(/\s+/g,"").replace(/^[CF]R?(?=\d)/,"");
+  const sid=(f.date||"")+"_"+(String(f.jobno||"").trim()||String(f.customer||"").trim()||"job");
+  const lists=[state.list&&all[state.list],all[sid.replace(/[^\w\-]+/g,"_")]].concat(Object.values(all).filter(l=>l&&f.jobno&&core(l.job)===core(f.jobno))).filter(Boolean);
+  const rid=state._rid||f.docno||"";
+  for(const l of lists){const rows=l.rows||[];
+    const r=(state.row&&rows.find(x=>x.id===state.row))||(rid&&rows.find(x=>x.fl===rid||x.cr===rid))||(f.serial&&rows.find(x=>N(x.serial)===N(f.serial)));
+    if(!r)continue;if(r.make===mk)return;
+    r.make=mk;l.savedAt=Date.now();all[l.id]=l;store("bco-equipment",JSON.stringify(all));
+    if(cloudOK())window.Cloud.putItem("eq-"+String(l.id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));return;}
+}
+{let mkT;const mi=$("make");if(mi){mi.addEventListener("input",()=>{clearTimeout(mkT);mkT=setTimeout(makeToInventory,800);});mi.addEventListener("change",()=>{clearTimeout(mkT);makeToInventory();});}}
 // ---- one-time: old report numbers (7001.1) get the F prefix (F7001.1), also on equipment lists ----
 const NOF=/^(?!F)(.+\.\d+)$/i;
 // ---- photos: every item marked X needs a photo; the photos print on a page at the back of the report ----
@@ -959,7 +974,7 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
 (function(){let it=null;try{it=JSON.parse(load("bco-fl-item")||"null");localStorage.removeItem("bco-fl-item");}catch(e){}
   if(!it||!ACTIVE||EMBED||Date.now()-(it.at||0)>15*60000)return;window.__FL_ITEM=1;
   const N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," ");FIELDS.forEach(f=>state.f[f]=$(f).value);
-  const fill=()=>{if(it.serial)state.f.serial=String(it.serial).toUpperCase();if(it.make&&!state.f.make)state.f.make=it.make;if(it.swl&&!state.f.swl)state.f.swl=String(it.swl).replace(/[^\d.]/g,"");if(it.loc&&!state.f.location)state.f.location=it.loc;if(it.site&&!state.f.site)state.f.site=it.site;};
+  const fill=()=>{state.row=it.row||null;state.list=it.list||null;if(it.serial)state.f.serial=String(it.serial).toUpperCase();if(it.make&&!state.f.make)state.f.make=it.make;if(it.swl&&!state.f.swl)state.f.swl=String(it.swl).replace(/[^\d.]/g,"");if(it.loc&&!state.f.location)state.f.location=it.loc;if(it.site&&!state.f.site)state.f.site=it.site;};
   const startNew=()=>{if(state.f.serial||state.f.make||state.f.model)recordDoc();fresh();state.type=it.type||state.type;fill();if(it.no&&state.f.jobno)state.f.docno="F"+jobCore(state.f.jobno)+"."+it.no;applyState();save();window.scrollTo(0,0);toast("New "+(state.type==="LOAD TEST"?"load test":"inspection")+(it.serial?" for "+N(it.serial):"")+" · "+state.f.docno);};
   const same=it.serial&&N(state.f.serial)===N(it.serial);
   const busy=!!(state.f.serial||state.f.make||state.f.model);
