@@ -100,6 +100,7 @@
   .sumline{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--label);width:100%;text-align:left;font-family:inherit;cursor:pointer}
   .jc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:12px}
   .jc.busy{border:2px solid var(--yellowDark);background:#FFFBEA}.jc.done{background:#F3FAF5;border-color:#9CC9AD}
+  .trav{align-self:center;font-size:13px;font-weight:700;color:var(--label);background:#EEF2F7;border-radius:999px;padding:4px 12px;margin:-4px 0}
   .jc .who{flex:1;min-width:0;border:0;background:none;padding:2px 0;text-align:left;font-family:inherit;color:inherit;cursor:pointer}
   .jc .n{font-weight:700;font-size:16px;display:block}.jc .h{font-size:13px;color:var(--muted);display:block;margin-top:2px}
   .chip{font-size:12px;font-weight:800;padding:5px 10px;border-radius:999px;white-space:nowrap}.chip.done{background:var(--A);color:#fff}
@@ -262,6 +263,18 @@
   function fmtHMs(h){ const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H && M ? H + 'h ' + String(M).padStart(2, '0') + 'm' : H ? H + 'h' : M + 'm'; }
   function fmtHM(h){ const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H && M ? H + ' h ' + M + ' min' : H ? H + ' h' : M + ' min'; }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  // ---- times of day: start time, arrival and finish per job; the gaps in between are travel ----
+  const p2 = n => String(n).padStart(2, '0');
+  function hhmm(iso, k){ const t = Date.parse(iso || ''); if (isNaN(t)) return ''; const d = new Date(t);
+    if (k && d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) !== k) return ''; return p2(d.getHours()) + ':' + p2(d.getMinutes()); }
+  function minsOf(hm){ const m = /^(\d{1,2}):(\d{2})/.exec(hm || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+  function isoAt(k, hm){ const m = minsOf(hm); if (m == null) return null; const [y, mo, d] = k.split('-').map(Number); return new Date(y, mo - 1, d, Math.floor(m / 60), m % 60).toISOString(); }
+  const nowHM = () => { const d = new Date(); return p2(d.getHours()) + ':' + p2(d.getMinutes()); };
+  // travel before each job = arrival at this site − start time (first job) or finish of the job before; after = last finish → clock out
+  function travelInfo(sh, k){ const jobs = (sh && sh.jobs) || []; let prev = minsOf(sh && sh.clockIn); const before = []; let total = 0;
+    jobs.forEach((j, i) => { const a = minsOf(hhmm(j.startedAt, k)); let t = null; if (prev != null && a != null && a >= prev){ t = a - prev; total += t; } before[i] = t; prev = j.done ? minsOf(hhmm(j.doneAt, k)) : null; });
+    let after = null; const out = minsOf(sh && sh.clockOut); if (prev != null && out != null && out >= prev && jobs.length){ after = out - prev; total += after; }
+    return { before, after, total, lastFin: prev }; }
   function jobHours(sh){ return (sh.jobs||[]).reduce((a,j)=>a+(Number(j.hrs)||0),0); }
   function lastOdo(sh){ let v = Number(sh.firstOdo); (sh.jobs||[]).forEach(j=>{ const o = Number(j.odo); if (!isNaN(o) && o > v) v = o; }); return v; }
   function clockHours(a,b){
@@ -333,7 +346,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 19 Nov (A)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 19 Nov (B)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -457,7 +470,7 @@
       <div class="okbox"><span class="pill ok" style="align-self:flex-start">✓ Time sheet submitted</span>${daySummary(sh)}</div>
       <button class="btn primary" data-go="today">Open the day's time sheet ›</button>${storeLine()}</main>` + tabs('vehicle');
     if (dayStarted(sh) && !state._editDay) return headerSteps(niceDate(key,true), 'Vehicle', sh) + `<main>${dayLine()}
-      <div class="okbox"><span class="pill ok" style="align-self:flex-start">✓ Day started${sh.startedAt ? ' ' + esc(new Date(sh.startedAt).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' })) : ''}</span>${daySummary(sh)}</div>
+      <div class="okbox"><span class="pill ok" style="align-self:flex-start">✓ Day started${sh.clockIn ? ' ' + esc(sh.clockIn) : sh.startedAt ? ' ' + esc(new Date(sh.startedAt).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' })) : ''}</span>${daySummary(sh)}</div>
       <button class="btn primary" style="height:56px;font-size:17px" data-go="today">Go to today's jobs ›</button>
       <button class="btn secondary" id="editDay">Edit vehicle check / odometer</button>
       <button type="button" id="svcEdit" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:14px;font-family:inherit;padding:8px;cursor:pointer">${sheetService(sh) == null ? 'Set next service km' : 'Update next service km'}</button>
@@ -479,6 +492,7 @@
           ${tn ? `<input id="tech" type="hidden" value="${esc(tn)}">` : `<div class="field"><label for="tech">Technician name</label><input id="tech" autocomplete="name"></div>`}
           <div class="field"><label for="first">First odometer reading (km)</label><input id="first" class="num" inputmode="numeric" value="${esc(sugg)}">
             ${sugg && !(sh && sh.firstOdo) ? `<span class="hint">Filled in from your last sheet's closing reading – check it against the dash.</span>` : ''}</div>
+          <div class="field"><label for="cin0">Start time</label><input id="cin0" type="time" value="${esc((sh && sh.clockIn) || state.settings.startTime || '07:30')}"><span class="hint">When your day starts – travel to the first job is counted from here.</span></div>
           ${pickField('assistant', 'Assistant', knownList('assistants'), sh && sh.tech ? (sh.assistant || '') : (s.assistant || ''), 'Add new assistant', 'No assistant today')}
           <div id="svcBox"></div>
         </section>
@@ -515,6 +529,7 @@
           ${pickField('assistant', 'Assistant', knownList('assistants'), sh.tech ? (sh.assistant || '') : (s.assistant || ''), 'Add new assistant', 'No assistant today')}
           <div class="field"><label for="first">First odometer reading (km)</label><input id="first" class="num" inputmode="numeric" required value="${esc(sugg)}">
             ${sugg && !sh.firstOdo ? `<span class="hint">Filled in from your last sheet's closing reading – check it against the dash.</span>` : ''}</div>
+          <div class="field"><label for="cin0">Start time</label><input id="cin0" type="time" value="${esc((sh && sh.clockIn) || state.settings.startTime || '07:30')}"><span class="hint">When your day starts – travel to the first job is counted from here.</span></div>
           ${svc == null ? `<div class="field"><label for="svc">Next service due at (km)</label><input id="svc" class="num" inputmode="numeric" placeholder="e.g. 90 000">
             <span class="hint">Only asked once for ${esc(sh.reg)}. The app then counts down the km left.</span></div>`
             : `<div class="hint">Next service for ${esc(sh.reg)} at <b>${fmtKm(svc)} km</b>.</div>`}
@@ -544,10 +559,12 @@
     else if (todo.length){ const x = todo[0]; next = `<button class="next" data-schedto="${esc(x.id)}"><div style="flex:1"><div class="t">Next</div><div class="b">Start next job</div><div class="c">${esc(schedLabel(x))}${x.time ? ' · ' + esc(x.time) : ''}</div></div><span style="font-size:30px">›</span></button>`; }
     else if (jobs.length){ next = `<button class="next" data-go="end"><div style="flex:1"><div class="t">All jobs done</div><div class="b">End day</div><div class="c">Last odometer and clock times</div></div><span style="font-size:30px">›</span></button>`; }
     else next = `<button class="next" data-addjob><div style="flex:1"><div class="t">No jobs for today</div><div class="b">Start an unplanned job</div></div><span style="font-size:30px">›</span></button>`;
-    const svc = kmToService(sh);
-    const cards = jobs.map((j, i) => j.done
-        ? `<div class="jc done"><button class="who" data-jobedit="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${j.card ? 'Job ' + esc(j.card) + ' · ' : ''}${fmtHM(Number(j.hrs) || 0)}</span></button><span class="chip done">✓ Done</span></div>`
-        : `<div class="jc busy"><button class="who" data-editjob="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${[j.card ? 'Job ' + esc(j.card) : '', esc(j.contact || ''), j.startedAt ? 'started ' + new Date(j.startedAt).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' }) : ''].filter(Boolean).join(' · ')}</span></button><button class="go n" data-editjob="${i}">Open</button></div>`)
+    const svc = kmToService(sh); const tv = travelInfo(sh, key);
+    const trav = i => tv.before[i] != null ? `<div class="trav">🚚 Travel ${fmtHM(tv.before[i] / 60)}</div>` : '';
+    const span = j => [hhmm(j.startedAt, key), hhmm(j.doneAt, key)].filter(Boolean).join('–');
+    const cards = jobs.map((j, i) => trav(i) + (j.done
+        ? `<div class="jc done"><button class="who" data-jobedit="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${[j.card ? 'Job ' + esc(j.card) : '', span(j), fmtHM(Number(j.hrs) || 0)].filter(Boolean).join(' · ')}</span></button><span class="chip done">✓ Done</span></div>`
+        : `<div class="jc busy"><button class="who" data-editjob="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${[j.card ? 'Job ' + esc(j.card) : '', esc(j.contact || ''), j.startedAt ? 'arrived ' + (hhmm(j.startedAt, key) || new Date(j.startedAt).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' })) : ''].filter(Boolean).join(' · ')}</span></button><button class="go n" data-editjob="${i}">Open</button></div>`))
       .concat(todo.map(x => `<div class="jc"><button class="who" data-schedopen="${esc(x.id)}"><span class="n">${esc(x.customer || x.card || 'Job')}</span><span class="h">${[x.card ? 'Job ' + esc(x.card) : '', x.time ? esc(x.time) : '', esc(x.contact || '')].filter(Boolean).join(' · ')}</span></button><button class="go y" data-schedto="${esc(x.id)}">Start</button></div>`));
     const nDone = jobs.filter(j => j.done).length, nBusy = jobs.length - nDone;
     return headerSteps(niceDate(key,true), 'Jobs', sh) + `<main style="gap:12px">
@@ -557,7 +574,8 @@
       ${cards.join('') || '<div class="empty">No jobs yet.</div>'}
       <button type="button" data-addjob style="border:0;background:none;color:var(--navy);font-weight:800;font-size:16px;font-family:inherit;padding:10px;cursor:pointer">+ Unplanned job</button>
       ${comingUp(key)}
-      ${jobs.length ? `<div class="hint" style="text-align:center">Job time ${fmtHM(jobHours(sh))} · ${fmtKm(km)} km so far</div>` : ''}
+      ${jobs.length && busyIdx < 0 && tv.lastFin != null && key === todayKey() ? `<div class="trav">🚚 On the road since ${p2(Math.floor(tv.lastFin / 60))}:${p2(tv.lastFin % 60)} – counted as travel when you arrive at the next job</div>` : ''}
+      ${jobs.length ? `<div class="hint" style="text-align:center">Job time ${fmtHM(jobHours(sh))}${tv.total ? ' · travel ' + fmtHM(tv.total / 60) : ''} · ${fmtKm(km)} km so far</div>` : ''}
       <button class="btn secondary" data-go="end">End day</button>
       ${storeLine()}</main>` + tabs('today');
   }
@@ -666,7 +684,8 @@
     const n = editing ? state.jobIdx + 1 : sh.jobs.length + 1;
     const quick = !editing && !p;                          // Add job: just who/what, then start
     const finishing = editing && !!state._finishing && !j.done;
-    if (finishing && !(Number(j.hrs) > 0)) state._hrs = hoursSince(j.startedAt);
+    const tArr0 = hhmm(j.startedAt, key), tFin0 = j.done ? hhmm(j.doneAt, key) : finishing ? nowHM() : '';
+    if (finishing && !(Number(j.hrs) > 0)){ const a = minsOf(tArr0), f = minsOf(tFin0); state._hrs = a != null && f != null && f > a ? Math.round((f - a) / 5) * 5 / 60 : hoursSince(j.startedAt); }
     const hide = quick ? 'style="display:none"' : '';
     return headerBack((finishing ? 'FINISH JOB ' : editing ? 'JOB ' : 'START JOB ') + n, state._jobBack || (editing && !j.done ? 'jobpage' : 'today')) + `<main>
       ${finishing ? `<div class="card" style="padding:12px 14px"><div style="font-weight:700;font-size:16px">${esc(j.customer || j.desc || '')}</div><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact].filter(Boolean).join(' · '))}</div></div>` : ''}
@@ -681,12 +700,16 @@
         <div ${hide}>
         <div class="field"><label for="odo">Odometer at this job (km)</label><input id="odo" class="num" inputmode="numeric" value="${esc(j.odo)}" required>
           <span class="hint" id="odoHint">Previous reading ${fmtKm(prevOdo)} km</span></div>
+        <div class="grid2" style="gap:10px;margin-top:18px">
+          <div class="field"><label for="tArr">Arrived on site</label><input id="tArr" type="time" value="${esc(tArr0)}"></div>
+          <div class="field" id="tFinBox" ${j.done || finishing ? '' : 'style="visibility:hidden"'}><label for="tFin">Finished</label><input id="tFin" type="time" value="${esc(tFin0)}"></div></div>
+        <span class="hint" style="display:block;margin:6px 0 18px">Time between finishing one job and arriving at the next is counted as travel.</span>
         <div class="field"><span class="lab" id="hrsLab">${finishing ? 'Time on this job' : 'Hours on job'}</span>
           <div class="stepper" role="group" aria-labelledby="hrsLab">
             <button type="button" id="minus" aria-label="Less time">−</button>
             <div class="val" id="hrsVal" aria-live="polite">${fmtHM(state._hrs)}</div>
             <button type="button" id="plus" aria-label="More time">+</button></div>
-          <span class="hint">${finishing && j.startedAt ? 'Worked out from when you started – adjust if needed. ' : ''}Steps of 0.5 h</span></div>
+          <span class="hint" id="hrsHint">${finishing && j.startedAt ? 'Worked out from arrival to finish – adjust if needed. ' : ''}Steps of 0.5 h</span></div>
         </div>
         <div class="field" ${quick || finishing ? 'style="display:none"' : ''}><span class="lab" id="doneLab">Job status</span>
           <div class="seg" role="group" aria-labelledby="doneLab" style="width:100%">
@@ -709,13 +732,14 @@
         <div class="field"><label for="lastOdo">Last odometer reading (km)</label><input id="lastOdo" class="num" inputmode="numeric" required value="${esc(last)}">
           <span class="hint">Highest reading so far: ${fmtKm(lastOdo(sh))} km</span></div>
         <div class="grid2" style="gap:10px">
-          <div class="field"><label for="cin">Clock in</label><input id="cin" type="time" value="${esc(sh.clockIn||'')}"></div>
+          <div class="field"><label for="cin">Clock in (start time)</label><input id="cin" type="time" value="${esc(sh.clockIn||'')}"></div>
           <div class="field"><label for="cout">Clock out</label><input id="cout" type="time" value="${esc(sh.clockOut||'')}"></div>
         </div>
-        <div class="dark grid3">
+        <div class="dark grid2" style="gap:12px">
           <div><div class="k">Km travelled</div><div class="big" id="sKm">–</div></div>
           <div><div class="k">Clock time</div><div class="big" id="sClock">–</div></div>
           <div><div class="k">Job card</div><div class="big">${fmtHMs(jobHours(sh))}</div></div>
+          <div><div class="k">Travel time</div><div class="big" id="sTrav">–</div></div>
         </div>
         <div class="card" style="display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="k">Km left to service</span><span class="big" style="font-size:20px" id="sSvc">–</span></div>
@@ -1045,13 +1069,15 @@
     L.push('DAILY TIME SHEET – ' + niceDate(k,true));
     L.push('Technician: ' + (s.tech||'')); L.push('Assistant: ' + (s.assistant||'–')); L.push('Vehicle reg: ' + (s.reg||''));
     L.push('First odometer: ' + fmtKm(s.firstOdo) + ' km'); L.push('');
-    (s.jobs||[]).forEach((j,i)=>{ L.push(`Job ${i+1}: ${[j.card,j.customer||j.desc].filter(Boolean).join(' – ')} | ${fmtHM(Number(j.hrs)||0)} | odo ${fmtKm(j.odo)} km${j.notes?' | '+j.notes:''}`); });
+    const tvS = travelInfo(s, k);
+    (s.jobs||[]).forEach((j,i)=>{ const sp = [hhmm(j.startedAt, k), hhmm(j.doneAt, k)].filter(Boolean).join('–'); L.push(`Job ${i+1}: ${[j.card,j.customer||j.desc].filter(Boolean).join(' – ')} | ${sp ? sp + ' | ' : ''}${fmtHM(Number(j.hrs)||0)}${tvS.before[i] != null ? ' | travel ' + fmtHM(tvS.before[i] / 60) : ''} | odo ${fmtKm(j.odo)} km${j.notes?' | '+j.notes:''}`); });
     L.push('');
     const last = s.lastOdo || lastOdo(s);
     L.push('Last odometer: ' + fmtKm(last) + ' km');
     const ch = clockHours(s.clockIn, s.clockOut);
     L.push('Clock time: ' + (isNaN(ch)?'–':fmtHM(ch) + ` (${s.clockIn}–${s.clockOut})`));
     L.push('Job card time: ' + fmtHM(jobHours(s)));
+    if (tvS.total) L.push('Travel time: ' + fmtHM(tvS.total / 60));
     L.push('Km travelled: ' + fmtKm(last - Number(s.firstOdo)));
     const c = s.condition||{};
     L.push(''); L.push('Vehicle condition: ' + ['Tyres','Windows','Water','Oil','Body'].map(x=>x+' '+(c[x]||'–')).join(', '));
@@ -1097,7 +1123,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 19 Nov (A)</span>
+        <span class="hint">App version 19 Nov (B)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
@@ -1170,7 +1196,7 @@
       doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.text('FIRST ODOMETER READING:', L + 2, y + 5.5);
       doc.text(fmtKm(s.firstOdo) + ' km', R - 3, y + 5.5, { align:'right' });
       // Jobs
-      const jobs = s.jobs || []; const rows = Math.max(7, jobs.length);
+      const jobs = s.jobs || []; const rows = Math.max(7, jobs.length); const tvP = travelInfo(s, k);
       const top = y + 8, area = 118, rowH = area / rows, band = Math.min(6, rowH * 0.42);
       const c1 = L, c2 = 110, c3 = 140;
       doc.setLineWidth(0.5); doc.rect(L, top, W, area);
@@ -1188,7 +1214,10 @@
         if (j){
           const vy = ry + band + (rowH - band) / 2 + 1.5;
           doc.setFont('helvetica','bold'); doc.setFontSize(rowH < 12 ? 9 : 10.5);
-          doc.text(cut(j.customer || j.desc || '', c2 - c1 - 4), c1 + 2, vy);
+          const sp = [hhmm(j.startedAt, k), hhmm(j.doneAt, k)].filter(Boolean).join(' – '), tb = tvP.before[i];
+          const sub = [sp ? 'ON SITE ' + sp : '', tb != null ? 'TRAVEL ' + fmtHM(tb / 60).toUpperCase() : ''].filter(Boolean).join('   ·   ');
+          if (sub && rowH >= 11){ doc.text(cut(j.customer || j.desc || '', c2 - c1 - 4), c1 + 2, vy - 2); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text(sub, c1 + 2, vy + 2.6); doc.setFont('helvetica','bold'); doc.setFontSize(rowH < 12 ? 9 : 10.5); }
+          else doc.text(cut(j.customer || j.desc || '', c2 - c1 - 4), c1 + 2, vy);
           doc.text(fmtHM(Number(j.hrs) || 0), (c2 + c3) / 2, vy, { align:'center' });
           doc.text(fmtKm(j.odo) + ' km', (c3 + R) / 2, vy, { align:'center' });
         }
@@ -1205,6 +1234,7 @@
       lineField('JOB CARD TIME:', fmtHM(jobHours(s)), 113, y, R, 145);
       y += 9;
       lineField('KM TRAVELED:', s.lastOdo ? fmtKm(last - Number(s.firstOdo)) + ' km' : '', L, y, 108, 42);
+      lineField('TRAVEL TIME:', tvP.total ? fmtHM(tvP.total / 60) : '', 113, y, R, 145);
       // Vehicle condition
       y += 7; const bh = 287 - y; const c = s.condition || {};
       doc.setLineWidth(0.5); doc.rect(L, y, W, bh);
@@ -1308,7 +1338,8 @@
         stO.style.cssText = 'flex:1;width:auto;height:48px;font-size:15px;' + (!state._done ? 'background:var(--yellow);border-color:var(--yellowDark);color:var(--navyDeep)' : '');
         stD.style.cssText = 'flex:1;width:auto;height:48px;font-size:15px;' + (state._done ? 'background:var(--A);border-color:var(--A);color:#fff' : '');
       };
-      stO.onclick = () => { state._done = false; paint(); }; stD.onclick = () => { state._done = true; paint(); };
+      stO.onclick = () => { state._done = false; paint(); const b = document.getElementById('tFinBox'); if (b) b.style.visibility = 'hidden'; };
+      stD.onclick = () => { state._done = true; paint(); const b = document.getElementById('tFinBox'), f = document.getElementById('tFin'); if (b){ b.style.visibility = ''; if (!f.value){ f.value = nowHM(); f.dispatchEvent(new Event('change')); } } };
     }
     app.querySelectorAll('[data-schedto]').forEach(b => b.onclick = () => startScheduled(b.dataset.schedto));
     app.querySelectorAll('[data-week]').forEach(b => b.onclick = () => {
@@ -1398,10 +1429,12 @@
         if (si){ const v = parseNum(si.value); if (isNaN(v)) return fail('Enter the km reading when the next service is due (once only).', si); if (v <= first) return fail('Service km must be higher than the odometer reading.', si); svc = v; }
         const sh = state.sheets[k] || { date:k, jobs:[], status:'open' };
         const editing = !!state._editDay;
+        const cin0 = df.querySelector('#cin0'); if (cin0 && !cin0.value) return fail('Fill in your start time.', cin0);
         Object.assign(sh, { date:k, reg, condition:Object.assign({}, state._editCond), condNote:df.condNote.value.trim(), tech, assistant, firstOdo:first, nextService: svc == null ? '' : svc });
+        if (cin0) sh.clockIn = cin0.value;
         if (!sh.jobs) sh.jobs = []; if (!sh.status) sh.status = 'open'; if (!sh.startedAt) sh.startedAt = new Date().toISOString();
         state.sheets[k] = sh; remember('vehicles', reg); remember('assistants', assistant);
-        state.settings = Object.assign({}, state.settings, { tech, assistant, reg });
+        state.settings = Object.assign({}, state.settings, { tech, assistant, reg }, cin0 ? { startTime:cin0.value } : {});
         if (si) setService(reg, svc); else saveSettings();
         state._editCond = null; state._editCondKey = null; state._editDay = false;
         saveSheet(k); if (editing){ toast('Saved'); go('vehicle'); } else { toast('Day started'); go('today'); }
@@ -1462,9 +1495,10 @@
         if (v <= first){ err.textContent = 'Service km must be higher than the odometer reading.'; return; }
         svc = v;
       }
-      Object.assign(sh, { tech, assistant, firstOdo:first, nextService: svc == null ? '' : svc });
-      const changed = tech!==state.settings.tech || assistant!==state.settings.assistant || sh.reg!==state.settings.reg;
-      state.settings = Object.assign({}, state.settings, { tech, assistant, reg: sh.reg });
+      const cin0 = sf.querySelector('#cin0'); if (cin0 && !cin0.value){ err.textContent = 'Fill in your start time.'; return; }
+      Object.assign(sh, { tech, assistant, firstOdo:first, nextService: svc == null ? '' : svc }); if (cin0) sh.clockIn = cin0.value;
+      const changed = tech!==state.settings.tech || assistant!==state.settings.assistant || sh.reg!==state.settings.reg || (cin0 && cin0.value !== state.settings.startTime);
+      state.settings = Object.assign({}, state.settings, { tech, assistant, reg: sh.reg }, cin0 ? { startTime:cin0.value } : {});
       if (sf.svc) setService(sh.reg, svc); else if (changed || addedA) saveSettings();
       saveSheet(k); go('today');
     };
@@ -1515,6 +1549,9 @@
       const val = document.getElementById('hrsVal');
       document.getElementById('minus').onclick = () => { state._hrs = Math.max(0, state._hrs - 0.5); val.textContent = fmtHM(state._hrs); };
       document.getElementById('plus').onclick = () => { state._hrs = Math.min(24, state._hrs + 0.5); val.textContent = fmtHM(state._hrs); };
+      const tA = document.getElementById('tArr'), tF = document.getElementById('tFin');
+      const fromTimes = () => { const a = minsOf(tA.value), f = minsOf(tF.value); if (a == null || f == null || f <= a || document.getElementById('tFinBox').style.visibility === 'hidden') return; state._hrs = Math.round((f - a) / 5) * 5 / 60; val.textContent = fmtHM(state._hrs); };
+      if (tA && tF){ tA.onchange = fromTimes; tF.onchange = fromTimes; }
       const del = document.getElementById('delJob');
       if (del) del.onclick = () => confirmBox('Delete job ' + (state.jobIdx+1) + '?', 'Delete job', () => {
         const k = curKey(); const gone = state.sheets[k].jobs.splice(state.jobIdx,1)[0];
@@ -1548,6 +1585,11 @@
           if (sid){ const src = state.schedule[sid]; Object.assign(job, { sched: sid, card: src.card || '', customer: src.customer || '', contact: src.contact || '' }); src.addedTo = k; saveSched(sid); }
           sh.jobs.push(job);
         }
+        { const tA = document.getElementById('tArr'), tF = document.getElementById('tFin');
+          if (tA && tA.value){ const a = minsOf(tA.value), f = tF && tF.value ? minsOf(tF.value) : null;
+            if (job.done && f != null && f < a){ err.textContent = 'The finish time is before the arrival time. Check the times.'; return; }
+            job.startedAt = isoAt(k, tA.value); }
+          if (job.done && tF && tF.value) job.doneAt = isoAt(k, tF.value); }
         if (job.done && !job.doneAt) job.doneAt = new Date().toISOString();
         if (!job.done) delete job.doneAt;
         syncSchedDone(job);
@@ -1579,6 +1621,7 @@
         document.getElementById('sKm').textContent = isNaN(km) ? '–' : fmtKm(km);
         const ch = clockHours(ef.cin.value, ef.cout.value);
         document.getElementById('sClock').textContent = isNaN(ch) ? '–' : fmtHMs(ch);
+        { const tv = travelInfo(Object.assign({}, sh, { clockIn:ef.cin.value, clockOut:ef.cout.value }), k); document.getElementById('sTrav').textContent = tv.total ? fmtHMs(tv.total / 60) : '–'; }
         const svc = sheetService(sh); document.getElementById('sSvc').textContent = (svc == null || isNaN(l)) ? (svc == null ? 'Not set' : '–') : serviceText(svc - l);
         document.getElementById('sSvcLine').textContent = svc == null ? '' : 'Odometer now ' + (isNaN(l) ? '–' : fmtKm(l)) + ' km · Service due at ' + fmtKm(svc) + ' km';
       };
