@@ -142,7 +142,7 @@
   // headings differ from client to client: exact names first, then by what the heading contains
   const hkey = k => { const h = String(k == null ? '' : k).trim().toLowerCase().replace(/\./g, '').replace(/[:#()\/\\_-]/g, ' ').replace(/\s+/g, ' ').trim(); if (!h || h.length > 40) return undefined;
     if (IALIAS[h]) return IALIAS[h];
-    if (/locat|area|department|dept|section|position|placement|where/.test(h)) return 'loc';
+    if (/loc[a-z]*tion|locat|area|department|dept|section|position|placement|where/.test(h)) return 'loc';
     if (/swl|wll|safe working|working load|tonnage|capacity|rated load|max load|load limit|\bton|\bkg\b/.test(h)) return 'swl';
     if (/serial|item ?n(o|r|um)|id ?n(o|r)|asset|tag ?n(o|r)|equip(ment)? ?n(o|r)|^ref/.test(h)) return 'serial';
     if (/^(no|nr|number)$/.test(h)) return 'serial?';   // a plain "No." column: only if nothing better
@@ -164,11 +164,11 @@
     const zip = await (await loadJSZip()).loadAsync(await file.arrayBuffer()); const f = zip.file('word/document.xml'); if (!f) throw new Error('not a Word file');
     const xml = new DOMParser().parseFromString(await f.async('string'), 'application/xml'); const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
     const kids = (el, name) => [...el.childNodes].filter(n => n.nodeType === 1 && n.localName === name && n.namespaceURI === W);
-    const text = el => { let out = ''; const walk = n => { if (n.nodeType !== 1) return; if (n.namespaceURI === W){ if (n.localName === 't') out += n.textContent; else if (n.localName === 'tab') out += ' '; else if (n.localName === 'br' || n.localName === 'cr') out += ' '; else if (n.localName === 'p' && out && !/\s$/.test(out)) out += ' '; else if (n.localName === 'tbl') return; } [...n.childNodes].forEach(walk); }; walk(el); return out.replace(/\s+/g, ' ').trim(); };
+    const text = (el, tabs) => { let out = ''; const walk = n => { if (n.nodeType !== 1) return; if (n.namespaceURI === W){ if (n.localName === 't') out += n.textContent; else if (n.localName === 'tab') out += tabs ? '\t' : ' '; else if (n.localName === 'br' || n.localName === 'cr') out += ' '; else if (n.localName === 'p' && out && !/\s$/.test(out)) out += ' '; else if (n.localName === 'tbl') return; } [...n.childNodes].forEach(walk); }; walk(el); return tabs ? out : out.replace(/\s+/g, ' ').trim(); };
     const grid = []; const body = xml.getElementsByTagNameNS(W, 'body')[0]; if (!body) return grid;
     const each = el => kids(el, 'p').length + kids(el, 'tbl').length + kids(el, 'sdt').length ? [...el.childNodes].filter(n => n.nodeType === 1) : [];
     const visit = el => each(el).forEach(n => {
-      if (n.localName === 'p'){ const t = text(n); if (t) grid.push([t]); }
+      if (n.localName === 'p'){ const t = text(n, true); if (t.trim()) grid.push(t.split('\t').map(c => c.replace(/\s+/g, ' ').trim())); }
       else if (n.localName === 'tbl') kids(n, 'tr').forEach(tr => { const row = []; kids(tr, 'tc').forEach(tc => { row.push(text(tc));
           const pr = kids(tc, 'tcPr')[0], sp = pr && kids(pr, 'gridSpan')[0]; const nSpan = sp ? Number(sp.getAttributeNS(W, 'val') || sp.getAttribute('w:val')) || 1 : 1; for (let i = 1; i < nSpan; i++) row.push(''); });
         grid.push(row); });
@@ -205,12 +205,45 @@
       const row = heads.map(() => ''); items.forEach(it => { const k = colOf(it); row[k] = row[k] ? row[k] + (it.x - (row['_x' + k] || 0) > 1 ? ' ' : '') + it.s : it.s; row['_x' + k] = it.x2; });
       return heads.map((h, k) => row[k]); });
   }
+  // Old Word (.doc, Word 97-2003): pull the main text out of the file, then turn it into rows and cells
+  function docText(u8){
+    const cfb = XLSX.CFB.read(u8, { type:'array' });
+    const get = n => { const e = XLSX.CFB.find(cfb, n); return e && e.content ? Uint8Array.from(e.content) : null; };
+    const wd = get('WordDocument'); if (!wd) throw new Error('not a Word file');
+    const dv = new DataView(wd.buffer, wd.byteOffset, wd.byteLength);
+    if (dv.getUint16(0, true) !== 0xA5EC) throw new Error('not a Word 97 file');
+    const flags = dv.getUint16(0x0A, true); if (flags & 0x0100) throw new Error('encrypted');
+    const tbl = get((flags & 0x0200) ? '1Table' : '0Table'); if (!tbl) throw new Error('no table stream');
+    const ccpText = dv.getInt32(0x4C, true), fcClx = dv.getUint32(0x1A2, true), lcbClx = dv.getUint32(0x1A6, true);
+    const tv = new DataView(tbl.buffer, tbl.byteOffset, tbl.byteLength);
+    let p = fcClx; const end = fcClx + lcbClx;
+    while (p < end && tbl[p] === 0x01){ p += 3 + tv.getUint16(p + 1, true); }   // skip Prc entries
+    if (tbl[p] !== 0x02) throw new Error('no piece table');
+    const lcb = tv.getUint32(p + 1, true); const plc = p + 5; const n = (lcb - 4) / 12;
+    const cp = i => tv.getUint32(plc + i * 4, true);
+    const dec = new TextDecoder('windows-1252'), dec16 = new TextDecoder('utf-16le');
+    let out = '';
+    for (let i = 0; i < n && out.length < ccpText; i++){
+      const pcd = plc + (n + 1) * 4 + i * 8; let fc = tv.getUint32(pcd + 2, true); const len = cp(i + 1) - cp(i);
+      if (fc & 0x40000000){ fc = (fc & 0x3FFFFFFF) / 2; out += dec.decode(wd.subarray(fc, fc + len)); }
+      else out += dec16.decode(wd.subarray(fc, fc + len * 2));
+    }
+    out = out.slice(0, ccpText);
+    // fields: keep what they show, drop their codes
+    out = out.replace(/\x13[^\x13\x14\x15]*\x14([^\x13\x14\x15]*)\x15/g, '$1').replace(/\x13[^\x13\x14\x15]*\x15/g, '');
+    return out.replace(/[\x01\x08\x0c\x13\x14\x15]/g, '').replace(/\x0b/g, ' ').replace(/ /g, ' ');
+  }
+  function docGrid(text){
+    // table cells end with \x07 and a row ends with one more \x07; paragraphs end with \r; tabs line up columns
+    return text.replace(/\x07\x07/g, '\r').replace(/\x07/g, '\t').split('\r').map(l => l.split('\t').map(c => c.replace(/\s+/g, ' ').trim()));
+  }
   async function readBook(file){
     await xlsxReady(); const name = String(file.name || '').toLowerCase(), type = String(file.type || '');
     let grid = null;
     if (/\.docx$/.test(name) || /wordprocessingml/.test(type)) grid = await docxGrid(file);
     else if (/\.pdf$/.test(name) || type === 'application/pdf') grid = await pdfGrid(file);
-    else if (/\.doc$/.test(name) || type === 'application/msword') throw Object.assign(new Error('old Word'), { userMsg:'Old Word (.doc) files can\'t be read – open it in Word and Save As .docx, then load that.' });
+    else if (/\.doc$/.test(name) || type === 'application/msword'){ try { grid = docGrid(docText(new Uint8Array(await file.arrayBuffer()))); }
+      catch(e){ throw Object.assign(e, { userMsg: /encrypted/.test(e.message) ? 'That Word file has a password – remove it and try again.' : 'Could not read that Word file – open it in Word and Save As .docx, then load that.' }); } }
     if (!grid) return XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:false });
     if (!grid.length) throw Object.assign(new Error('empty'), { userMsg: /\.pdf$/.test(name) ? 'No text found in the PDF – a scanned (photo) PDF can\'t be read. Use the Word or Excel file instead.' : 'No table found in the Word file.' });
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(grid), 'Sheet1'); return wb;
@@ -231,13 +264,15 @@
       const g = grid[i] || []; const filled = g.map((v, c) => t(v) ? c : -1).filter(c => c >= 0); if (!filled.length) continue;
       const get = f => col[f] == null ? '' : g[col[f]];
       if (filled.length === 1 && col.desc != null && filled[0] !== col.serial){ const last = rows[rows.length - 1];   // a remark under an item
-        if (filled[0] === col.desc && last){ last.note = (last.note ? last.note + '; ' : '') + t(g[col.desc]); continue; } }
+        if (filled[0] === col.desc && last){ const nt = t(g[col.desc]); const mk = /^\(([^()]{2,30})\)$/.exec(nt);
+          if (mk && !last.make && col.make == null){ last.make = mk[1].trim(); continue; }
+          last.note = (last.note ? last.note + '; ' : '') + nt; continue; } }
       if (filled.length === 1 && filled[0] === col.serial && col.desc != null && /[=:]|\s\S+\s/.test(t(g[col.serial]))){ skipped.push(t(g[col.serial])); continue; }   // a footer line such as "RED = UNSAFE FOR USE"
       const out = { line:i + 1, customer:t(get('customer')), loc:t(get('loc')), serial:t(get('serial')), desc:t(get('desc')), make:t(get('make')), swl:swlIn(get('swl'), swlUnit), job:t(get('job')), note:'', errs:[], warns:[] };
       if (!site && t(get('site'))) site = t(get('site')); if (!cust && out.customer) cust = out.customer;
       if (!(out.customer || out.loc || out.serial || out.desc || out.make || out.swl)) continue;
       if (!out.serial && !out.desc) out.errs.push('serial nr or description needed');
-      const k = up(out.serial); if (k){ if (seen[k]) out.errs.push('serial nr is in the file twice (row ' + seen[k] + ')'); else seen[k] = out.line; }
+      const k = up(out.serial); if (k){ if (seen[k]) out.warns.push('item nr is in the file twice (row ' + seen[k] + ') – check it'); else seen[k] = out.line; }
       if (!out.serial && out.desc) out.warns.push('no serial nr');
       rows.push(out);
     }
@@ -264,7 +299,7 @@
     return `<main><div class="steps">
       <section class="card"><h2>Add new job</h2>
         <b style="font-size:14px">1. Import the client's file</b>
-        <label class="drop" for="ifile"><b>${S.invFile ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word (.docx) or PDF${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
+        <label class="drop" for="ifile"><b>${S.invFile ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word (.doc / .docx) or PDF${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
         <input type="file" id="ifile" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
         <span class="hint">The client's inventory in your census layout (<b>ITEM NO · DESCRIPTION · MANUFACTURER · TONNAGE · ITEM LOCATION</b>). Other layouts are read too. No file? You can still schedule the job without an inventory.</span>
         <button class="btn secondary" id="itpl">⬇ Download census template (.xlsx)</button></section>
@@ -297,7 +332,7 @@
         <button class="btn secondary" id="tpl">⬇ Download template (.xlsx)</button>
         <span class="hint">The template's second sheet lists everyone who has signed in, with their email.</span></section>
       <section class="card"><h2>2. Load your file</h2>
-        <label class="drop" for="file"><b>Choose file</b><br><span class="hint">Excel, CSV, Word (.docx) or PDF${S.fileName ? ' · ' + esc(S.fileName) : ''}</span></label>
+        <label class="drop" for="file"><b>Choose file</b><br><span class="hint">Excel, CSV, Word (.doc / .docx) or PDF${S.fileName ? ' · ' + esc(S.fileName) : ''}</span></label>
         <input type="file" id="file" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
         </section></div>
       ${p ? `<section class="card wide"><div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} rows ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All rows OK</span>'}</div>

@@ -221,8 +221,9 @@
       const jobs = await Cloud.myJobs(); const job = (jobs || []).find(x => x.id === sid.slice(2)); if (!job || !Array.isArray(job.inv) || !job.inv.length) return;
       const l = S.cur; const pre = new Set(l.pre || []); const have = new Set((l.rows || []).map(r => norm(r.serial)).filter(Boolean)); const nth = {}; let n = 0;
       job.inv.forEach(it => { const ser = String(it.serial || '').trim(), desc = String(it.desc || '').trim(); if (!ser && !desc) return;
-        let k = norm(ser); if (!k){ const d = norm(desc); nth[d] = (nth[d] || 0) + 1; k = 'D:' + d + '#' + nth[d]; }
-        if (pre.has(k)) return; pre.add(k); if (norm(ser) && have.has(norm(ser))) return;
+        let k = norm(ser), rep = 0; if (!k){ const d = norm(desc); nth[d] = (nth[d] || 0) + 1; k = 'D:' + d + '#' + nth[d]; }
+        else { rep = nth['S:' + k] = (nth['S:' + k] || 0) + 1; if (rep > 1) k = k + '#' + rep; }   // the same item no twice in a census: keep both
+        if (pre.has(k)) return; pre.add(k); if (norm(ser) && rep === 1 && have.has(norm(ser))) return;
         l.rows.push({ id:rowId(), serial:ser, desc, make:it.make ? addMake(it.make) : '', swl:String(it.swl == null ? '' : it.swl).trim(), status:'', loc:it.loc ? addLoc(l, it.loc) : '', office:true, note:String(it.note || '').trim() }); n++; });
       if (pre.size === (l.pre || []).length) return;
       l.pre = [...pre];
