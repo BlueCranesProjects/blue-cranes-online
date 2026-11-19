@@ -31,6 +31,11 @@
   header{padding-top:calc(16px + env(safe-area-inset-top)) !important}
   nav.tabs{padding-bottom:env(safe-area-inset-bottom);height:calc(64px + env(safe-area-inset-bottom)) !important}
   body{min-height:100vh}
+  .app{min-height:100dvh}
+  /* schedule: the week fills the screen exactly; folded days share the space, an opened day takes what it needs */
+  .weekfit{flex:1;display:flex;flex-direction:column;gap:6px;min-height:0}
+  .weekfit > section.shut{flex:1 1 0;min-height:50px;justify-content:center}
+  .weekfit > section.open{flex:none}
   header .sub{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#C9D5EA}
   .logo{width:52px;height:52px;border-radius:50%;background:#fff;flex-shrink:0;display:block}
   h1,h2{font-family:Montserrat,sans-serif;font-weight:900;margin:0;letter-spacing:0;text-transform:uppercase}
@@ -350,7 +355,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 19 Nov (E)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 19 Nov (F)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -807,10 +812,11 @@
         <button class="btn secondary" style="width:44px;${nb}" data-week="7" aria-label="Next week">›</button>
         <button type="button" class="btn secondary" id="dayAll" style="width:auto;${nb}">${anyOpen ? 'Close all' : 'Open all'}</button>
       </div>
+      <div class="weekfit">
       ${days.map(k => { const items = schedFor(k); const isT = k === tk; const past = k < tk; const open = dayOpen(k, tk);
         const nDone = items.filter(x => x.done).length;
         const sum = items.length ? items.length + (items.length === 1 ? ' job' : ' jobs') + (nDone ? ' · ' + nDone + ' done' : '') + ' – ' + items.map(x => x.customer || x.card).filter(Boolean).join(', ') : 'Nothing planned';
-        return `<section class="card" style="display:flex;flex-direction:column;gap:6px;padding:4px 6px 4px 10px;${isT ? 'border:2px solid var(--navy);' : ''}${past && !isT ? 'opacity:.7;' : ''}${open && items.length ? 'padding-bottom:8px;' : ''}">
+        return `<section class="card ${open ? 'open' : 'shut'}" style="display:flex;flex-direction:column;gap:6px;padding:4px 6px 4px 10px;${isT ? 'border:2px solid var(--navy);' : ''}${past && !isT ? 'opacity:.7;' : ''}${open && items.length ? 'padding-bottom:8px;' : ''}">
           <div style="display:flex;align-items:center;gap:6px">
             <button type="button" data-day="${k}" aria-expanded="${open}" style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:0;background:none;padding:0;font:inherit;text-align:left;cursor:pointer;color:inherit;min-height:44px">
               <span style="font-size:17px;color:var(--navy);display:inline-block;width:10px;transition:transform .15s;${open ? 'transform:rotate(90deg)' : ''}" aria-hidden="true">›</span>
@@ -826,7 +832,8 @@
               ${x.done ? '<span class="pill ok">✓ Completed</span>' : x.addedTo ? '<span class="pill warn">On sheet</span>' : x.assigned ? '<span class="pill" style="background:#E3EAF5;color:#0B3575">From office</span>' : ''}</button>`).join('')
             : '<span class="hint" style="padding:0 0 6px 18px">Nothing planned</span>'}
         </section>`; }).join('')}
-      <button class="btn primary" style="height:50px;margin-top:4px" data-schedadd="${thisWeek ? tk : ws}">${ICON.plus} Schedule a job</button>
+      </div>
+      <button class="btn primary" style="height:50px;margin-top:4px;flex:none" data-schedadd="${thisWeek ? tk : ws}">${ICON.plus} Schedule a job</button>
       ${storeLine()}</main>` + tabs('schedule');
   }
   // the report "tabs" a tech gets once a job is started
@@ -1140,7 +1147,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 19 Nov (E)</span>
+        <span class="hint">App version 19 Nov (F)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
