@@ -175,10 +175,10 @@
       else if (n.localName === 'sdt'){ const c = kids(n, 'sdtContent')[0]; if (c) visit(c); } });
     visit(body); return grid;
   }
-  let pdfLib = null;
+  let pdfJs = null;   // PDF.js reads text out of PDFs (pdf-lib, used for saving, is a different tool)
   async function pdfGrid(file){
-    if (!pdfLib){ pdfLib = await import('../vendor/pdfjs/pdf.min.mjs'); pdfLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min.mjs', location.href).href; }
-    const pdf = await pdfLib.getDocument({ data:new Uint8Array(await file.arrayBuffer()) }).promise; const lines = [];
+    if (!pdfJs){ pdfJs = await import('../vendor/pdfjs/pdf.min.mjs'); pdfJs.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min.mjs', location.href).href; }
+    const pdf = await pdfJs.getDocument({ data:new Uint8Array(await file.arrayBuffer()) }).promise; const lines = [];
     for (let p = 1; p <= pdf.numPages; p++){
       const page = await pdf.getPage(p); const tc = await page.getTextContent();
       const items = tc.items.filter(it => it.str && it.str.trim()).map(it => ({ s:it.str, x:it.transform[4], y:it.transform[5], w:it.width || 0, h:Math.abs(it.transform[3]) || 10 }));
