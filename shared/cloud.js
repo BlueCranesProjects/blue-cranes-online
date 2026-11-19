@@ -94,6 +94,8 @@ window.Cloud = api;
     };
     api.deleteJob = id => F.deleteDoc(F.doc(fs, 'jobs', id));
     api.listUsers = async () => (await F.getDocs(F.collection(fs, 'users'))).docs.map(d => Object.assign({ uid: d.id }, d.data()));
+    // one item of another user (Admin reading a technician's photo)
+    api.getItemOf = async (uid, id) => { const s = await F.getDoc(F.doc(fs, 'users', uid, 'items', id)); return s.exists() ? s.data() : null; };
     api.listKindOf = async (uid, kind) => (await F.getDocs(F.query(F.collection(fs, 'users', uid, 'items'), F.where('kind', '==', kind)))).docs.map(d => ({ id: d.id, data: d.data() }));
     api.signIn = (email, pw) => A.signInWithEmailAndPassword(auth, email, pw);
     api.signUp = (email, pw) => A.createUserWithEmailAndPassword(auth, email, pw);

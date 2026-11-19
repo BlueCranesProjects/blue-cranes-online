@@ -162,11 +162,12 @@
     return out;
   }
   const PH = {};
-  function photoGet(pid){
+  // uid: the technician whose list it is (Admin downloading a job) – their photos, not the signed-in account's
+  function photoGet(pid, uid){
     if (PH[pid]) return Promise.resolve(PH[pid]);
     try { const v = localStorage.getItem('bco-eqp-' + pid); if (v){ PH[pid] = v; return Promise.resolve(v); } } catch(e){}
     if (!cloudOK()) return Promise.resolve(null);
-    return Cloud.getItem('eqp-' + pid).then(d => { if (d && d.data){ PH[pid] = d.data; try { localStorage.setItem('bco-eqp-' + pid, d.data); } catch(e){} return d.data; } return null; }).catch(() => null);
+    return (uid && Cloud.getItemOf ? Cloud.getItemOf(uid, 'eqp-' + pid) : Cloud.getItem('eqp-' + pid)).then(d => { if (d && d.data){ PH[pid] = d.data; try { localStorage.setItem('bco-eqp-' + pid, d.data); } catch(e){} return d.data; } return null; }).catch(() => null);
   }
   function photoPut(pid, data){ PH[pid] = data; try { localStorage.setItem('bco-eqp-' + pid, data); } catch(e){} if (cloudOK()) Cloud.putItem('eqp-' + pid, { kind:'eqphoto', data }); }
   function photoDel(pid){ delete PH[pid]; try { localStorage.removeItem('bco-eqp-' + pid); } catch(e){} if (cloudOK()) Cloud.deleteItem('eqp-' + pid); }
@@ -691,7 +692,7 @@
       doc.setTextColor(0, 0, 0); doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${l.customer || ''} · Job ${l.job || '–'} · ${niceDate(l.date)}${l.location ? ' · ' + l.location : ''}`, L, 25); y = 33; };
     page();
     for (const r of bad){
-      const img = r.photo ? await photoGet(r.photo) : null; let iw = 0, ih = 0;
+      const img = r.photo ? await photoGet(r.photo, l._uid) : null; let iw = 0, ih = 0;
       if (img){ const d = await new Promise(res => { const im = new Image(); im.onload = () => res({ w:im.width, h:im.height }); im.onerror = () => res(null); im.src = img; }); if (d){ const sc = Math.min(110 / d.w, 80 / d.h); iw = d.w * sc; ih = d.h * sc; } }
       const reason = doc.splitTextToSize('Reason: ' + (r.reason || ''), R - L - 4);
       const need = 10 + reason.length * 5 + (ih ? ih + 4 : 0) + 6;

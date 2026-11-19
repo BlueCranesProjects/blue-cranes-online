@@ -527,7 +527,12 @@ const RDB={db:null,
 const _rdbPut=RDB.put.bind(RDB),_rdbDel=RDB.del.bind(RDB);
 function cloudOK(){return !!(window.Cloud&&window.Cloud.user&&window.Cloud.user());}
 function cid(id){return "cr-"+String(id).replace(/\//g,"_");}
-function cloudPut(r){if(cloudOK())window.Cloud.putItem(cid(r.id),Object.assign({kind:"crane"},JSON.parse(JSON.stringify(r))));}
+// the cloud keeps one report in one record (max ~1 MB): if photos make it too big, the cloud copy gets smaller photos (the phone keeps the full ones)
+function shrinkData(src,maxPx,q){return new Promise(res=>{const im=new Image();im.onload=()=>{const sc=Math.min(1,maxPx/Math.max(im.width,im.height)),w=Math.max(1,Math.round(im.width*sc)),h=Math.max(1,Math.round(im.height*sc));const c=document.createElement("canvas");c.width=w;c.height=h;const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,w,h);x.drawImage(im,0,0,w,h);res({src:c.toDataURL("image/jpeg",q),w,h});};im.onerror=()=>res(null);im.src=src;});}
+async function fitCloud(rec){const size=o=>JSON.stringify(o).length;if(size(rec)<900000)return rec;const r=JSON.parse(JSON.stringify(rec)),ph=r.state&&r.state.photo;if(!ph)return r;
+  for(const[px,q]of[[700,0.5],[560,0.45],[420,0.4],[320,0.35]]){for(const k of Object.keys(ph)){const p=ph[k];if(p&&p.src){const s=await shrinkData(p.src,px,q);if(s)ph[k]=s;}}if(size(r)<900000)return r;}
+  return r;}
+function cloudPut(r){if(!cloudOK())return;fitCloud(r).then(c=>window.Cloud.putItem(cid(r.id),Object.assign({kind:"crane"},JSON.parse(JSON.stringify(c)))));}
 RDB.put=async r=>{await _rdbPut(r);cloudPut(r);};
 RDB.del=async id=>{await _rdbDel(id);if(cloudOK())window.Cloud.deleteItem(cid(id));};
 async function syncReports(){if(!cloudOK())return;try{const remote=await window.Cloud.listKind("crane"),local=await RDB.all(),lm={},seen={};local.forEach(r=>lm[r.id]=r);

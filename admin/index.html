@@ -360,7 +360,7 @@
     try { if (!S.users.length) await refreshUsers();
       for (const j of S.jobs){ if (!(j.inv || []).length && !j.sheetDate) continue;
         const u = S.users.find(x => x.email === j.tech); if (!u) continue;
-        if (!cache[u.uid]){ try { cache[u.uid] = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => d.data || {}); } catch(e){ cache[u.uid] = []; } }
+        if (!cache[u.uid]){ try { cache[u.uid] = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => Object.assign(d.data || {}, { _uid:u.uid }));   /* _uid: whose photos to fetch */ } catch(e){ cache[u.uid] = []; } }
         if (!flc[u.uid]){ try { flc[u.uid] = (await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f); } catch(e){ flc[u.uid] = []; } }
         const core = c => String(c || '').trim().toUpperCase().replace(/\s+/g, '').replace(/^C(?=\d)/, ''); const fl = j.card ? flc[u.uid].filter(r => core(r.job || r.state.f.jobno) === core(j.card)) : [];
         if (fl.length){ const o = S.invProg[j.id] || {}; if ((o.fl || []).length !== fl.length) changed = true; S.invProg[j.id] = Object.assign(o, { fl, uid:u.uid }); }
@@ -474,7 +474,7 @@
       const groups = [];
       for (const u of S.users){
         let lists = [], reps = [], prof = {};
-        try { lists = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => d.data || {}).filter(l => l.date >= from && l.date <= to && (l.rows || []).some(r => r.serial || r.desc)); } catch(e){}
+        try { lists = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => Object.assign(d.data || {}, { _uid:u.uid })).filter(l => l.date >= from && l.date <= to && (l.rows || []).some(r => r.serial || r.desc)); } catch(e){}
         try { (await window.Cloud.listKindOf(u.uid, 'crane')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to).forEach(r => { r._cr = true; reps.push(r); }); } catch(e){}
         try { reps = reps.concat((await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to)); } catch(e){}
         if (!lists.length && !reps.length) continue;
