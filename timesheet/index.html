@@ -350,7 +350,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 19 Nov (C)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 19 Nov (D)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -790,6 +790,9 @@
         <span class="hint">${x.time ? esc(x.time) : 'Any time'}${x.contact ? ' · ' + esc(x.contact) : ''}${x.notes ? ' · ' + esc(x.notes) : ''}</span></button>
         <button class="btn primary" style="width:auto;height:44px;font-size:14px" data-schedto="${esc(x.id)}">${ICON.plus} Start job</button></div>`).join('')}`;
   }
+  function dayOpen(k, tk){ const o = state._dayOpen || (state._dayOpen = (() => { try { return JSON.parse(sessionStorage.getItem('bco-sched-open') || '{}'); } catch(e){ return {}; } })());
+    return k in o ? !!o[k] : k === tk; }
+  function setDayOpen(k, v){ dayOpen(k, ''); state._dayOpen[k] = v; try { sessionStorage.setItem('bco-sched-open', JSON.stringify(state._dayOpen)); } catch(e){} }
   function viewSchedule(){
     const tk = todayKey(); const ws = state.schedWeek || weekStart(tk); const thisWeek = ws === weekStart(tk);
     const days = [0,1,2,3,4,5,6].map(i => addDays(ws, i));
@@ -801,12 +804,18 @@
         <button class="btn secondary" style="flex:1;height:44px;font-size:14px;border-width:1.5px;${thisWeek ? 'opacity:.5' : ''}" data-week="0" ${thisWeek ? 'disabled' : ''}>This week</button>
         <button class="btn secondary" style="${navBtn}" data-week="7" aria-label="Next week">Next ›</button>
       </div>
-      ${days.map(k => { const items = schedFor(k); const isT = k === tk; const past = k < tk;
-        return `<section class="card" style="display:flex;flex-direction:column;gap:8px;${isT ? 'border:2px solid var(--navy)' : ''}${past && !isT ? ';opacity:.75' : ''}">
+      ${(() => { const op = days.filter(k => dayOpen(k, tk)).length; return `<div style="display:flex;justify-content:flex-end"><button type="button" class="btn secondary" id="dayAll" style="width:auto;height:38px;font-size:13px;border-width:1.5px;padding:0 12px">${op < days.length ? 'Open all days' : 'Close all days'}</button></div>`; })()}
+      ${days.map(k => { const items = schedFor(k); const isT = k === tk; const past = k < tk; const open = dayOpen(k, tk);
+        const nDone = items.filter(x => x.done).length;
+        const sum = items.length ? items.length + (items.length === 1 ? ' job' : ' jobs') + (nDone ? ' · ' + nDone + ' done' : '') : 'Nothing planned';
+        return `<section class="card" style="display:flex;flex-direction:column;gap:8px;${open ? '' : 'padding-top:10px;padding-bottom:10px;'}${isT ? 'border:2px solid var(--navy)' : ''}${past && !isT ? ';opacity:.75' : ''}">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <span style="font-family:Montserrat,sans-serif;font-weight:800;font-size:15px;text-transform:uppercase;color:var(--navyDeep)">${esc(niceDate(k))}${isT ? ' <span class="pill prog" style="margin-left:4px">Today</span>' : ''}</span>
+            <button type="button" data-day="${k}" aria-expanded="${open}" style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:0;background:none;padding:4px 0;font:inherit;text-align:left;cursor:pointer;color:inherit;min-height:44px">
+              <span style="font-size:16px;color:var(--navy);display:inline-block;transition:transform .15s;${open ? 'transform:rotate(90deg)' : ''}" aria-hidden="true">›</span>
+              <span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font-family:Montserrat,sans-serif;font-weight:800;font-size:15px;text-transform:uppercase;color:var(--navyDeep)">${esc(niceDate(k))}${isT ? ' <span class="pill prog" style="margin-left:4px">Today</span>' : ''}</span>
+              ${open ? '' : `<span class="hint">${esc(sum)}${items.length ? ' – ' + esc(items.map(x => x.customer || x.card).filter(Boolean).slice(0, 2).join(', ')) + (items.length > 2 ? '…' : '') : ''}</span>`}</span></button>
             <button class="btn secondary" style="width:auto;height:40px;font-size:13px;border-width:1.5px" data-schedadd="${k}" aria-label="Add job on ${esc(niceDate(k))}">${ICON.plus} Add</button></div>
-          ${items.length ? items.map(x => `<button class="job" data-schedit="${esc(x.id)}" style="padding:10px 12px">
+          ${!open ? '' : items.length ? items.map(x => `<button class="job" data-schedit="${esc(x.id)}" style="padding:10px 12px">
               <span class="num-badge" style="width:auto;min-width:52px;padding:0 6px;font-size:13px;${x.addedTo ? 'background:#15703D' : ''}">${x.time ? esc(x.time) : '–'}</span>
               <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(schedLabel(x))}</span>
               ${x.contact ? `<span class="hint" style="color:var(--label)">Contact: ${esc(x.contact)}</span>` : ''}
@@ -1128,7 +1137,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 19 Nov (C)</span>
+        <span class="hint">App version 19 Nov (D)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
@@ -1347,6 +1356,9 @@
       stD.onclick = () => { state._done = true; paint(); const b = document.getElementById('tFinBox'), f = document.getElementById('tFin'); if (b){ b.style.visibility = ''; if (!f.value){ f.value = nowHM(); f.dispatchEvent(new Event('change')); } } };
     }
     app.querySelectorAll('[data-schedto]').forEach(b => b.onclick = () => startScheduled(b.dataset.schedto));
+    app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { const k = b.dataset.day; setDayOpen(k, !dayOpen(k, todayKey())); render(); });
+    const da = document.getElementById('dayAll'); if (da) da.onclick = () => { const tk = todayKey(), ws = state.schedWeek || weekStart(tk); const ds = [0,1,2,3,4,5,6].map(i => addDays(ws, i));
+      const openAll = ds.some(k => !dayOpen(k, tk)); ds.forEach(k => setDayOpen(k, openAll)); render(); };
     app.querySelectorAll('[data-week]').forEach(b => b.onclick = () => {
       const n = Number(b.dataset.week); const cur = state.schedWeek || weekStart(todayKey());
       go('schedule', { schedWeek: n === 0 ? null : addDays(cur, n) });
@@ -1357,7 +1369,7 @@
     const schf = document.getElementById('schedForm');
     if (schf){
       const id = state.schedId && state.schedule[state.schedId] ? state.schedId : null;
-      const back = date => go('schedule', { schedId:null, schedWeek: weekStart(date) === weekStart(todayKey()) ? null : weekStart(date) });
+      const back = date => { if (date) setDayOpen(date, true); go('schedule', { schedId:null, schedWeek: weekStart(date) === weekStart(todayKey()) ? null : weekStart(date) }); };
       const del = document.getElementById('sDel');
       if (del) del.onclick = () => confirmBox('Delete this job from the schedule?', 'Delete', () => {
         const d = state.schedule[id].date; delete state.schedule[id]; deleteSchedRemote(id); toast('Removed from schedule'); back(d);
