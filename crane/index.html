@@ -186,6 +186,19 @@
   @media (max-width:420px){.opts button{width:36px;height:38px}.grid{grid-template-columns:1fr}.name{font-size:13px}}
   .phbox{margin:8px 0 0 34px;padding:10px;border-radius:10px;background:#f4f6fb;display:flex;flex-direction:column;gap:8px}
   .phbox.miss{background:#fdecec;border:1px solid #f3c2c2}
+  .qbox{margin:8px 0 0 34px;padding:10px;border-radius:10px;background:#FFF8DC;border:1px solid #F0D98A;display:flex;flex-direction:column;gap:8px}
+  .qbox .qh{font-weight:800;font-size:13px;color:#6B5200;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .qbox .qh small{font-weight:600;color:#8a7430}
+  .qbox label{font-size:12px;font-weight:700;color:#4a5068;margin-bottom:-4px}
+  .qbox input,.qbox textarea{width:100%;border:1.5px solid #d9dce5;border-radius:8px;padding:9px;font:inherit;font-size:14px;background:#fff}
+  .qbox textarea{min-height:60px;resize:vertical}
+  .qpart{display:grid;grid-template-columns:58px 1fr 40px;gap:6px;align-items:center;padding-bottom:6px;border-bottom:1px dashed #E5CF84}
+  .qpart [data-qk="n"]{grid-column:1/3}
+  .qpart button{grid-column:3;grid-row:1}
+  .qpart button,.qadd{border:1.5px solid #c9a227;background:#fff;border-radius:8px;height:40px;font-weight:800;color:#6B5200;cursor:pointer}
+  .qchips{display:flex;flex-wrap:wrap;gap:6px}
+  .qchips button{border:1.5px solid #d9dce5;background:#fff;border-radius:999px;padding:7px 11px;font:inherit;font-size:13px;font-weight:700;color:#4a5068;cursor:pointer}
+  .qchips button.on{background:#13224f;border-color:#13224f;color:#fff}
   .phwarn{font-size:13px;font-weight:700;color:var(--bad)}
   .phimg{max-width:100%;max-height:220px;border-radius:8px;object-fit:contain;align-self:flex-start}
   .phrow{display:flex;gap:8px}
@@ -314,7 +327,7 @@ ELEC.forEach((t,k)=>ROWS.push({id:"e"+(k+27),no:String(k+27),name:t,kind:"one",s
 const RV={ok:"✓",w:"W",x:"X",na:"N/A"};
 const FIELDS=["customer","date","jobno","details","make","model","serial","swl","location","site","docno","prevLoad","nextInsp","nextLoad","remarks","engName","custName"];
 const KEY="bc-crane-draft-v1",JOBKEY="bc-crane-jobs",LMIKEY="bc-crane-lmi",DKEY="bc-crane-drafts";
-function blank(){return{type:"INSPECTION",f:{},parts:{lt:true,ct:true,h:true,ah:false},res:{},val:{F:"",G:"",H:""},note:{},status:null,wr:{insp:false,load:false},photo:{},sig:{sigEng:null,sigCust:null,sigUt:null},row:null,list:null};}
+function blank(){return{type:"INSPECTION",f:{},parts:{lt:true,ct:true,h:true,ah:false},res:{},val:{F:"",G:"",H:""},note:{},status:null,wr:{insp:false,load:false},photo:{},quote:{},sig:{sigEng:null,sigCust:null,sigUt:null},row:null,list:null};}
 let state=blank();
 function store(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function load(k){try{return localStorage.getItem(k)}catch(e){return null}}
@@ -346,7 +359,7 @@ function build(){
     if(r.n===11)h+=`<div class="sub"><select id="loadSel" class="ysel"><option value="">Rope or chain? Choose…</option><option value="rope">Rope</option><option value="chain">Chain</option></select></div>`;
     if(r.kind==="meas")h+=`<div class="sub"><div class="unit" style="flex:1"><input data-meas="${r.id}" inputmode="decimal" placeholder="${r.id==="F"?"Measured deflection":r.id==="G"?"Span / length":"Height"}"><span>mm</span></div><button type="button" class="na nab" data-measna="${r.id}">N/A</button></div>`;
     if(r.kind==="four"){h+=`<button class="pbtn" data-exp="${r.id}">Different per part ▾</button><div class="pp" id="pp-${r.id}">${COLS.map(([k,s],c)=>`<div class="pprow" id="pr-${r.id}-${c}"><span>${s}</span>${optBtns(`data-r="${r.id}" data-c="${c}"`,r.name+" "+s)}</div>`).join("")}</div>`;}
-    if(r.kind!=="meas")h+=photoBox(r.id,r.name);
+    if(r.kind!=="meas")h+=photoBox(r.id,r.name)+`<div class="qbox" id="qb-${r.id}" style="display:none"></div>`;
     h+=`<div class="sub notewrap" style="display:none"><input data-note="${r.id}" placeholder="Note / defect for item ${r.no}"></div><button class="notebtn" data-addnote="${r.id}">+ Add note</button></div>`;
   });
   itemsEl.innerHTML=h+(sec?"</div>":"");wirePhotos(itemsEl);
@@ -382,7 +395,7 @@ function render(){subBtn();
       COLS.forEach((_,c)=>{const pr=$("pr-"+r.id+"-"+c);pr.style.display=cs.includes(c)?"":"none";pr.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.v===state.res[r.id+"_"+c]));});}
     else $("mx-"+r.id).style.display="none";
     if(r.kind==="meas"){const inp=d.querySelector("[data-meas]"),v=state.val[r.id]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);d.querySelector(".unit").classList.toggle("isna",na);d.querySelector("[data-measna]").classList.toggle("on",na);}
-    if(r.kind!=="meas")showPhoto(r.id,rowVals(r).includes("x"));
+    if(r.kind!=="meas"){showPhoto(r.id,rowVals(r).includes("x"));const qb=$("qb-"+r.id),need=rowVals(r).some(v=>v==="x"||v==="w");qb.style.display=need?"":"none";if(need&&!qb.dataset.on)fillQuote(r.id);if(!need)qb.dataset.on="";}
     const ni=d.querySelector("[data-note]");if(ni.value!==(state.note[r.id]||""))ni.value=state.note[r.id]||"";if(state.note[r.id])showNote(r.id,true);
   });
   document.querySelectorAll("[data-v2]").forEach(inp=>{const k=inp.dataset.v2,v=state.val[k]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);inp.closest(".unit").classList.toggle("isna",na);document.querySelector(`[data-vna="${k}"]`).classList.toggle("on",na);});
@@ -425,7 +438,7 @@ function dropDraft(id){const d=drafts();if(d[id]){delete d[id];store(DKEY,JSON.s
 async function syncDrafts(){if(!cloudOK())return;try{const remote=await window.Cloud.listKind("crane-draft");const d=drafts();let ch=false;
   remote.forEach(x=>{const r=x.data||x;if(r&&r.id&&r.state&&(!d[r.id]||(d[r.id].savedAt||0)<(r.savedAt||0))){d[r.id]=r;ch=true;}});if(ch)store(DKEY,JSON.stringify(d));}catch(e){}}
 function draftList(){const cur=state._did;return Object.values(drafts()).filter(r=>r&&r.state&&r.id!==cur).sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));}
-function useState(s){state=Object.assign(blank(),JSON.parse(JSON.stringify(s)));state.parts=Object.assign(blank().parts,state.parts||{});state.val=Object.assign(blank().val,state.val||{});state.wr=Object.assign(blank().wr,state.wr||{});state.sig=Object.assign(blank().sig,state.sig||{});}
+function useState(s){state=Object.assign(blank(),JSON.parse(JSON.stringify(s)));state.quote=state.quote||{};state.parts=Object.assign(blank().parts,state.parts||{});state.val=Object.assign(blank().val,state.val||{});state.wr=Object.assign(blank().wr,state.wr||{});state.sig=Object.assign(blank().sig,state.sig||{});}
 function continueDraft(id){const r=drafts()[id];if(!r)return;keepDraft();useState(r.state);state._did=r.id;applyState();save();$("repPanel").classList.remove("show");window.scrollTo(0,0);toast("Continuing "+(state.f.docno||state.f.serial||"report"));}
 
 FIELDS.forEach(f=>$(f).addEventListener("input",save));
@@ -590,7 +603,9 @@ function afterSave(){const job=(state.f.jobno||"").trim();
   subBtn();if(!job){toast("✓ Report submitted");return;}
   modal(`<h3>✓ Report submitted</h3><p>${state.list?"The client's inventory is updated with this result.":""}</p>
     ${state.list?`<a class="primary" href="../equipment/" data-back="match" style="display:block;width:100%;padding:13px;border-radius:10px;font-weight:800;font-size:15px;margin-bottom:8px;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Back to the client's inventory</a>`:`<button class="primary" id="aNext" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">Next crane / hoist → ${nextDoc(job,true)}</button>`}
+    ${needsTech(state)?`<button class="secondary" id="aTech" style="width:100%;padding:12px;border-radius:10px;font-weight:800;font-size:14px;margin-bottom:8px">🧾 Technician's report (for quote)</button>`:""}
     <div class="btns"><button class="secondary" id="aStay">Stay on this report</button></div>`);
+  if($("aTech"))$("aTech").onclick=()=>{closeModal();exportReports([{state:JSON.parse(JSON.stringify(state))}],"single-tech");};
   $("aStay").onclick=closeModal;if($("aNext"))$("aNext").onclick=()=>{closeModal();nextSameJob();};}
 const kgN=v=>{const n=Number(String(v==null?"":v).replace(/\s/g,"").replace(",","."));return isFinite(n)&&String(v).trim()!==""?n:null;};
 const kgT=n=>String(Math.round(n*100)/100).replace(/\B(?=(\d{3})+(?!\d))/g," ").replace(".",",");
@@ -606,7 +621,63 @@ function remarkLines(st){const f=st.f,out=[];
 const NAF=[208,212,220],isNA=v=>/^n\/a$/i.test(String(v==null?"":v).trim());
 function mark(doc,v,cx,cy){if(v==="ok"){doc.setDrawColor(29,138,74);doc.setLineWidth(0.6);doc.line(cx-1.7,cy,cx-0.5,cy+1.3);doc.line(cx-0.5,cy+1.3,cx+1.9,cy-1.4);doc.setLineWidth(0.2);doc.setDrawColor(150,156,170);}
   else if(v){doc.setFont("helvetica","bold");doc.setFontSize(v==="na"?6:8.5);doc.setTextColor(...(v==="w"?[201,138,0]:v==="x"?[198,40,40]:[107,114,128]));doc.text(RV[v],cx,cy+1.2,{align:"center"});}}
-async function buildPdf(st){
+// a saved report's own rows (not the one on screen)
+const visOf=(r,st)=>r.ui!==false&&(r.kind!=="four"||activeCols(r.n,st).length>0);
+const valsOf=(r,st)=>r.kind==="four"?activeCols(r.n,st).map(c=>(st.res||{})[r.id+"_"+c]||null):[(st.res||{})[r.id]||null];
+// ---- "For quote": parts, repair notes and extra equipment for every X / W item – printed only on the technician's report ----
+const EXTRAS=["Scaffolding","Cherry picker","Scissor lift","Crane hire","Forklift","After hours / shutdown"];
+function qOf(id,make){const q=(state.quote||{})[id];if(q||!make)return q||{parts:[],notes:"",extra:[],other:""};state.quote=state.quote||{};return state.quote[id]={parts:[],notes:"",extra:[],other:""};}
+function hasQuote(q){return !!(q&&((q.parts||[]).some(p=>p.d||p.n||p.q)||q.notes||(q.extra||[]).length||q.other));}
+function fillQuote(id){const b=$("qb-"+id);if(!b)return;b.dataset.on="1";const q=qOf(id);const parts=q.parts&&q.parts.length?q.parts:[{q:"",d:"",n:""}];
+  b.innerHTML=`<div class="qh">🧾 For quote<small>Only on the technician's report</small></div>
+    <label>Parts needed</label>
+    ${parts.map((p,k)=>`<div class="qpart"><input data-qp="${k}" data-qk="q" inputmode="numeric" placeholder="Qty" value="${esc(p.q||"")}" aria-label="Quantity"><input data-qp="${k}" data-qk="d" placeholder="Part / description" value="${esc(p.d||"")}" aria-label="Part description"><input data-qp="${k}" data-qk="n" placeholder="Part / model no" value="${esc(p.n||"")}" aria-label="Part or model number"><button type="button" data-qdel="${k}" aria-label="Remove part">✕</button></div>`).join("")}
+    <button type="button" class="qadd" data-qadd>+ Add part</button>
+    <label>Repair notes</label><textarea data-qn placeholder="What is wrong and what must be done">${esc(q.notes||"")}</textarea>
+    <label>Extra equipment</label><div class="qchips">${EXTRAS.map(x=>`<button type="button" data-qx="${esc(x)}" class="${(q.extra||[]).includes(x)?"on":""}">${esc(x)}</button>`).join("")}</div>
+    <input data-qo placeholder="Other equipment / access needed" value="${esc(q.other||"")}">`;
+  b.querySelectorAll("[data-qp]").forEach(inp=>inp.oninput=()=>{const qq=qOf(id,true);qq.parts=qq.parts||[];while(qq.parts.length<=+inp.dataset.qp)qq.parts.push({q:"",d:"",n:""});qq.parts[+inp.dataset.qp][inp.dataset.qk]=inp.value;save();});
+  b.querySelector("[data-qadd]").onclick=()=>{const qq=qOf(id,true);qq.parts=(qq.parts&&qq.parts.length?qq.parts:[{q:"",d:"",n:""}]);qq.parts.push({q:"",d:"",n:""});save();fillQuote(id);const ins=b.querySelectorAll('[data-qk="d"]');ins[ins.length-1].focus();};
+  b.querySelectorAll("[data-qdel]").forEach(x=>x.onclick=()=>{const qq=qOf(id,true);(qq.parts||[]).splice(+x.dataset.qdel,1);save();fillQuote(id);});
+  b.querySelector("[data-qn]").oninput=e=>{qOf(id,true).notes=e.target.value;save();};
+  b.querySelector("[data-qo]").oninput=e=>{qOf(id,true).other=e.target.value;save();};
+  b.querySelectorAll("[data-qx]").forEach(x=>x.onclick=()=>{const qq=qOf(id,true);qq.extra=qq.extra||[];const k=qq.extra.indexOf(x.dataset.qx);if(k<0)qq.extra.push(x.dataset.qx);else qq.extra.splice(k,1);x.classList.toggle("on",k<0);save();});}
+// the quote page(s) at the back of the technician's report
+function quotePages(doc,st){const f=st.f||{},U=v=>String(v||"").toUpperCase(),L=12,R=198,NV=[19,34,79];
+  const items=ROWS.filter(r=>r.kind!=="meas"&&visOf(r,st)&&valsOf(r,st).some(v=>v==="x"||v==="w"));
+  let y=0;const head=cont=>{doc.addPage();doc.setFillColor(...NV);doc.rect(0,0,210,20,"F");doc.setFillColor(245,196,0);doc.rect(0,20,210,1.6,"F");
+    doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(15);doc.text("TECHNICIAN'S REPORT – FOR QUOTE"+(cont?" (continued)":""),L,12.5);
+    doc.setFontSize(8.5);doc.setFont("helvetica","normal");doc.text("Internal – not for the client",R,12.5,{align:"right"});y=29;};
+  head(false);doc.setTextColor(20,24,40);
+  const info=[["Doc No",f.docno],["Job no",f.jobno],["Date",f.date?fmtD(f.date):""],["Customer",U(f.customer)],["Site",U(f.location||f.site)],["Crane / hoist",U(f.details)],["Serial no",U(f.serial)],["SWL",f.swl?U(f.swl)+(/\d$/.test(String(f.swl))?" KG":""):""],["Technician",U(f.engName)]];
+  doc.setFontSize(9.5);info.forEach(([k,v],i)=>{const x=i%2?L+95:L;if(i%2===0&&i)y+=5.6;doc.setFont("helvetica","bold");doc.text(k+":",x,y);doc.setFont("helvetica","normal");doc.text(doc.splitTextToSize(String(v||"–"),62)[0],x+27,y);});
+  y+=9;
+  if(!items.length){doc.setFont("helvetica","italic");doc.text("No items marked X or W on this report.",L,y);return;}
+  const allParts=[];
+  items.forEach(r=>{const q=(st.quote||{})[r.id]||{},vals=valsOf(r,st),isX=vals.includes("x"),parts=(q.parts||[]).filter(p=>p.d||p.n||p.q);
+    const where=r.kind==="four"?activeCols(r.n,st).filter(c=>["x","w"].includes(st.res[r.id+"_"+c])).map(c=>COLS[c][1]+" "+st.res[r.id+"_"+c].toUpperCase()).join(", "):"";
+    const note=st.note&&st.note[r.id]?String(st.note[r.id]):"";const notes=doc.splitTextToSize(q.notes||"",R-L-36),extra=(q.extra||[]).concat(q.other?[q.other]:[]).join(", "),exl=doc.splitTextToSize(extra,R-L-36);
+    const need=10+(note?5:0)+(parts.length?6+parts.length*5.2:5)+(q.notes?notes.length*4.6+1.5:5)+(extra?exl.length*4.6+1.5:5)+4;
+    if(y+need>284)head(true);
+    doc.setFillColor(...(isX?[253,236,236]:[255,248,220]));doc.setDrawColor(...(isX?[161,42,31]:[201,162,39]));doc.setLineWidth(0.4);doc.rect(L,y,R-L,need-3,"FD");
+    doc.setTextColor(...(isX?[161,42,31]:[107,82,0]));doc.setFont("helvetica","bold");doc.setFontSize(10.5);
+    doc.text(`#${r.no}  ${rname(r,st)}  –  ${isX?"X  (parts need urgent replacement)":"W  (worn but serviceable)"}`,L+3,y+6);
+    doc.setTextColor(20,24,40);doc.setFontSize(9);let yy=y+11;
+    if(where){doc.setFont("helvetica","normal");doc.text("("+where+")",R-3,y+6,{align:"right"});}
+    const lab=t=>{doc.setFont("helvetica","bold");doc.text(t,L+3,yy);doc.setFont("helvetica","normal");};
+    if(note){lab("Report note:");doc.text(doc.splitTextToSize(note,R-L-36)[0],L+33,yy);yy+=5;}
+    lab("Parts:");if(!parts.length){doc.setTextColor(140,140,150);doc.text("none entered",L+33,yy);doc.setTextColor(20,24,40);yy+=5;}
+    else{doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("QTY",L+33,yy);doc.text("DESCRIPTION",L+48,yy);doc.text("PART / MODEL NO",L+128,yy);yy+=5;doc.setFont("helvetica","normal");doc.setFontSize(9);
+      parts.forEach(p=>{doc.text(String(p.q||"–"),L+33,yy);doc.text(doc.splitTextToSize(String(p.d||""),78)[0]||"",L+48,yy);doc.text(doc.splitTextToSize(String(p.n||""),R-L-131)[0]||"",L+128,yy);yy+=5.2;allParts.push(p);});yy+=0.8;}
+    lab("Repair notes:");if(q.notes){doc.text(notes,L+33,yy);yy+=notes.length*4.6+1.5;}else{doc.setTextColor(140,140,150);doc.text("–",L+33,yy);doc.setTextColor(20,24,40);yy+=5;}
+    lab("Extra equipment:");if(extra){doc.text(exl,L+33,yy);}else{doc.setTextColor(140,140,150);doc.text("none",L+33,yy);doc.setTextColor(20,24,40);}
+    y+=need;});
+  // all parts together, for the quote
+  if(allParts.length){const need=14+allParts.length*5.2;if(y+need>284)head(true);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...NV);doc.text("ALL PARTS FOR THIS QUOTE",L,y+4);y+=9;
+    doc.setFontSize(8);doc.setTextColor(20,24,40);doc.text("QTY",L,y);doc.text("DESCRIPTION",L+15,y);doc.text("PART / MODEL NO",L+128,y);doc.setDrawColor(180,184,196);doc.line(L,y+1.5,R,y+1.5);y+=6;doc.setFont("helvetica","normal");doc.setFontSize(9);
+    allParts.forEach(p=>{doc.text(String(p.q||"–"),L,y);doc.text(doc.splitTextToSize(String(p.d||""),110)[0]||"",L+15,y);doc.text(doc.splitTextToSize(String(p.n||""),R-L-131)[0]||"",L+128,y);y+=5.2;});}
+}
+async function buildPdf(st,opts){
   st=JSON.parse(JSON.stringify(st));st.parts=Object.assign(blank().parts,st.parts||{});st.val=Object.assign(blank().val,st.val||{});st.res=st.res||{};st.note=st.note||{};st.wr=Object.assign(blank().wr,st.wr||{});st.photo=st.photo||{};st.sig=Object.assign(blank().sig,st.sig||{});
   const {jsPDF}=window.jspdf,f=st.f;
   const dims={};for(const im of [st.sig.sigCust,st.sig.sigEng])if(im)dims[im]=await imgDims(im);
@@ -677,8 +748,9 @@ async function buildPdf(st){
     photoPages(doc,ROWS.filter(r=>r.kind!=="meas"&&xOf(r,st)&&st.photo&&st.photo[r.id]).map(r=>({label:"#"+r.no+" "+rname(r,st)+" – X"+(st.note&&st.note[r.id]?": "+st.note[r.id]:""),p:st.photo[r.id]})),"PHOTOS — Doc No "+(f.docno||"")+"  "+U(f.customer));
     return {doc,end:y+6,ih};}
   let p=draw();const n=ROWS.filter(r=>r.sec==="Safety"||r.sec==="Electrical").length+2;p=draw(Math.max(3.9,Math.min(4.7,p.ih+(288-p.end)/n)));
+  const tech=!!(opts&&opts.tech);if(tech)quotePages(p.doc,st);
   const safe=s=>String(s||"").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"_");
-  const name=`Crane_Hoist_${st.type==="LOAD TEST"?"Load_Test":"Inspection"}_${f.docno?safe(f.docno.replace(".","-"))+"_":""}${safe(f.customer)||"Report"}${f.serial?"_"+safe(f.serial):""}_${f.date||today()}.pdf`;
+  const name=`${tech?"TECHNICIAN_":""}Crane_Hoist_${st.type==="LOAD TEST"?"Load_Test":"Inspection"}_${f.docno?safe(f.docno.replace(".","-"))+"_":""}${safe(f.customer)||"Report"}${f.serial?"_"+safe(f.serial):""}_${f.date||today()}.pdf`;
   return {doc:p.doc,name};}
 async function makePdf(){
   if(!window.jspdf){toast("PDF tool still loading — try again");return;}
@@ -744,7 +816,7 @@ function busy(t){modal(`<h3>Please wait</h3><p id="busyTxt">${t}</p>`);}
 async function exportReports(recs,kind,label){
   if(!recs.length){toast("No reports to download");return;}
   if(!window.jspdf){toast("PDF tool still loading — try again");return;}
-  if(kind==="single"){try{busy("Building PDF…");const {doc,name}=await buildPdf(recs[0].state);closeModal();await deliver(doc.output("blob"),name);}catch(e){closeModal();toast("Couldn't build the PDF");}return;}
+  if(kind==="single"||kind==="single-tech"){try{busy(kind==="single-tech"?"Building technician's report…":"Building PDF…");const {doc,name}=await buildPdf(recs[0].state,{tech:kind==="single-tech"});closeModal();await deliver(doc.output("blob"),name);}catch(e){closeModal();toast("Couldn't build the PDF");}return;}
   recs=recs.slice().sort((a,b)=>(a.date+a.job+(a.state.f.docno||"")).localeCompare(b.date+b.job+(b.state.f.docno||""),undefined,{numeric:true}));
   try{busy("Getting ready…");
     if(kind==="pdf")await loadLib("../vendor/pdf-lib.min.js",()=>!!window.PDFLib);else await loadLib("../vendor/jszip.min.js",()=>!!window.JSZip);
@@ -777,11 +849,12 @@ async function showReports(){
       <div class="dlrow"><button class="pdf" data-ex="g-pdf" data-k="${esc(k)}">One PDF</button><button class="zip" data-ex="g-zip" data-k="${esc(k)}">Zip</button></div></div>
       ${g.map(r=>{const f=r.state.f,s=r.state.status;return `<div class="rrow"><div class="rinfo"><b>${esc(f.docno)||"—"}</b>${s?`<span class="badge ${s==="SAFE"?"safe":"unsafe"}">${s}</span>`:""}${r.state.type==="LOAD TEST"?'<span class="badge lt">LOAD TEST</span>':""}
         <div>${esc(f.details)||"—"}${f.serial?" · "+esc(f.serial):""}${f.date?" · "+fmtD(f.date):""}</div></div>
-        <div class="racts"><button data-op="pdf" data-id="${esc(r.id)}">PDF</button><button data-op="open" data-id="${esc(r.id)}">Open</button><button class="del" data-op="del" data-id="${esc(r.id)}">✕</button></div></div>`;}).join("")}</div>`;}).join("");
+        <div class="racts"><button data-op="pdf" data-id="${esc(r.id)}">PDF</button>${needsTech(r.state)?`<button data-op="tpdf" data-id="${esc(r.id)}" title="Technician's report with the quote page">Tech</button>`:""}<button data-op="open" data-id="${esc(r.id)}">Open</button><button class="del" data-op="del" data-id="${esc(r.id)}">✕</button></div></div>`;}).join("")}</div>`;}).join("");
   $("repList").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>{const j=b.dataset.k;exportReports(groups[j],b.dataset.ex.endsWith("pdf")?"pdf":"zip",(j?"Job_"+j:"NoJob")+"_"+today());});
   $("repAll").querySelectorAll("[data-ex]").forEach(b=>b.onclick=()=>exportReports(list,b.dataset.ex.endsWith("pdf")?"pdf":"zip",repScope==="today"?"Today_"+today():"All_"+today()));
   $("repList").querySelectorAll("[data-op]").forEach(b=>b.onclick=()=>{const r=repCache.find(x=>x.id===b.dataset.id);if(!r)return;
     if(b.dataset.op==="pdf")exportReports([r],"single");
+    if(b.dataset.op==="tpdf")exportReports([r],"single-tech");
     if(b.dataset.op==="del"){modal(`<h3>Delete ${esc(r.state.f.docno)||"this report"}?</h3><p>It will be removed from this phone and your account. PDFs you already sent are not affected.</p><div class="btns"><button class="secondary" id="mNo">Cancel</button><button class="primary" id="mYes" style="background:var(--bad);color:#fff">Delete</button></div>`);
       $("mNo").onclick=closeModal;$("mYes").onclick=async()=>{closeModal();await RDB.del(r.id);updRepCount();showReports();};}
     if(b.dataset.op==="open"){if(!ACTIVE){toast("Start the job on the time sheet first (or open it from History) to change a report");return;}
@@ -838,7 +911,9 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
       $("mOpen").onclick=()=>{closeModal();keepDraft();useState(rep.state);state._rid=rep.id;state._did=null;state._saved=stSig(state);if(it.type)state.type=it.type;applyState();save();};$("mNew").onclick=()=>{closeModal();startNew();};return;}
     startNew();});
 })();
-window.BCC={async reports(){for(let i=0;i<80&&!window.BCC_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCC_READY;}catch(e){}return RDB.all();},buildPdf:st=>buildPdf(st)};
+window.BCC={async reports(){for(let i=0;i<80&&!window.BCC_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCC_READY;}catch(e){}return RDB.all();},buildPdf:st=>buildPdf(st),buildTechPdf:st=>buildPdf(st,{tech:true}),needsTech:st=>needsTech(st)};
+// a technician's report is worth making when something is marked X or W (or quote info was filled in)
+function needsTech(st){return ROWS.some(r=>r.kind!=="meas"&&visOf(r,st)&&valsOf(r,st).some(v=>v==="x"||v==="w"))||Object.values(st.quote||{}).some(hasQuote);}
 BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");window.BCC_READY=syncReports();});
 
 </script>
