@@ -104,11 +104,12 @@
   function jobId(j){ const s = [j.date, String(j.card || j.customer).trim().toUpperCase(), j.tech].join('|'); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return 'J' + j.date.replace(/-/g, '') + '-' + h.toString(36); }
 
   async function readFile(file){
-    await xlsxReady();
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type:'array', cellDates:false });   // dates as Excel numbers: no time-zone shift
+    const wb = await readBook(file);   // Excel: dates as Excel numbers (no time-zone shift); Word / PDF: as text
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const raw = XLSX.utils.sheet_to_json(ws, { defval:'', raw:true });
+    let raw = XLSX.utils.sheet_to_json(ws, { defval:'', raw:true });
+    { const g = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:true }); let hr = 0, best = 0;   // heading row may be lower down (title above it)
+      for (let i = 0; i < Math.min(g.length, 25); i++){ const n = (g[i] || []).filter(v => ALIAS[String(v).trim().toLowerCase().replace(/[.:#]/g, '').replace(/\s+/g, ' ')]).length; if (n > best){ best = n; hr = i; } }
+      if (hr > 0) raw = XLSX.utils.sheet_to_json(ws, { defval:'', raw:true, range:hr }); }
     const known = new Set(S.users.map(u => u.email));
     const existing = new Map(S.jobs.map(j => [j.id, j]));
     return raw.map((r, n) => {
@@ -149,10 +150,73 @@
     if (/manuf|^make$|brand/.test(h)) return 'make';
     if (/customer|client|company/.test(h)) return 'customer';
     if (/^site/.test(h)) return 'site';
+    if (/^report|^cert/.test(h)) return 'report';   // read past, not imported
     return undefined; };
+
+  // ---------- read any file the office has: Excel / CSV, Word (.docx) or PDF → the same table the Excel import reads ----------
+  // Word: every table in the document (and the lines of text above it, e.g. the customer name) becomes rows of cells.
+  // PDF: the text is put back into lines and columns using where the headings sit on the page.
+  const isHeadCell = v => { const t = String(v == null ? '' : v).trim(); if (!t) return false; const k = t.toLowerCase().replace(/[.:#]/g, '').replace(/\s+/g, ' ');
+    return !!(ALIAS[k] || hkey(t)); };
+  async function loadJSZip(){ for (let i = 0; i < 60 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
+    if (!window.JSZip) throw new Error('Zip tool not loaded'); return window.JSZip; }
+  async function docxGrid(file){
+    const zip = await (await loadJSZip()).loadAsync(await file.arrayBuffer()); const f = zip.file('word/document.xml'); if (!f) throw new Error('not a Word file');
+    const xml = new DOMParser().parseFromString(await f.async('string'), 'application/xml'); const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const kids = (el, name) => [...el.childNodes].filter(n => n.nodeType === 1 && n.localName === name && n.namespaceURI === W);
+    const text = el => { let out = ''; const walk = n => { if (n.nodeType !== 1) return; if (n.namespaceURI === W){ if (n.localName === 't') out += n.textContent; else if (n.localName === 'tab') out += ' '; else if (n.localName === 'br' || n.localName === 'cr') out += ' '; else if (n.localName === 'p' && out && !/\s$/.test(out)) out += ' '; else if (n.localName === 'tbl') return; } [...n.childNodes].forEach(walk); }; walk(el); return out.replace(/\s+/g, ' ').trim(); };
+    const grid = []; const body = xml.getElementsByTagNameNS(W, 'body')[0]; if (!body) return grid;
+    const each = el => kids(el, 'p').length + kids(el, 'tbl').length + kids(el, 'sdt').length ? [...el.childNodes].filter(n => n.nodeType === 1) : [];
+    const visit = el => each(el).forEach(n => {
+      if (n.localName === 'p'){ const t = text(n); if (t) grid.push([t]); }
+      else if (n.localName === 'tbl') kids(n, 'tr').forEach(tr => { const row = []; kids(tr, 'tc').forEach(tc => { row.push(text(tc));
+          const pr = kids(tc, 'tcPr')[0], sp = pr && kids(pr, 'gridSpan')[0]; const nSpan = sp ? Number(sp.getAttributeNS(W, 'val') || sp.getAttribute('w:val')) || 1 : 1; for (let i = 1; i < nSpan; i++) row.push(''); });
+        grid.push(row); });
+      else if (n.localName === 'sdt'){ const c = kids(n, 'sdtContent')[0]; if (c) visit(c); } });
+    visit(body); return grid;
+  }
+  let pdfLib = null;
+  async function pdfGrid(file){
+    if (!pdfLib){ pdfLib = await import('../vendor/pdfjs/pdf.min.mjs'); pdfLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdfjs/pdf.worker.min.mjs', location.href).href; }
+    const pdf = await pdfLib.getDocument({ data:new Uint8Array(await file.arrayBuffer()) }).promise; const lines = [];
+    for (let p = 1; p <= pdf.numPages; p++){
+      const page = await pdf.getPage(p); const tc = await page.getTextContent();
+      const items = tc.items.filter(it => it.str && it.str.trim()).map(it => ({ s:it.str, x:it.transform[4], y:it.transform[5], w:it.width || 0, h:Math.abs(it.transform[3]) || 10 }));
+      items.sort((a, b) => b.y - a.y || a.x - b.x);
+      const pageLines = []; items.forEach(it => { const ln = pageLines.find(l => Math.abs(l.y - it.y) <= Math.max(2.5, it.h * 0.35)); if (ln) ln.items.push(it); else pageLines.push({ y:it.y, items:[it] }); });
+      let stop = false; pageLines.forEach(l => { if (stop) return; l.items.sort((a, b) => a.x - b.x); l.items.forEach(it => { it.s = it.s.replace(/\s+/g, ' ').trim(); it.x2 = it.x + it.w; }); lines.push(l.items.filter(it => it.s));
+        if (/^RED\s*=\s*UNSAFE/i.test(l.items.map(it => it.s).join(' ').trim())) stop = true; });   // end of a census (our own PDF has report pages after it)
+      if (stop) break;
+    }
+    // words close together form one cell; two headings side by side stay apart unless together they are one heading ("ITEM" + "NO")
+    const norm = v => String(v || '').trim().toLowerCase().replace(/\./g, '').replace(/[:#()\/\\_-]/g, ' ').replace(/\s+/g, ' ').trim();
+    const exactHead = v => !!(ALIAS[norm(v)] || IALIAS[norm(v)]);
+    const cellsOf = items => { const cells = []; items.forEach(it => { const c = cells[cells.length - 1];
+        const near = c && it.x - c.x2 < Math.max(4, it.h * 0.9); const both = c && isHeadCell(c.s) && isHeadCell(it.s) && !exactHead(c.s + ' ' + it.s);
+        if (near && !both){ c.s += (it.x - c.x2 > it.h * 0.15 ? ' ' : '') + it.s; c.x2 = it.x2; } else cells.push({ s:it.s, x:it.x, x2:it.x2 }); });
+      return cells; };
+    // the heading line sets the columns; every word goes under the heading it starts nearest to
+    let hi = -1, best = 1, heads = []; lines.forEach((items, i) => { const cells = cellsOf(items); const n = cells.filter(c => isHeadCell(c.s)).length; if (n > best){ best = n; hi = i; heads = cells; } });
+    if (hi < 0) return lines.map(items => cellsOf(items).map(c => c.s));
+    const starts = heads.map(c => c.x);
+    const colOf = it => { let k = 0; for (let i = 0; i < starts.length; i++) if (it.x >= starts[i] - 6) k = i; return k; };
+    return lines.map((items, i) => { if (i < hi) return [cellsOf(items).map(c => c.s).join(' ')]; if (i === hi) return heads.map(c => c.s);
+      const cells = cellsOf(items); if (cells.length && cells.every(c => isHeadCell(c.s))) return [];   // the headings repeated on the next page
+      const row = heads.map(() => ''); items.forEach(it => { const k = colOf(it); row[k] = row[k] ? row[k] + (it.x - (row['_x' + k] || 0) > 1 ? ' ' : '') + it.s : it.s; row['_x' + k] = it.x2; });
+      return heads.map((h, k) => row[k]); });
+  }
+  async function readBook(file){
+    await xlsxReady(); const name = String(file.name || '').toLowerCase(), type = String(file.type || '');
+    let grid = null;
+    if (/\.docx$/.test(name) || /wordprocessingml/.test(type)) grid = await docxGrid(file);
+    else if (/\.pdf$/.test(name) || type === 'application/pdf') grid = await pdfGrid(file);
+    else if (/\.doc$/.test(name) || type === 'application/msword') throw Object.assign(new Error('old Word'), { userMsg:'Old Word (.doc) files can\'t be read – open it in Word and Save As .docx, then load that.' });
+    if (!grid) return XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:false });
+    if (!grid.length) throw Object.assign(new Error('empty'), { userMsg: /\.pdf$/.test(name) ? 'No text found in the PDF – a scanned (photo) PDF can\'t be read. Use the Word or Excel file instead.' : 'No table found in the Word file.' });
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(grid), 'Sheet1'); return wb;
+  }
   async function readInv(file){
-    await xlsxReady();
-    const wb = XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:false });
+    const wb = await readBook(file);
     const grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:'', raw:true, blankrows:true });
     const t = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
     let hr = -1, best = 1; for (let i = 0; i < Math.min(grid.length, 25); i++){ const n = new Set((grid[i] || []).map(hkey).filter(Boolean)).size; if (n > best){ best = n; hr = i; } }
@@ -199,9 +263,9 @@
     const other = p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
     return `<main><div class="steps">
       <section class="card"><h2>Add new job</h2>
-        <b style="font-size:14px">1. Import the client's Excel file</b>
-        <label class="drop" for="ifile"><b>${S.invFile ? 'Choose another file' : 'Choose Excel file'}</b><br><span class="hint">.xlsx, .xls or .csv${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
-        <input type="file" id="ifile" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none">
+        <b style="font-size:14px">1. Import the client's file</b>
+        <label class="drop" for="ifile"><b>${S.invFile ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word (.docx) or PDF${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
+        <input type="file" id="ifile" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
         <span class="hint">The client's inventory in your census layout (<b>ITEM NO · DESCRIPTION · MANUFACTURER · TONNAGE · ITEM LOCATION</b>). Other layouts are read too. No file? You can still schedule the job without an inventory.</span>
         <button class="btn secondary" id="itpl">⬇ Download census template (.xlsx)</button></section>
       <section class="card"><h2>Schedule it</h2>
@@ -233,8 +297,8 @@
         <button class="btn secondary" id="tpl">⬇ Download template (.xlsx)</button>
         <span class="hint">The template's second sheet lists everyone who has signed in, with their email.</span></section>
       <section class="card"><h2>2. Load your file</h2>
-        <label class="drop" for="file"><b>Choose Excel file</b><br><span class="hint">.xlsx, .xls or .csv${S.fileName ? ' · ' + esc(S.fileName) : ''}</span></label>
-        <input type="file" id="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none">
+        <label class="drop" for="file"><b>Choose file</b><br><span class="hint">Excel, CSV, Word (.docx) or PDF${S.fileName ? ' · ' + esc(S.fileName) : ''}</span></label>
+        <input type="file" id="file" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
         </section></div>
       ${p ? `<section class="card wide"><div class="row" style="justify-content:space-between"><b>${ok.length} of ${p.length} rows ready</b>${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – fix in Excel and load again, or load the rest</span>` : '<span class="pill ok">All rows OK</span>'}</div>
           <div class="scroll"><table><thead><tr><th>Row</th><th>Date</th><th>Time</th><th>Job card</th><th>Customer</th><th>Contact</th><th>Technician</th><th>Check</th></tr></thead><tbody>
@@ -570,7 +634,7 @@
       download(wb, 'Blue Cranes jobs template.xlsx'); } catch(e){ toast('Could not make the template'); } };
     const f = $('file'); if (f) f.onchange = async () => { const file = f.files && f.files[0]; f.value = ''; if (!file) return;
       try { S.fileName = file.name; S.preview = await readFile(file); if (!S.preview.length) toast('No job rows found in the first sheet'); render(); }
-      catch(e){ console.error(e); toast('Could not read that file – save it as .xlsx and try again'); } };
+      catch(e){ console.error(e); toast(e && e.userMsg ? e.userMsg : 'Could not read that file – check it is an Excel, Word (.docx) or PDF file with a table'); } };
     const ld = $('load'); if (ld) ld.onclick = async () => {
       const ok = S.preview.filter(r => !r.errs.length); const existing = new Map(S.jobs.map(j => [j.id, j])); S.busy = true; render();
       try {
@@ -601,7 +665,7 @@
         if (!S.inv.length) toast(r.noHead ? 'Could not find the headings (Serial nr / Item no, Description…)' : 'No items found in the first sheet');
         { const nrs = [...new Set(S.inv.map(x => String(x.job || '').trim()).filter(Boolean))]; if (nrs.length === 1 && !S.nj.card) S.nj.card = nrs[0]; if (S.invCust && !S.nj.customer) S.nj.customer = S.invCust; }
         render(); }
-      catch(e){ console.error(e); toast('Could not read that file – save it as .xlsx and try again'); } };
+      catch(e){ console.error(e); toast(e && e.userMsg ? e.userMsg : 'Could not read that file – check it is an Excel, Word (.docx) or PDF file with a table'); } };
     const il = $('iload'); if (il) il.onclick = async () => {
       const isNew = true; const job = newJob(); if (!job.ready) return; const ok = (S.inv || []).filter(r => !r.errs.length); S.busy = true; render();
       try { const now = new Date().toISOString(); const base = !isNew ? {} : Object.assign({ date:job.date, time:job.time, card:job.card, customer:job.customer, contact:job.contact, notes:job.notes, tech:job.tech, loadedBy:window.Cloud.email() }, S.jobs.some(x => x.id === job.id) ? {} : { status:'planned', createdAt:now });
