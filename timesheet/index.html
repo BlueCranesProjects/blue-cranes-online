@@ -275,7 +275,11 @@
     jobs.forEach((j, i) => { const a = minsOf(hhmm(j.startedAt, k)); let t = null; if (prev != null && a != null && a >= prev){ t = a - prev; total += t; } before[i] = t; prev = j.done ? minsOf(hhmm(j.doneAt, k)) : null; });
     let after = null; const out = minsOf(sh && sh.clockOut); if (prev != null && out != null && out >= prev && jobs.length){ after = out - prev; total += after; }
     return { before, after, total, lastFin: prev }; }
-  function jobHours(sh){ return (sh.jobs||[]).reduce((a,j)=>a+(Number(j.hrs)||0),0); }
+  // a job's time = travel to it (from the start time or the previous job's finish) + time on site
+  function jobTravel(sh, i){ const t = travelInfo(sh, sh && sh.date).before[i]; return t == null ? 0 : t / 60; }
+  function jobTotal(sh, i){ const j = ((sh && sh.jobs) || [])[i]; return j ? (Number(j.hrs) || 0) + jobTravel(sh, i) : 0; }
+  function jobSplit(sh, i){ const tr = jobTravel(sh, i); return tr ? fmtHM(tr) + ' travel + ' + fmtHM(Number(sh.jobs[i].hrs) || 0) + ' on site' : ''; }
+  function jobHours(sh){ return (sh.jobs||[]).reduce((a,j,i)=>a+jobTotal(sh, i),0); }
   function lastOdo(sh){ let v = Number(sh.firstOdo); (sh.jobs||[]).forEach(j=>{ const o = Number(j.odo); if (!isNaN(o) && o > v) v = o; }); return v; }
   function clockHours(a,b){
     const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s||'').trim()); if (!r) return NaN; return Number(r[1])*60+Number(r[2]); };
@@ -346,7 +350,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 19 Nov (B)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 19 Nov (C)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -560,10 +564,10 @@
     else if (jobs.length){ next = `<button class="next" data-go="end"><div style="flex:1"><div class="t">All jobs done</div><div class="b">End day</div><div class="c">Last odometer and clock times</div></div><span style="font-size:30px">›</span></button>`; }
     else next = `<button class="next" data-addjob><div style="flex:1"><div class="t">No jobs for today</div><div class="b">Start an unplanned job</div></div><span style="font-size:30px">›</span></button>`;
     const svc = kmToService(sh); const tv = travelInfo(sh, key);
-    const trav = i => tv.before[i] != null ? `<div class="trav">🚚 Travel ${fmtHM(tv.before[i] / 60)}</div>` : '';
+    const trav = i => tv.before[i] != null ? `<div class="trav">🚚 Travel to this job: ${fmtHM(tv.before[i] / 60)}</div>` : '';
     const span = j => [hhmm(j.startedAt, key), hhmm(j.doneAt, key)].filter(Boolean).join('–');
     const cards = jobs.map((j, i) => trav(i) + (j.done
-        ? `<div class="jc done"><button class="who" data-jobedit="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${[j.card ? 'Job ' + esc(j.card) : '', span(j), fmtHM(Number(j.hrs) || 0)].filter(Boolean).join(' · ')}</span></button><span class="chip done">✓ Done</span></div>`
+        ? `<div class="jc done"><button class="who" data-jobedit="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${[j.card ? 'Job ' + esc(j.card) : '', span(j), fmtHM(jobTotal(sh, i)) + (jobSplit(sh, i) ? ' (' + jobSplit(sh, i) + ')' : '')].filter(Boolean).join(' · ')}</span></button><span class="chip done">✓ Done</span></div>`
         : `<div class="jc busy"><button class="who" data-editjob="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${[j.card ? 'Job ' + esc(j.card) : '', esc(j.contact || ''), j.startedAt ? 'arrived ' + (hhmm(j.startedAt, key) || new Date(j.startedAt).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' })) : ''].filter(Boolean).join(' · ')}</span></button><button class="go n" data-editjob="${i}">Open</button></div>`))
       .concat(todo.map(x => `<div class="jc"><button class="who" data-schedopen="${esc(x.id)}"><span class="n">${esc(x.customer || x.card || 'Job')}</span><span class="h">${[x.card ? 'Job ' + esc(x.card) : '', x.time ? esc(x.time) : '', esc(x.contact || '')].filter(Boolean).join(' · ')}</span></button><button class="go y" data-schedto="${esc(x.id)}">Start</button></div>`));
     const nDone = jobs.filter(j => j.done).length, nBusy = jobs.length - nDone;
@@ -575,7 +579,7 @@
       <button type="button" data-addjob style="border:0;background:none;color:var(--navy);font-weight:800;font-size:16px;font-family:inherit;padding:10px;cursor:pointer">+ Unplanned job</button>
       ${comingUp(key)}
       ${jobs.length && busyIdx < 0 && tv.lastFin != null && key === todayKey() ? `<div class="trav">🚚 On the road since ${p2(Math.floor(tv.lastFin / 60))}:${p2(tv.lastFin % 60)} – counted as travel when you arrive at the next job</div>` : ''}
-      ${jobs.length ? `<div class="hint" style="text-align:center">Job time ${fmtHM(jobHours(sh))}${tv.total ? ' · travel ' + fmtHM(tv.total / 60) : ''} · ${fmtKm(km)} km so far</div>` : ''}
+      ${jobs.length ? `<div class="hint" style="text-align:center">Job time ${fmtHM(jobHours(sh))}${tv.total ? ' (incl. travel)' : ''} · ${fmtKm(km)} km so far</div>` : ''}
       <button class="btn secondary" data-go="end">End day</button>
       ${storeLine()}</main>` + tabs('today');
   }
@@ -608,7 +612,7 @@
           <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">${esc(j.card||'')}${j.card&&(j.customer||j.desc)?' · ':''}${esc(j.customer||j.desc||'')}</span>
           <span class="hint">${j.contact ? 'Contact: ' + esc(j.contact) : ''}${j.done || (j.odo !== '' && j.odo != null) ? (j.contact ? ' · ' : '') + 'Odometer ' + fmtKm(j.odo) + ' km' : ''}</span>
           ${j.done ? '<span class="pill ok" style="align-self:flex-start">Completed</span>' : '<span class="pill prog" style="align-self:flex-start">Busy – tap to open</span>'}</span>
-          <span class="big" style="font-size:16px;white-space:nowrap">${fmtHM(Number(j.hrs)||0)}</span></button>
+          <span class="big" style="font-size:16px;white-space:nowrap">${fmtHM(jobTotal(sh, i))}</span></button>
         <button type="button" data-done="${i}" aria-pressed="${!!j.done}" aria-label="${j.done ? 'Completed – tap to undo' : 'Mark job ' + (i+1) + ' completed'}"
           style="width:64px;flex-shrink:0;border-radius:12px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;${j.done ? 'background:var(--A);color:#fff;border:2px solid var(--A)' : 'background:#fff;color:var(--navyDeep);border:2px dashed var(--field)'}">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>${j.done ? 'Done' : 'Finish'}</button>
@@ -684,6 +688,7 @@
     const n = editing ? state.jobIdx + 1 : sh.jobs.length + 1;
     const quick = !editing && !p;                          // Add job: just who/what, then start
     const finishing = editing && !!state._finishing && !j.done;
+    const trTo = editing ? jobTravel(sh, state.jobIdx) : 0;
     const tArr0 = hhmm(j.startedAt, key), tFin0 = j.done ? hhmm(j.doneAt, key) : finishing ? nowHM() : '';
     if (finishing && !(Number(j.hrs) > 0)){ const a = minsOf(tArr0), f = minsOf(tFin0); state._hrs = a != null && f != null && f > a ? Math.round((f - a) / 5) * 5 / 60 : hoursSince(j.startedAt); }
     const hide = quick ? 'style="display:none"' : '';
@@ -704,12 +709,12 @@
           <div class="field"><label for="tArr">Arrived on site</label><input id="tArr" type="time" value="${esc(tArr0)}"></div>
           <div class="field" id="tFinBox" ${j.done || finishing ? '' : 'style="visibility:hidden"'}><label for="tFin">Finished</label><input id="tFin" type="time" value="${esc(tFin0)}"></div></div>
         <span class="hint" style="display:block;margin:6px 0 18px">Time between finishing one job and arriving at the next is counted as travel.</span>
-        <div class="field"><span class="lab" id="hrsLab">${finishing ? 'Time on this job' : 'Hours on job'}</span>
+        <div class="field"><span class="lab" id="hrsLab">Time on site</span>
           <div class="stepper" role="group" aria-labelledby="hrsLab">
             <button type="button" id="minus" aria-label="Less time">−</button>
             <div class="val" id="hrsVal" aria-live="polite">${fmtHM(state._hrs)}</div>
             <button type="button" id="plus" aria-label="More time">+</button></div>
-          <span class="hint" id="hrsHint">${finishing && j.startedAt ? 'Worked out from arrival to finish – adjust if needed. ' : ''}Steps of 0.5 h</span></div>
+          <span class="hint" id="hrsHint">${finishing && j.startedAt ? 'Worked out from arrival to finish – adjust if needed. ' : ''}Steps of 0.5 h${trTo ? '<br><b>+ ' + fmtHM(trTo) + ' travel to this job</b> is added to the job\'s hours.' : ''}</span></div>
         </div>
         <div class="field" ${quick || finishing ? 'style="display:none"' : ''}><span class="lab" id="doneLab">Job status</span>
           <div class="seg" role="group" aria-labelledby="doneLab" style="width:100%">
@@ -940,7 +945,7 @@
       ${show.map(({ k, i, j }) => `<button type="button" data-pjk="${k}" data-pji="${i}" data-text="${esc([j.card, j.customer || j.desc, j.contact].join(' ').toLowerCase())}" style="display:flex;align-items:center;gap:10px;text-align:left;width:100%;border:1.5px solid var(--line);border-radius:12px;background:#fff;padding:10px;font-family:inherit;cursor:pointer;color:var(--ink)">
         <span style="background:var(--navyDeep);color:#fff;border-radius:8px;padding:6px 8px;font-weight:800;font-size:13px;min-width:58px;text-align:center;line-height:1.2">${esc(niceDate(k).replace(/,? \d{4}$/, '').replace(/^\w+,? /, ''))}</span>
         <span style="flex:1;min-width:0"><b style="font-size:15px">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · ') || 'Job')}</b>
-          <span class="hint" style="display:block">${esc([fmtHM(Number(j.hrs) || 0), j.contact ? 'Contact: ' + j.contact : ''].filter(Boolean).join(' · '))}</span></span>
+          <span class="hint" style="display:block">${esc([fmtHM(jobTotal(state.sheets[k], i)), j.contact ? 'Contact: ' + j.contact : ''].filter(Boolean).join(' · '))}</span></span>
         ${j.done ? '<span class="pill ok">✓ Done</span>' : '<span class="pill prog">Busy</span>'}</button>`).join('')}
       ${all.length > show.length ? `<button type="button" class="btn secondary" id="allJobs" style="height:44px;font-size:14px;border-width:1.5px">Show all ${all.length} jobs</button>` : ''}
       <span class="hint">Tap a job to open it – change its details, inventory and reports, or add new ones.</span></section>`;
@@ -954,7 +959,7 @@
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${j.done ? '<span class="pill ok">✓ Completed</span>' : '<span class="pill prog">Not finished</span>'}<span class="hint">${esc(niceDate(k, true))} · Job ${i + 1} on the sheet</span></div>
         <div style="font-size:19px;font-weight:700">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · ') || 'Job')}</div>
         ${j.contact ? `<div class="hint" style="font-size:14px;color:var(--label)">Contact: <b>${esc(j.contact)}</b></div>` : ''}
-        <div class="hint" style="font-size:14px">${esc(fmtHM(Number(j.hrs) || 0))} on the job${j.odo !== '' && j.odo != null ? ' · odometer ' + esc(fmtKm(j.odo)) + ' km' : ''}</div>
+        <div class="hint" style="font-size:14px">${esc(fmtHM(jobTotal(sh, i)))} on the job${jobSplit(sh, i) ? ' (' + esc(jobSplit(sh, i)) + ')' : ''}${j.odo !== '' && j.odo != null ? ' · odometer ' + esc(fmtKm(j.odo)) + ' km' : ''}</div>
         ${j.notes ? `<div class="hint" style="font-size:14px">${esc(j.notes)}</div>` : ''}
         <button class="btn secondary" type="button" data-pjedit="${i}" style="height:46px;font-size:14px;border-width:1.5px;margin-top:4px">✎ Edit job details (hours, notes, status)</button>
       </section>
@@ -1070,14 +1075,14 @@
     L.push('Technician: ' + (s.tech||'')); L.push('Assistant: ' + (s.assistant||'–')); L.push('Vehicle reg: ' + (s.reg||''));
     L.push('First odometer: ' + fmtKm(s.firstOdo) + ' km'); L.push('');
     const tvS = travelInfo(s, k);
-    (s.jobs||[]).forEach((j,i)=>{ const sp = [hhmm(j.startedAt, k), hhmm(j.doneAt, k)].filter(Boolean).join('–'); L.push(`Job ${i+1}: ${[j.card,j.customer||j.desc].filter(Boolean).join(' – ')} | ${sp ? sp + ' | ' : ''}${fmtHM(Number(j.hrs)||0)}${tvS.before[i] != null ? ' | travel ' + fmtHM(tvS.before[i] / 60) : ''} | odo ${fmtKm(j.odo)} km${j.notes?' | '+j.notes:''}`); });
+    (s.jobs||[]).forEach((j,i)=>{ const sp = [hhmm(j.startedAt, k), hhmm(j.doneAt, k)].filter(Boolean).join('–'); L.push(`Job ${i+1}: ${[j.card,j.customer||j.desc].filter(Boolean).join(' – ')} | ${sp ? 'on site ' + sp + ' | ' : ''}${fmtHM(jobTotal(s, i))}${jobSplit(s, i) ? ' (' + jobSplit(s, i) + ')' : ''} | odo ${fmtKm(j.odo)} km${j.notes?' | '+j.notes:''}`); });
     L.push('');
     const last = s.lastOdo || lastOdo(s);
     L.push('Last odometer: ' + fmtKm(last) + ' km');
     const ch = clockHours(s.clockIn, s.clockOut);
     L.push('Clock time: ' + (isNaN(ch)?'–':fmtHM(ch) + ` (${s.clockIn}–${s.clockOut})`));
     L.push('Job card time: ' + fmtHM(jobHours(s)));
-    if (tvS.total) L.push('Travel time: ' + fmtHM(tvS.total / 60));
+    if (tvS.total) L.push('Travel time (included above): ' + fmtHM(tvS.total / 60));
     L.push('Km travelled: ' + fmtKm(last - Number(s.firstOdo)));
     const c = s.condition||{};
     L.push(''); L.push('Vehicle condition: ' + ['Tyres','Windows','Water','Oil','Body'].map(x=>x+' '+(c[x]||'–')).join(', '));
@@ -1103,7 +1108,7 @@
       </div>
       <div class="card" style="display:flex;flex-direction:column;gap:8px">
         <div class="hint">Odometer ${fmtKm(s.firstOdo)} → ${fmtKm(last)} km${s.clockIn?` · ${esc(s.clockIn)}–${esc(s.clockOut||'')}`:''}</div>
-        ${(s.jobs||[]).map((j,i)=>`<div style="display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:8px"><span class="num-badge" style="width:26px;height:26px;font-size:12px">${i+1}</span><span style="flex:1;font-size:14px">${esc([j.card,j.customer||j.desc].filter(Boolean).join(' · '))}<br><span class="hint">${j.done?'<b style="color:var(--A)">✓ Completed</b> · ':'Not finished · '}${j.contact?'Contact: '+esc(j.contact)+' · ':''}odo ${fmtKm(j.odo)} km${j.notes?' · '+esc(j.notes):''}</span></span><b>${fmtHM(Number(j.hrs)||0)}</b></div>
+        ${(s.jobs||[]).map((j,i)=>`<div style="display:flex;gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:8px"><span class="num-badge" style="width:26px;height:26px;font-size:12px">${i+1}</span><span style="flex:1;font-size:14px">${esc([j.card,j.customer||j.desc].filter(Boolean).join(' · '))}<br><span class="hint">${j.done?'<b style="color:var(--A)">✓ Completed</b> · ':'Not finished · '}${j.contact?'Contact: '+esc(j.contact)+' · ':''}odo ${fmtKm(j.odo)} km${jobSplit(s, i)?' · '+esc(jobSplit(s, i)):''}${j.notes?' · '+esc(j.notes):''}</span></span><b>${fmtHM(jobTotal(s, i))}</b></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:36px"><button type="button" class="pastbtn" data-past="${i}" data-type="EQUIPMENT">📋 Client's inventory</button><button type="button" class="pastbtn" data-past="${i}" data-type="INSPECTION">🔍 Forklift reports</button></div>`).join('') || '<div class="hint">No jobs</div>'}
         ${(s.jobs||[]).length ? '<div class="hint">Open a job\'s inventory or forklift reports to make changes. Certificates are made again from the changes.</div>' : ''}
       </div>
@@ -1123,7 +1128,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 19 Nov (B)</span>
+        <span class="hint">App version 19 Nov (C)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
@@ -1215,10 +1220,10 @@
           const vy = ry + band + (rowH - band) / 2 + 1.5;
           doc.setFont('helvetica','bold'); doc.setFontSize(rowH < 12 ? 9 : 10.5);
           const sp = [hhmm(j.startedAt, k), hhmm(j.doneAt, k)].filter(Boolean).join(' – '), tb = tvP.before[i];
-          const sub = [sp ? 'ON SITE ' + sp : '', tb != null ? 'TRAVEL ' + fmtHM(tb / 60).toUpperCase() : ''].filter(Boolean).join('   ·   ');
+          const sub = [tb != null ? 'TRAVEL ' + fmtHM(tb / 60).toUpperCase() : '', 'ON SITE ' + (sp ? sp + ' ' : '') + '(' + fmtHM(Number(j.hrs) || 0).toUpperCase() + ')'].filter(Boolean).join('  +  ');
           if (sub && rowH >= 11){ doc.text(cut(j.customer || j.desc || '', c2 - c1 - 4), c1 + 2, vy - 2); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text(sub, c1 + 2, vy + 2.6); doc.setFont('helvetica','bold'); doc.setFontSize(rowH < 12 ? 9 : 10.5); }
           else doc.text(cut(j.customer || j.desc || '', c2 - c1 - 4), c1 + 2, vy);
-          doc.text(fmtHM(Number(j.hrs) || 0), (c2 + c3) / 2, vy, { align:'center' });
+          doc.text(fmtHM(jobTotal(s, i)), (c2 + c3) / 2, vy, { align:'center' });
           doc.text(fmtKm(j.odo) + ' km', (c3 + R) / 2, vy, { align:'center' });
         }
       }
