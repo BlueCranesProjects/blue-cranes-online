@@ -358,7 +358,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (G)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (H)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -1160,7 +1160,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 20 Nov (G)</span>
+        <span class="hint">App version 20 Nov (H)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
@@ -1297,7 +1297,13 @@
     finally { if (btn){ btn.disabled = false; btn.innerHTML = old; } }
   }
   // for the job pack in the inventory tool: the day's time sheet as a PDF file
-  window.BCT = { sheetPdf: k => state.sheets[k] ? makePdf(k, null, true) : null, hasSheet: k => !!state.sheets[k] };
+  window.BCT = { sheetPdf: k => state.sheets[k] ? makePdf(k, null, true) : null, hasSheet: k => !!state.sheets[k],
+    // Admin: another technician's sheet (from the cloud) as a PDF, without touching this page's own data
+    sheetPdfOf: async (sheet, profile, settings) => { const k = sheet && sheet.date; if (!k) return null;
+      const keep = { s:state.sheets[k], p:state.profile, st:state.settings };
+      state.sheets[k] = JSON.parse(JSON.stringify(sheet)); state.profile = profile || null; state.settings = Object.assign({}, state.settings, settings || {});
+      try { return await makePdf(k, null, true); }
+      finally { if (keep.s) state.sheets[k] = keep.s; else delete state.sheets[k]; state.profile = keep.p; state.settings = keep.st; } } };
 
   function modal(html){
     const bg = document.createElement('div'); bg.className='modal-bg';

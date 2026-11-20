@@ -353,7 +353,7 @@
       ${g.total ? B('data-invpdf', '⬇ Inventory PDF') + B('data-cen', '⬇ Excel') + B('data-certs', '⬇ Certificates') : ''}
       ${nfl ? B('data-flpdf', `⬇ Forklift reports (${nfl})`) : ''}
       ${(g.cr || []).length ? B('data-crpdf', `⬇ Crane / hoist reports (${g.cr.length})`) : ''}
-      ${g.total || nfl || (g.cr || []).length ? B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
+      ${g.total || nfl || (g.cr || []).length ? B('data-jobpdf', '🖨 Job PDF (print)') + B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
   let progBusy = false, progAt = 0;
   async function loadProgress(){
     if (progBusy || Date.now() - progAt < 20000) return; progBusy = true; progAt = Date.now(); const cache = {}, flc = {}, crc = {}; let changed = false;
@@ -411,9 +411,41 @@
     return { blob:new Blob([await out.save()], { type:'application/pdf' }), name, type:'application/pdf' };
   }
   const packName = (what, l) => `${what}_${String((l && l.job) || 'job').replace(/[^\w\-]+/g, '_')}_${String((l && l.customer) || '').replace(/[^\w\-]+/g, '_')}_${(l && l.date) || ''}.pdf`.replace(/_+\.pdf$/, '.pdf');
-  // which = 'inv' | 'certs' | 'fl' | 'cr' | 'all'
+  // ---- Job PDF: everything for one job except the certificates, in one PDF to print with one click ----
+  // inventory → forklift reports → crane / hoist reports (client's) → technician's quote pages → the day's time sheet
+  async function jobPdf(id){
+    const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return null;
+    const parts = [];   // { blob, from } – from = first page to take (quote pages only)
+    const own = async b => new Blob([new Uint8Array(await b.arrayBuffer())], { type:'application/pdf' });
+    if (g.list){ const t = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
+      try { const f = await t.api.listDoc(JSON.parse(JSON.stringify(g.list))); parts.push({ blob:await own(f.blob) }); } finally { t.done(); } }
+    if ((g.fl || []).length){ const t = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
+      try { for (const r of g.fl.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
+          const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) }); } }
+      finally { t.done(); } }
+    if ((g.cr || []).length){ const t = await hiddenTool('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
+      try { const reps = g.cr.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true })), quote = [];
+        for (const r of reps){ const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); const n = a.doc.getNumberOfPages();
+          parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) });
+          if (t.api.buildTechPdf && t.api.needsTech && t.api.needsTech(r.state)){ const b = await t.api.buildTechPdf(JSON.parse(JSON.stringify(r.state)));
+            if (b.doc.getNumberOfPages() > n) quote.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), from:n }); } }
+        parts.push(...quote); }
+      finally { t.done(); } }
+    try { const day = j.sheetDate || j.date; const sheets = (await window.Cloud.listKindOf(g.uid, 'sheet')).map(d => d.data || {}); const sh = sheets.find(x => x.date === day);
+      if (sh){ let prof = {}, set = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
+        try { const ss = await window.Cloud.listKindOf(g.uid, 'settings'); set = (ss[0] && (ss[0].data || ss[0])) || {}; } catch(e){}
+        const t = await hiddenTool('../timesheet/?embed=1', w => w.BCT && w.BCT.sheetPdfOf && w.BCT);
+        try { const f = await t.api.sheetPdfOf(sh, prof, set); if (f) parts.push({ blob:await own(f.blob) }); } finally { t.done(); } } } catch(e){ console.error('time sheet', e); }
+    if (!parts.length) return null;
+    const P = await pdfLib(); const out = await P.PDFDocument.create();
+    for (const p of parts){ const src = await P.PDFDocument.load(new Uint8Array(await p.blob.arrayBuffer())); const idx = src.getPageIndices().filter(i => i >= (p.from || 0));
+      (await out.copyPages(src, idx)).forEach(pg => out.addPage(pg)); }
+    return { blob:new Blob([await out.save()], { type:'application/pdf' }), name:packName('Job', { job:j.card, customer:j.customer, date:j.sheetDate || j.date }), type:'application/pdf' };
+  }
+  // which = 'inv' | 'certs' | 'fl' | 'cr' | 'all' | 'job'
   async function jobFiles(id, which){
     const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return [];
+    if (which === 'job'){ const f = await jobPdf(id); return f ? [f] : []; }
     const files = [];
     if (g.list && (which === 'inv' || which === 'certs' || which === 'all')){
       const t = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
@@ -694,6 +726,7 @@
     app.querySelectorAll('[data-invpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.invpdf, 'inv', b));
     app.querySelectorAll('[data-crpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.crpdf, 'cr', b));
     app.querySelectorAll('[data-flpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.flpdf, 'fl', b));
+    app.querySelectorAll('[data-jobpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.jobpdf, 'job', b));
     app.querySelectorAll('[data-allpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.allpdf, 'all', b));
     if (S.tab === 'jobs') loadProgress();
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
