@@ -301,8 +301,8 @@
     <div class="grid">
       <div class="full"><label for="engName">Technician's name</label><input id="engName" readonly class="auto" placeholder="From your profile"></div>
       <div class="full"><label>Technician's signature <span style="font-weight:400">(from your profile)</span></label><div class="sigwrap"><canvas id="sigEng"></canvas><span class="ph">From your profile</span></div></div>
-      <div class="full"><label for="custName">Customer's name</label><input id="custName"></div>
-      <div class="full"><label>Customer's signature</label><div class="sigwrap"><canvas id="sigCust"></canvas><button class="clr" data-c="sigCust">Clear</button><span class="ph">Sign here</span></div></div>
+      <div class="full" style="display:none"><label for="custName">Customer's name</label><input id="custName"></div>
+      <div class="full" style="display:none"><label>Customer's signature</label><div class="sigwrap"><canvas id="sigCust"></canvas><button class="clr" data-c="sigCust">Clear</button><span class="ph">Sign here</span></div></div>
     </div>
   </section>
 </main>
@@ -782,11 +782,11 @@ async function buildPdf(st,opts){
     doc.setDrawColor(60,66,80);doc.rect(L,y,W,remH);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text("REMARKS :",L+1.5,y+4.6);
     doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(10,20,60);doc.text(lines,L+20,y+4.8);y+=remH;
     const c2=W/2;
-    cell(L,y,c2,"CUSTOMER NAME :",U(f.custName));cell(L+c2,y,c2,"TECHNICIAN NAME :",U(f.engName));y+=rh;
-    const SH=14;doc.setDrawColor(60,66,80);[0,1].forEach(k=>doc.rect(L+k*c2,y,c2,SH));doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);
-    doc.text("CUSTOMER SIGNATURE :",L+1.5,y+4.6);doc.text("TECHNICIAN SIGNATURE :",L+c2+1.5,y+4.6);
+    // no customer's name / signature on the reports (removed 20 Nov): technician name and signature side by side
+    const SH=14;doc.setDrawColor(60,66,80);doc.rect(L,y,c2,SH);doc.rect(L+c2,y,c2,SH);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);
+    doc.text("TECHNICIAN NAME :",L+1.5,y+4.6);doc.text("TECHNICIAN SIGNATURE :",L+c2+1.5,y+4.6);doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(10,20,60);doc.text(U(f.engName),L+1.5,y+10.8);
     const sig=(img,x)=>{if(!img)return;try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(50/d.w,11/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+38+(50-w)/2,y+SH-1-h,w,h,undefined,"FAST");}catch(e){}};
-    sig(st.sig.sigCust,L);sig(st.sig.sigEng,L+c2);y+=SH+3;
+    sig(st.sig.sigEng,L+c2);y+=SH+3;
     const leg=(v,x,t)=>{if(v==="na"){doc.setFillColor(...NAF);doc.setDrawColor(150,156,170);doc.rect(x-3.5,y-2.2,7,4.4,"FD");}mark(doc,v,x,y);doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(t,x+4,y+1.2);};
     leg("ok",L+3,"NO APPARENT DEFECT");leg("w",L+48,"WORN BUT SERVICEABLE");leg("x",L+98,"PARTS NEED URGENT REPLACEMENT");leg("na",L+163,"NOT APPLICABLE");
     doc.setFont("helvetica","normal");doc.setTextColor(60,66,80);doc.setFontSize(6.5);doc.text("L/T long travel · C/T cross travel · H hoist · A/H auxiliary hoist · grey = not applicable",L,y+6);

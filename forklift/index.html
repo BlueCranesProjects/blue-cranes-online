@@ -260,8 +260,8 @@
       <div class="full"><label>Engineer's signature <span style="font-weight:400">(from your profile)</span></label><div class="sigwrap"><canvas id="sigEng"></canvas><button class="upl" type="button" id="engUpBtn">Upload</button><input type="file" accept="image/*" id="engUpload" class="vh"><button class="clr" data-c="sigEng">Clear</button><span class="ph">Sign here or upload</span></div><div class="pastebox" contenteditable="true" id="engPaste" inputmode="none">Or copy a signature picture, then long-press here and tap Paste</div></div>
       <div class="full" id="utBox" style="display:none"><div style="font-size:12px;font-weight:700;color:var(--navy);margin:4px 0 8px">LOAD TEST CERTIFICATE — UNDERSTUDY TO</div><div class="pair two"><div><label for="utName">Name</label><input id="utName" placeholder="e.g. J. Van Huyssteen"></div><div><label for="utLmi">LMI no</label><input id="utLmi" inputmode="numeric"></div></div>
         <label style="margin-top:8px">Signature</label><div class="sigwrap"><canvas id="sigUt"></canvas><button class="upl" type="button" id="utUpBtn">Upload</button><input type="file" accept="image/*" id="utUpload" class="vh"><button class="clr" data-c="sigUt">Clear</button><span class="ph">Sign here or upload</span></div><div class="pastebox" contenteditable="true" id="utPaste" inputmode="none">Or copy a signature picture, then long-press here and tap Paste</div><div style="font-size:11px;color:#6b7280;margin-top:4px">Draw it, upload a photo of it, or paste it. Remembered for the next load test.</div></div>
-      <div class="full"><label for="custName">Customer's name</label><input id="custName"></div>
-      <div class="full"><label>Customer's signature</label><div class="sigwrap"><canvas id="sigCust"></canvas><button class="clr" data-c="sigCust">Clear</button><span class="ph">Sign here</span></div></div>
+      <div class="full" style="display:none"><label for="custName">Customer's name</label><input id="custName"></div>
+      <div class="full" style="display:none"><label>Customer's signature</label><div class="sigwrap"><canvas id="sigCust"></canvas><button class="clr" data-c="sigCust">Clear</button><span class="ph">Sign here</span></div></div>
     </div>
   </section>
 </main>
@@ -633,8 +633,8 @@ async function buildPdf(st){const prev=state;state=st;try{
   function sig(x,label1,name,label2,img){doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(label1,x,y+3);doc.line(x+30,y+3.6,x+92,y+3.6);doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(10,20,60);doc.text(name||"",x+31,y+2.6);
     doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(label2,x,y+17);doc.line(x+37,y+17.6,x+92,y+17.6);
     if(img){try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(48/d.w,12/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+40+(48-w)/2,y+17.2-h,w,h,undefined,"FAST");}catch(e){}}}
-  sig(L,"CUSTOMER'S NAME:",f.custName,"CUSTOMER'S SIGNATURE:",state.sig.sigCust);
-  sig(L+98,"ENGINEER'S NAME:",f.engName,"ENGINEER'S SIGNATURE:",state.sig.sigEng);
+  // no customer's name / signature on the reports (removed 20 Nov)
+  sig(L,"ENGINEER'S NAME:",f.engName,"ENGINEER'S SIGNATURE:",state.sig.sigEng);
   // overflow remarks page
   if(rem.length){let all=[];doc.setFontSize(9);rem.forEach(t=>all.push(...doc.splitTextToSize(t,W-4)));if(all.length>maxLines){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("REMARKS (continued) — Doc No "+(f.docno||"")+"  "+(f.customer||""),L,16);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(10,20,60);doc.text(all,L,24);}}
 
