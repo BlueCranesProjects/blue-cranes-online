@@ -632,7 +632,7 @@
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = Number(b.dataset.del); const r = l.rows[i];
       const go = () => { l.rows.splice(i, 1); saveList(l); render(); };
       if (r.serial || r.desc) confirmBox('Remove item ' + (i + 1) + (r.serial ? ' (' + r.serial + ')' : '') + ' from this list?', 'Remove', go); else go(); });
-    app.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { const i = Number(b.dataset.st); const r = l.rows[i]; r.status = r.status === b.dataset.v ? '' : b.dataset.v; saveList(l); render();
+    app.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { const i = Number(b.dataset.st); const r = l.rows[i]; r.status = r.status === b.dataset.v ? '' : b.dataset.v; if (r.status) r.at = (S.active && S.active.date) || today(); else delete r.at; saveList(l); render();
       if (r.status === 'UNSAFE'){ const u = document.getElementById('u' + i); if (u){ u.scrollIntoView({ block:'center' }); if (!u.value) u.focus(); } } });
     app.querySelectorAll('[data-photo]').forEach(inp => inp.onchange = async () => { const i = Number(inp.dataset.photo); const f = inp.files && inp.files[0]; if (!f) return;
       try { toast('Saving photo…'); const data = await shrinkPhoto(f); const r = l.rows[i]; if (!r.id) r.id = rowId(); const pid = (l.id + '_' + r.id).replace(/[^\w\-]+/g, '_'); photoPut(pid, data); r.photo = pid; saveList(l, true); render(); toast('Photo saved'); }
@@ -805,7 +805,7 @@
     row('REMARKS', unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' + (r.reason ? ' – ' + U(r.reason) : '') : 'SAFE FOR USE AT TIME OF INSPECTION', unsafe ? RED : GREEN);
     y += (22 - 7.9) * CERT_K; doc.setFontSize(12.5);
     doc.text('INSPECTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
-    y += 15 * CERT_K; doc.text('INSPECTION DATE', L, y); doc.text(dmy(l.date), L + 44, y);
+    y += 15 * CERT_K; doc.text('INSPECTION DATE', L, y); doc.text(dmy(r.at || l.date), L + 44, y);
     doc.setFontSize(11);
     ['1ST', '2ND', '3RD'].forEach((n, k) => { y += (k ? 12 : 15) * CERT_K; doc.text(n + ' INSPECTION', L, y); doc.text('DATE', L + 50, y); dots(L + 62, L + 84, y); doc.text('NAME', L + 87, y); dots(L + 100, L + 124, y); doc.text('SIGNATURE', L + 127, y); dots(L + 150, R, y);
       y += 12 * CERT_K; doc.text('JOB NO', L, y); dots(L + 17, L + 46, y); doc.text('REMARKS', L + 50, y); dots(L + 71, R, y); });
@@ -843,9 +843,9 @@
       doc.text('TESTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
       y += 18 * CERT_K; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
       if (ut.lmi){ doc.setFontSize(8.5); doc.text('LMI : ' + ut.lmi, L + 58, y + 4.5); doc.setFontSize(12.5); }
-      y += 15 * CERT_K; doc.text('TEST DATE', L, y); doc.text(dmy(l.date), L + 44, y);
-      y += 12 * CERT_K; doc.text('PREVIOUS TEST DATE:  ', L, y); doc.text('NEXT TEST DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(l.date, 12))), R, y, { align:'right' });
-      y += 12 * CERT_K; doc.text('6 MONTHLY THOROUGH INSPECTION DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(l.date, 6))), L, y);
+      y += 15 * CERT_K; doc.text('TEST DATE', L, y); doc.text(dmy(r.at || l.date), L + 44, y);
+      y += 12 * CERT_K; doc.text('PREVIOUS TEST DATE:  ', L, y); doc.text('NEXT TEST DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(r.at || l.date, 12))), R, y, { align:'right' });
+      y += 12 * CERT_K; doc.text('6 MONTHLY THOROUGH INSPECTION DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(r.at || l.date, 6))), L, y);
       y += 15 * CERT_K; doc.setFontSize(11);
       doc.text('THOROUGH INSPECTION', L, y); doc.text('DATE', L + 50, y); dots(L + 62, L + 84, y); doc.text('NAME', L + 87, y); dots(L + 100, L + 124, y); doc.text('SIGNATURE', L + 127, y); dots(L + 150, R, y);
       y += 12 * CERT_K; doc.text('JOB NO', L, y); dots(L + 17, L + 46, y); doc.text('REMARKS', L + 50, y); dots(L + 71, R, y);

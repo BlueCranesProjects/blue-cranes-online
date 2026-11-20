@@ -773,6 +773,7 @@ function toEquipment(st){
   const lt=st.type==="LOAD TEST";
   const xs=vis().filter(i=>st.res[i]==="x").map(i=>itemName(i)+" (X)");
   const auto="See report "+(f.docno||"")+(xs.length?" – "+xs.join(", "):"");
+  r.at=f.date||today();   // the day this forklift was tested (certificates use it)
   Object.assign(r,{fl:rid,auto:added||!!r.auto,serial:String(f.serial||r.serial||"").toUpperCase(),make:f.make||r.make||"",swl:String(f.swl||r.swl||"").replace(/[^\d.]/g,""),
     status:st.status==="UNSAFE"?"UNSAFE":st.status==="SAFE"?"SAFE":(r.status||""),
     report:{no:f.docno||"",type:lt?"Load test":"Inspection",cert:lt?certNo(f):""}});

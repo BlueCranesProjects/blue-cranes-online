@@ -829,6 +829,7 @@ function toEquipment(st){
   Object.assign(r,{cr:rid,serial:String(f.serial||r.serial||"").toUpperCase(),make:f.make||r.make||"",swl:r.swl||String(f.swl||"").replace(/[^\d.,]/g,""),
     status:st.status==="UNSAFE"?"UNSAFE":st.status==="SAFE"?"SAFE":(r.status||""),
     report:{no:f.docno||"",type:(lt?"Load test":"Inspection")+" (crane / hoist)",cert:d?`C${d.job}/${r.cno||d.n}`:""}});
+  r.at=f.date||today();   // the day this item was tested (certificates use it)
   if(added){r.auto=true;r.desc=f.details||"Crane / hoist";}
   if(!r.desc)r.desc=f.details||"";
   if(!r.loc&&f.location){r.loc=String(f.location).trim();if(!(l.locs||[]).some(x=>x.toLowerCase()===r.loc.toLowerCase()))l.locs=(l.locs||[]).concat(r.loc);}
