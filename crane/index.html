@@ -684,15 +684,24 @@ function quotePages(doc,st){const f=st.f||{},U=v=>String(v||"").toUpperCase(),L=
       parts.forEach(p=>{doc.text(String(p.q||"–"),L+33,yy);doc.text(doc.splitTextToSize(String(p.d||""),78)[0]||"",L+48,yy);doc.text(doc.splitTextToSize(String(p.n||""),R-L-131)[0]||"",L+128,yy);yy+=5.2;allParts.push(p);});yy+=0.8;}
     lab("Repair notes:");if(q.notes){doc.text(notes,L+33,yy);yy+=notes.length*4.6+1.5;}else{doc.setTextColor(140,140,150);doc.text("–",L+33,yy);doc.setTextColor(20,24,40);yy+=5;}
     lab("Extra equipment:");if(extra){doc.text(exl,L+33,yy);}else{doc.setTextColor(140,140,150);doc.text("none",L+33,yy);doc.setTextColor(20,24,40);}
-    if((q.photos||[]).length){doc.setFont("helvetica","italic");doc.setFontSize(8);doc.setTextColor(80,86,100);doc.text(q.photos.length+" repair photo"+(q.photos.length>1?"s":"")+" – see the photo pages",R-3,yy,{align:"right"});doc.setTextColor(20,24,40);doc.setFontSize(9);}
+    if((q.photos||[]).length){doc.setFont("helvetica","italic");doc.setFontSize(8);doc.setTextColor(80,86,100);doc.text(q.photos.length+" repair photo"+(q.photos.length>1?"s":"")+" – see Repair photos",R-3,yy,{align:"right"});doc.setTextColor(20,24,40);doc.setFontSize(9);}
     y+=need;});
   // all parts together, for the quote
   if(allParts.length){const need=14+allParts.length*5.2;if(y+need>284)head(true);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...NV);doc.text("ALL PARTS FOR THIS QUOTE",L,y+4);y+=9;
     doc.setFontSize(8);doc.setTextColor(20,24,40);doc.text("QTY",L,y);doc.text("DESCRIPTION",L+15,y);doc.text("PART / MODEL NO",L+128,y);doc.setDrawColor(180,184,196);doc.line(L,y+1.5,R,y+1.5);y+=6;doc.setFont("helvetica","normal");doc.setFontSize(9);
     allParts.forEach(p=>{doc.text(String(p.q||"–"),L,y);doc.text(doc.splitTextToSize(String(p.d||""),110)[0]||"",L+15,y);doc.text(doc.splitTextToSize(String(p.n||""),R-L-131)[0]||"",L+128,y);y+=5.2;});}
-  // repair photos, item by item
-  const qp=[];items.forEach(r=>{const q=(st.quote||{})[r.id]||{};(q.photos||[]).forEach((p,k)=>qp.push({label:"#"+r.no+" "+rname(r,st)+" – repair photo "+(k+1)+(q.photos.length>1?" of "+q.photos.length:""),p}));});
-  photoPages(doc,qp,"REPAIR PHOTOS (for quote) — Doc No "+(f.docno||"")+"  "+U(f.customer));
+  // all photos straight under the report (3 a row), filling the page and running on to the next page only when needed
+  const qp=[];items.forEach(r=>{const q=(st.quote||{})[r.id]||{};const ph=[].concat(st.photo&&st.photo[r.id]?[st.photo[r.id]]:[],q.photos||[]);
+    ph.forEach((p,k)=>qp.push({label:"#"+r.no+" "+rname(r,st)+(ph.length>1?" ("+(k+1)+"/"+ph.length+")":""),p}));});
+  if(!qp.length)return;
+  const cols=3,gap=4,cw=(R-L-gap*(cols-1))/cols,ch=cw*0.75,rowH=ch+9;
+  if(y+10+rowH>287)head(true);else y+=3;
+  doc.setFont("helvetica","bold");doc.setFontSize(11);doc.setTextColor(...NV);doc.text("REPAIR PHOTOS",L,y+4);y+=8;
+  qp.forEach((it,k)=>{const c=k%cols;if(c===0&&k>0)y+=rowH;if(c===0&&y+rowH>287){head(true);}
+    const x=L+c*(cw+gap);doc.setFont("helvetica","bold");doc.setFontSize(8);doc.setTextColor(20,24,40);doc.text(doc.splitTextToSize(it.label,cw)[0]||"",x,y+3);
+    const sc=Math.min(cw/it.p.w,ch/it.p.h),w=it.p.w*sc,h=it.p.h*sc;doc.setFillColor(244,246,251);doc.rect(x,y+4.5,cw,ch,"F");
+    try{doc.addImage(it.p.src,"JPEG",x+(cw-w)/2,y+4.5+(ch-h)/2,w,h,undefined,"FAST");}catch(e){}
+    doc.setDrawColor(180,184,196);doc.setLineWidth(0.25);doc.rect(x,y+4.5,cw,ch);});
 }
 async function buildPdf(st,opts){
   st=JSON.parse(JSON.stringify(st));st.parts=Object.assign(blank().parts,st.parts||{});st.val=Object.assign(blank().val,st.val||{});st.res=st.res||{};st.note=st.note||{};st.wr=Object.assign(blank().wr,st.wr||{});st.photo=st.photo||{};st.sig=Object.assign(blank().sig,st.sig||{});
@@ -762,7 +771,7 @@ async function buildPdf(st,opts){
     leg("ok",L+3,"NO APPARENT DEFECT");leg("w",L+48,"WORN BUT SERVICEABLE");leg("x",L+98,"PARTS NEED URGENT REPLACEMENT");leg("na",L+163,"NOT APPLICABLE");
     doc.setFont("helvetica","normal");doc.setTextColor(60,66,80);doc.setFontSize(6.5);doc.text("L/T long travel · C/T cross travel · H hoist · A/H auxiliary hoist · grey = not applicable",L,y+6);
     if(over){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("REMARKS (continued) — Doc No "+(f.docno||"")+"  "+U(f.customer),L,16);doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(10,20,60);let all=[];rem.forEach(t=>all.push(...doc.splitTextToSize(t,W)));doc.text(all,L,24);}
-    photoPages(doc,ROWS.filter(r=>r.kind!=="meas"&&xOf(r,st)&&st.photo&&st.photo[r.id]).map(r=>({label:"#"+r.no+" "+rname(r,st)+" – X"+(st.note&&st.note[r.id]?": "+st.note[r.id]:""),p:st.photo[r.id]})),"PHOTOS — Doc No "+(f.docno||"")+"  "+U(f.customer));
+    // (no photo page on the client's report: repair photos go on the technician's report only)
     return {doc,end:y+6,ih};}
   let p=draw();const n=ROWS.filter(r=>r.sec==="Safety"||r.sec==="Electrical").length+2;p=draw(Math.max(3.9,Math.min(4.7,p.ih+(288-p.end)/n)));
   const tech=!!(opts&&opts.tech);if(tech)quotePages(p.doc,st);
