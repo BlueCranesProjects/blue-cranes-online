@@ -931,6 +931,9 @@ if(!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}e
 const goBackTs=()=>{let r=null;try{r=document.referrer?new URL(document.referrer):null;}catch(e){}if(r&&r.origin===location.origin&&r.pathname!==location.pathname&&history.length>1)history.back();else location.href="../timesheet/";};
 $("repClose").onclick=()=>{if(WANT_REPORTS&&!EMBED){goBackTs();return;}$("repPanel").classList.remove("show");if(!ACTIVE&&!EMBED)showGate();};
 if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
+// opened from the job page (Crane / hoist → Inspection or Load test): use that report type
+{const wt=new URLSearchParams(location.search).get("type");let it=null;try{it=JSON.parse(load("bco-cr-item")||"null");}catch(e){}
+  if(ACTIVE&&!EMBED&&!it&&(wt==="INSPECTION"||wt==="LOAD TEST")&&state.type!==wt){state.type=wt;applyState();save();}}
 // opened from a crane / hoist on the client's inventory: a report for that item, with its details filled in
 (function(){let it=null;try{it=JSON.parse(load("bco-cr-item")||"null");localStorage.removeItem("bco-cr-item");}catch(e){}
   if(!it||!ACTIVE||EMBED||Date.now()-(it.at||0)>15*60000){

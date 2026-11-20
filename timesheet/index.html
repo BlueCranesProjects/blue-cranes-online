@@ -301,6 +301,7 @@
     sheet:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
     truck:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
     forklift:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+    crane:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18"/><path d="M6 5v15M18 5v15"/><path d="M12 5v5"/><rect x="10" y="10" width="4" height="3"/><path d="M12 13v3a1.5 1.5 0 1 1-1.5 1.5"/></svg>',
     loadtest:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v8"/><path d="M8 11h8l-1 4H9z"/><path d="M6 21h12"/><path d="M9 15l-1 6M15 15l1 6"/></svg>',
     list:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
     clock:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
@@ -358,7 +359,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (H)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (I)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -677,8 +678,7 @@
         ${j.notes ? `<div class="hint" style="font-size:14px">${esc(j.notes)}</div>` : ''}
       </section>
       <h2 style="padding:4px 2px 0">REPORTS</h2>
-      <button class="tile" data-fl="${state.jobIdx}" data-type="INSPECTION"><span class="ic">${ICON.forklift}</span><span><span class="tt" style="display:block">Forklift inspection</span><span class="ss" style="display:block">Tap to start a new report</span></span><span class="cnt" id="cntI"></span></button>
-      <button class="tile" data-fl="${state.jobIdx}" data-type="LOAD TEST"><span class="ic">${ICON.loadtest}</span><span><span class="tt" style="display:block">Load test</span><span class="ss" style="display:block">Report + certificate</span></span><span class="cnt" id="cntL"></span></button>
+      ${reportGroups('data-fl', state.jobIdx)}
       <button class="tile light" data-fl="${state.jobIdx}" data-type="EQUIPMENT"><span class="ic">${ICON.list}</span><span><span class="tt" style="display:block">Client's inventory</span><span class="ss" style="display:block">Equipment per location, SWL, safe / unsafe</span></span><span class="cnt" id="cntE"></span></button>
       <button class="btn primary" style="margin-top:10px;height:60px;font-size:18px" data-jobfinish="${state.jobIdx}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Finish job</button>
       <button type="button" data-jobedit="${state.jobIdx}" style="border:0;background:none;color:var(--muted);font-weight:600;font-size:14px;font-family:inherit;padding:10px;cursor:pointer">⋯ Edit job details</button>
@@ -882,11 +882,19 @@
     if ((state.view === 'pastjob' && !(state.pjKey && state.sheets[state.pjKey] && (state.sheets[state.pjKey].jobs || [])[state.pjIdx])) || (state.view === 'detail' && !(state.detailKey && state.sheets[state.detailKey])) || (state.view === 'schedjob' && !(state.schedId && state.schedule[state.schedId]))){ state.view = 'today'; render(); return; }
     setTimeout(() => window.scrollTo(0, pl.y), 30);
   }
+  // report groups on a job: Forklift (inspection / load test), Crane / hoist (inspection / load test); tap a group to open it
+  function reportGroups(attr, idx){
+    const sub = (type, label, cnt) => `<button type="button" class="btn" ${attr}="${idx}" data-type="${type}" style="flex:1;height:52px;font-size:15px;background:#fff;color:var(--navyDeep);border:2px solid var(--navy)">${label}<span class="cnt" id="${cnt}" style="margin-left:6px;font-size:12px;font-weight:700;color:var(--label)"></span></button>`;
+    const grp = (g, ic, tt, ss, cnt, a, b) => `<button class="tile" type="button" data-grp="${g}" aria-expanded="${state._grp === g}"><span class="ic">${ic}</span><span style="flex:1"><span class="tt" style="display:block">${tt}</span><span class="ss" style="display:block">${ss}</span></span><span class="cnt" id="${cnt}"></span><span style="font-size:20px;color:var(--yellow);transform:rotate(${state._grp === g ? 180 : 0}deg)">▾</span></button>
+      <div class="grpsub" data-sub="${g}" style="display:${state._grp === g ? 'flex' : 'none'};gap:8px;margin:-4px 0 4px">${a}${b}</div>`;
+    return grp('fl', ICON.forklift, 'Forklift', 'Inspection or load test', 'cntF', sub('INSPECTION', 'Inspection', 'cntI'), sub('LOAD TEST', 'Load test', 'cntL'))
+      + grp('cr', ICON.crane, 'Crane / hoist', 'Inspection or load test', 'cntC', sub('CRANE-INSPECTION', 'Inspection', 'cntCI'), sub('CRANE-LOAD TEST', 'Load test', 'cntCL'));
+  }
   function openReport(k, i, type, editPast){
     keepPlace();
     const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || (j.done && !editPast)) return;
     try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
-    location.href = type === 'EQUIPMENT' ? '../equipment/' : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
+    location.href = type === 'EQUIPMENT' ? '../equipment/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
   }
   // today's scheduled jobs, shown first so the technician sees the day's work; tap one to open it (and its inventory)
   // scheduled jobs after a day (next 14 days), so tomorrow's jobs and their inventories can be opened already
@@ -996,9 +1004,8 @@
         <button class="btn secondary" type="button" data-pjedit="${i}" style="height:46px;font-size:14px;border-width:1.5px;margin-top:4px">✎ Edit job details (hours, notes, status)</button>
       </section>
       <h2 style="padding:4px 2px 0">REPORTS</h2>
-      ${tile('EQUIPMENT', ICON.list, "Client's inventory", 'Add or change items. Crane / hoist reports open from the crane or hoist here.', 'cntE', true)}
-      ${tile('INSPECTION', ICON.forklift, 'Forklift inspection', 'Open saved reports or add a new one', 'cntI')}
-      ${tile('LOAD TEST', ICON.loadtest, 'Load test', 'Report + certificate', 'cntL')}
+      ${tile('EQUIPMENT', ICON.list, "Client's inventory", 'Add or change items. Reports for an item open best from the item here.', 'cntE', true)}
+      ${reportGroups('data-pj', i)}
       <div class="hint">Certificates are made again from your changes.</div>
     </main>`;
   }
@@ -1160,7 +1167,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 20 Nov (H)</span>
+        <span class="hint">App version 20 Nov (I)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
@@ -1357,6 +1364,7 @@
       } catch(e){ err.textContent = authMessage(e); btn.disabled = false; btn.textContent = old; }
     };
 
+    app.querySelectorAll('[data-grp]').forEach(b => b.onclick = () => { state._grp = state._grp === b.dataset.grp ? null : b.dataset.grp; render(); });
     app.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => openReport(curKey(), Number(b.dataset.fl), b.dataset.type));
     app.querySelectorAll('[data-flk]').forEach(b => b.onclick = () => openReport(b.dataset.flk, Number(b.dataset.fli), b.dataset.type));
     app.querySelectorAll('[data-schedstart]').forEach(b => b.onclick = () => {
@@ -1497,7 +1505,12 @@
           rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => {
             const mine = (g.result || []).filter(r => r && r.state && core(r.job || r.state.f.jobno) === core(j.card) && (j.card || norm2(r.state.f.customer) === norm2(j.customer)));
             const ni = mine.filter(r => r.state.type !== 'LOAD TEST').length, nl = mine.length - ni;
-            const a = document.getElementById('cntI'), b = document.getElementById('cntL'); if (a && ni) a.textContent = ni + ' saved'; if (b && nl) b.textContent = nl + ' saved'; }; } catch(e){} }; } catch(e){}
+            const a = document.getElementById('cntI'), b = document.getElementById('cntL'), t = document.getElementById('cntF'); if (a && ni) a.textContent = '(' + ni + ')'; if (b && nl) b.textContent = '(' + nl + ')'; if (t && mine.length) t.textContent = mine.length + ' saved'; }; } catch(e){} }; } catch(e){}
+        try { const rq = indexedDB.open('bc-crane', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
+          rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => {
+            const mine = (g.result || []).filter(r => r && r.state && core(r.job || r.state.f.jobno) === core(j.card) && (j.card || norm2(r.state.f.customer) === norm2(j.customer)));
+            const ni = mine.filter(r => r.state.type !== 'LOAD TEST').length, nl = mine.length - ni;
+            const a = document.getElementById('cntCI'), b = document.getElementById('cntCL'), t = document.getElementById('cntC'); if (a && ni) a.textContent = '(' + ni + ')'; if (b && nl) b.textContent = '(' + nl + ')'; if (t && mine.length) t.textContent = mine.length + ' saved'; }; } catch(e){} }; } catch(e){}
       }
     }
     const dp = document.getElementById('dayPick');
