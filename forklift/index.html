@@ -249,7 +249,7 @@
       <div><label for="prevLoad">Previous load test done</label><select id="prevLoad" class="ysel"></select></div>
       <div><label for="nextLoad">Next load test due <span style="font-weight:400">(12 months)</span></label><input id="nextLoad" type="date"><div class="wrtext" id="wrt-load">WHEN REPAIRED</div><label class="wr" id="wr-load"><input type="checkbox" data-wr="load">When repaired</label></div>
       <div class="full"><label for="remarks">Remarks</label><textarea id="remarks" placeholder="Anything extra for the customer"></textarea>
-        <div style="font-size:11px;color:#6b7280;margin-top:4px">“This inspection test is in accordance with SANS 10388” is printed on every report. Item notes are added to the remarks automatically.</div></div>
+        <div style="font-size:11px;color:#6b7280;margin-top:4px">“This inspection test is in accordance with SANS 10388” is printed on every report. Items marked W or X and item notes are added to the remarks automatically.</div></div>
     </div>
   </section>
 
@@ -610,7 +610,10 @@ async function buildPdf(st){const prev=state;state=st;try{
   const dw=W/3;[["NEXT INSPECTION DUE:",(state.status==="UNSAFE"&&state.wr.insp)?"WHEN REPAIRED":f.nextInsp],["PREVIOUS LOAD TEST DONE:",f.prevLoad],["NEXT LOAD TEST DUE:",(state.status==="UNSAFE"&&state.wr.load)?"WHEN REPAIRED":f.nextLoad]].forEach(([l,v],k)=>{const x=L+k*dw;doc.rect(x,y,dw,rh);doc.setFont("helvetica","bold");doc.setFontSize(7.2);doc.setTextColor(60,66,80);doc.text(l,x+1.5,y+4.6);doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(10,20,60);doc.text(fmt(v),x+dw-2,y+4.8,{align:"right"});});
   y+=rh;
   // remarks
-  const notes=state.note.map((n,i)=>n&&visible(i)?`#${dnum(i)} ${itemName(i)}${state.res[i]?" ("+({ok:"OK",w:"W",x:"X",na:"N/A"}[state.res[i]])+")":""}: ${n}`:null).filter(Boolean);
+  // every item marked W or X gets a remark line by itself (with the technician's note, if any); notes on other items too
+  const MEAN={w:"W (worn but serviceable)",x:"X (needs urgent replacement)"};
+  const notes=ITEMS.map((_,i)=>{if(!visible(i))return null;const n=String(state.note[i]||"").trim(),v=state.res[i],tag=(v==="w"||v==="x")?" – "+MEAN[v]:"";if(!tag&&!n)return null;
+    return `#${dnum(i)} ${itemName(i)}${tag}${n?(tag?". ":": ")+n:""}`;}).filter(Boolean);
   let rem=[];if(f.remarks)rem.push(...f.remarks.split("\n"));
   if(["w","x"].includes(state.res[6])){const fc=forkCalc(false),fp=[];forkSet().forEach(([k,t])=>{if(fc[k])fp.push(`${t} fork V ${state.fork[k+"v"]} mm / H ${state.fork[k+"h"]} mm = ${fc[k].p.toFixed(1)}% wear`);});if(fp.length)rem.push("Fork thickness: "+fp.join("; ")+(state.res[6]==="x"?" - forks to be replaced":""));}
   if(["w","x"].includes(state.res[14])){const cc=chainCalc(false),cp=[];[["l","Left"],["r","Right"]].forEach(([k,t])=>{if(cc[k])cp.push(`${t} chain original ${state.chain[k+"n"]} mm / measured ${state.chain[k+"m"]} mm = ${cc[k].p.toFixed(1)}% stretch`);});if(cp.length)rem.push("Chain: "+cp.join("; "));}

@@ -292,7 +292,7 @@
       <div><label for="nextInsp">Next inspection date <span style="font-weight:400">(6 months)</span></label><input id="nextInsp" type="date"><div class="wrtext" id="wrt-insp">WHEN REPAIRED</div><label class="wr" id="wr-insp"><input type="checkbox" data-wr="insp">When repaired</label></div>
       <div><label for="nextLoad">Next load test due <span style="font-weight:400">(12 months)</span></label><input id="nextLoad" type="date"><div class="wrtext" id="wrt-load">WHEN REPAIRED</div><label class="wr" id="wr-load"><input type="checkbox" data-wr="load">When repaired</label></div>
       <div class="full"><label for="remarks">Remarks</label><textarea id="remarks" placeholder="Anything extra for the customer"></textarea>
-        <div style="font-size:11px;color:#6b7280;margin-top:4px">“This inspection is in accordance with SANS 10375” is printed on every report. Item notes and the load test (SWL + 10%) are added to the remarks automatically.</div></div>
+        <div style="font-size:11px;color:#6b7280;margin-top:4px">“This inspection is in accordance with SANS 10375” is printed on every report. Items marked W or X, item notes and the load test (SWL + 10%) are added to the remarks automatically.</div></div>
     </div>
   </section>
 
@@ -640,10 +640,14 @@ const mmT=v=>{let s=String(v||"").trim();if(!s)return"";if(/^n\/a$/i.test(s))ret
 function remarkLines(st){const f=st.f,out=[];
   if(st.type==="LOAD TEST"){const s=kgN(f.swl);if(s)out.push(`Load tested at ${kgT(s*1.1)} kg (SWL ${kgT(s)} kg + 10% overload).`);}
   if(f.remarks)out.push(...String(f.remarks).split("\n").filter(x=>x.trim()));
-  ROWS.forEach(r=>{const n=(st.note||{})[r.id];if(!n)return;let tag="";
-    if(r.kind==="four"){const p=[0,1,2,3].filter(c=>st.res[r.id+"_"+c]&&st.res[r.id+"_"+c]!=="ok"&&st.res[r.id+"_"+c]!=="na").map(c=>COLS[c][1]+" "+RV[st.res[r.id+"_"+c]]);tag=p.length?" ("+p.join(", ")+")":"";}
-    else if(st.res[r.id])tag=" ("+RV[st.res[r.id]]+")";
-    out.push(`#${r.no} ${rname(r,st)}${tag}: ${n}`);});
+  // every item marked W or X gets a remark line by itself (with the technician's note, if any); notes on other items too
+  const MEAN={w:"W (worn but serviceable)",x:"X (needs urgent replacement)"};
+  ROWS.forEach(r=>{if(r.ui===false)return;const n=String((st.note||{})[r.id]||"").trim(),res=st.res||{};let tag="";
+    if(r.kind==="four"){const cs=activeCols(r.n,st).filter(c=>res[r.id+"_"+c]==="w"||res[r.id+"_"+c]==="x");
+      if(cs.length)tag=" – "+cs.map(c=>COLS[c][1]+" "+MEAN[res[r.id+"_"+c]]).join(", ");}
+    else if(res[r.id]==="w"||res[r.id]==="x")tag=" – "+MEAN[res[r.id]];
+    if(!tag&&!n)return;
+    out.push(`#${r.no} ${rname(r,st)}${tag}${n?(tag?". ":": ")+n:""}`);});
   return out;}
 const NAF=[208,212,220],isNA=v=>/^n\/a$/i.test(String(v==null?"":v).trim());
 function mark(doc,v,cx,cy){if(v==="ok"){doc.setDrawColor(29,138,74);doc.setLineWidth(0.6);doc.line(cx-1.7,cy,cx-0.5,cy+1.3);doc.line(cx-0.5,cy+1.3,cx+1.9,cy-1.4);doc.setLineWidth(0.2);doc.setDrawColor(150,156,170);}
