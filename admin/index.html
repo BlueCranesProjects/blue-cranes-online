@@ -509,12 +509,12 @@
       if (groups.some(g => g.reps.some(r => !r._cr))) fk = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
       if (groups.some(g => g.reps.some(r => r._cr))) cz = await hiddenTool('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
       for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
-      const top = label || `Blue Cranes ${from} to ${to}`, zip = new JSZip(), root = zip.folder(top); const own = async b => new Uint8Array(await b.arrayBuffer());
-      const usedDir = {}; let nFiles = 0;
+      const top = label || `Blue Cranes ${from} to ${to}`, zip = new JSZip(), root = zip; const own = async b => new Uint8Array(await b.arrayBuffer());
+      const usedDir = {}; let nFiles = 0;   // job folders straight in the zip, short names (Windows can't unzip paths over 260 characters)
       for (let gi = 0; gi < groups.length; gi++){
         const g = groups[gi], l = JSON.parse(JSON.stringify(g.l)); say(`Job ${gi + 1} of ${groups.length}…`);
-        let dn = `${l.date} - Job ${String(l.job || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(l.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')} - ${g.u.name || g.u.email}`; if (usedDir[dn]) dn += ' (' + (++usedDir[dn]) + ')'; else usedDir[dn] = 1;
-        const dir = root.folder(dn); const put = async (f) => { dir.file(f.name, await own(f.blob)); nFiles++; };
+        let dn = BC.zipDir(l.job, l.customer, l.date); if (usedDir[dn]) dn += ' (' + (++usedDir[dn]) + ')'; else usedDir[dn] = 1;
+        const dir = root.folder(dn); const usedF = {}; const put = async (f) => { let n = BC.zipFile(f.name); if (usedF[n]) n = n.replace(/(\.\w+)$/, ' (' + (++usedF[n]) + ')$1'); else usedF[n] = 1; dir.file(n, await own(f.blob)); nFiles++; };
         const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '' }; const parts = [], flp = [], crp = [], tcp = [];
         try {
           if (l.rows){ await put(await eq.api.listDoc(l)); try { await put(await eq.api.listXlsx(l)); } catch(e){} parts.push(...(await eq.api.itemCertParts(l, tech, await utFor(g.u.uid, l, null)))); }
@@ -545,8 +545,8 @@
       if (!files.length){ toast(which === 'certs' ? 'No certificates yet – the technician has not marked the items Safe or Unsafe' : 'Nothing to download yet'); return; }
       if (isPhone()){ btn.disabled = false; btn.textContent = old; return phoneFiles(files); }
       if (which === 'all'){ await xlsxReady(); for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
-        const folder = `Job ${String(j.card || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(j.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')} - ${j.sheetDate || j.date}`;
-        const zip = new JSZip(), dir = zip.folder(folder); const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.(pdf|xlsx)$/, `_${++used[n]}.$1`); else used[n] = 1; dir.file(n, f.blob); });
+        const folder = BC.zipDir(j.card, j.customer);
+        const zip = new JSZip(), dir = zip.folder(folder); const used = {}; files.forEach(f => { let n = BC.zipFile(f.name); if (used[n]) n = n.replace(/(\.\w+)$/, ' (' + (++used[n]) + ')$1'); else used[n] = 1; dir.file(n, f.blob); });
         dlFile({ blob:await zip.generateAsync({ type:'blob' }), name:folder + '.zip' }); toast(files.length + ' files in the zip folder'); }
       else { files.forEach((f, i) => setTimeout(() => dlFile(f), i * 400)); toast(files.length === 1 ? 'Downloaded' : files.length + ' files downloaded'); }
     } catch(e){ console.error(e); toast('Could not make the files'); }

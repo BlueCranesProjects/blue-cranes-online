@@ -874,7 +874,7 @@
     m.querySelector('#busyTxt').textContent = text; return m; }
   async function jobPack(l, btn, asZip){
     if (!l) return; const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Working…';
-    const folder = `Job ${String(l.job || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(l.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')} - ${l.date}`;
+    const folder = BC.zipDir(l.job, l.customer);
     try {
       for (let i = 0; i < 50 && !window.JSZip; i++) await new Promise(r => setTimeout(r, 100));
       if (!window.JSZip) throw new Error('zip tool not loaded');
@@ -928,7 +928,7 @@
           bb.querySelector('#shareAll').onclick = async () => { try { await navigator.share({ files:shareable, title:folder }); toast(shareable.length + ' files sent'); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – try “Download as zip folder”'); } if (!rest.length){ bb.remove(); done(); } }; })
       } else {
         busy('Packing the folder…');
-        const zip = new JSZip(), dir = zip.folder(folder); files.forEach(f => dir.file(f.name, f.blob));
+        const zip = new JSZip(), dir = zip.folder(folder); const used = {}; files.forEach(f => { let n = BC.zipFile(f.name); if (used[n]) n = n.replace(/(\.\w+)$/, ' (' + (++used[n]) + ')$1'); else used[n] = 1; dir.file(n, f.blob); });
         const blob = await zip.generateAsync({ type:'blob' }); if (bb) bb.remove();
         const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = folder + '.zip'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
         toast(`Zip folder with ${files.length} ${files.length === 1 ? 'file' : 'files'} saved to Downloads`);

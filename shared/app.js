@@ -53,6 +53,19 @@
   };
   BC.saveFile = (blob, name, type, title) => BC.saveFiles([{ blob, name, type }], title);
 
+  // Short names inside zip folders: Windows can't unzip paths longer than 260 characters, and the folder already says
+  // which job it is, so files are just "Inventory.pdf", "Certificates.pdf", "Crane reports.pdf", "Load test certificate C7101-5.pdf" …
+  BC.zipFile = n => { n = String(n || 'file'); const ext = (/\.[a-z0-9]{2,4}$/i.exec(n) || [''])[0], b = n.slice(0, n.length - ext.length);
+    const map = [[/^TECHNICIAN_Crane/i, 'Crane reports - technician'], [/^Crane_hoist_reports/i, 'Crane reports'], [/^Forklift_reports/i, 'Forklift reports'],
+      [/^Certificates/i, 'Certificates'], [/^Inventory/i, 'Inventory'], [/^Time.?sheet/i, 'Time sheet']];
+    for (const [re, t] of map) if (re.test(b)) return t + ext;
+    const m = /^(.+?)_((?:CR|C|F)\d[\w.-]*?)(?=_|$)/.exec(b);
+    if (m) return (m[1].replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase().replace(/^./, c => c.toUpperCase()) + ' ' + m[2]).slice(0, 60) + ext;
+    return b.replace(/_/g, ' ').slice(0, 50).trim() + ext; };
+  // a job's folder: "C124699 PERDEBERG CELLARS" (+ the date in front for exports of many jobs)
+  BC.zipDir = (job, customer, date) => [date || '', String(job || 'no nr').replace(/\s+/g, ''), String(customer || '').trim().slice(0, 24).trim()]
+    .filter(Boolean).join(' ').replace(/[\\/:*?"<>|]+/g, '-');
+
   // Report "Job details" that fold up into a short summary – used by every report (forklift, crane, future ones).
   // BC.foldDetails({ head, body, sum, badge, missing:() => ['customer', …], lines:() => ['line 1', 'line 2'] })
   // → { render(), reset() }: opens by itself when something is missing when a report loads, otherwise folded;
