@@ -443,7 +443,7 @@
   }
   // an item counts as completed when it is Safe, or Unsafe with the reason filled in
   const itemDone = r => r.status === 'SAFE' || (r.status === 'UNSAFE' && !!String(r.reason || '').trim());
-  function folds(){ if (!S.folds){ try { S.folds = JSON.parse(sessionStorage.getItem('bco-inv-folds') || 'null'); } catch(e){} S.folds = S.folds || { todo:true, done:false, jd:null }; } return S.folds; }
+  function folds(){ if (!S.folds){ try { S.folds = JSON.parse(sessionStorage.getItem('bco-inv-folds') || 'null'); } catch(e){} S.folds = S.folds || { todo:true, done:false, jd:null, loc:false }; } return S.folds; }
   const keepFolds = () => { try { sessionStorage.setItem('bco-inv-folds', JSON.stringify(S.folds)); } catch(e){} };
   function vList(){
     const l = S.cur; const inv = inventory()[norm(l.customer)]; const known = inv ? inv.items : {};
@@ -454,7 +454,7 @@
     return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Client's inventory", backBtn('../timesheet/', 'Back to the time sheet'),
         `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main>
       ${contCard(l)}
-      ${(() => { const F = folds(); if (F.jd == null) F.jd = !l.location;
+      ${(() => { const F = folds(); if (F.jd == null) F.jd = false;
         const sum = [l.customer, 'Job ' + (l.job || '–'), niceDate(l.date), l.location].filter(Boolean).map(esc).join(' · ');
         return `<button type="button" class="fold jdh" data-fold="jd" aria-expanded="${!!F.jd}"><span>Job details &amp; understudy</span><span class="n${l.location ? ' full' : ''}">${l.location ? '✓ Done' : 'Site to fill in'}</span><span class="fch">${F.jd ? '▾' : '▸'}</span></button>
           ${F.jd ? '' : `<div class="hint" style="margin:-4px 4px 4px">${sum}</div>`}<div ${F.jd ? '' : 'style="display:none"'}>`; })()}
@@ -468,7 +468,9 @@
       </section>
       ${utCard(l)}
       </div>
-      <section class="card" style="gap:10px">
+      ${(() => { const F = folds(), on = !!F.loc || !!sel; const nl = LOCS.length;
+        return `<button type="button" class="fold" data-fold="loc" aria-expanded="${on}"><span>Locations</span><span class="n${cur ? ' full' : ''}">${cur ? (cur === '__none' ? 'No location' : esc(cur)) : nl ? nl + (nl === 1 ? ' place' : ' places') : 'None yet'}</span><span class="fch">${on ? '▾' : '▸'}</span></button>`; })()}
+      <section class="card" style="gap:10px;${folds().loc || sel ? '' : 'display:none'}">
         <div class="row" style="justify-content:space-between"><h2>Locations</h2>
           ${(l.rows || []).length ? `<button class="btn secondary small" id="selMode">${sel ? 'Stop selecting' : 'Select items'}</button>` : ''}</div>
         <div class="chips">
