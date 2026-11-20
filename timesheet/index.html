@@ -120,6 +120,16 @@
   .okbox{background:#F3FAF5;border:2px solid #9CC9AD;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
   nav.tabs button.locked{opacity:.45}
   .pastbtn{border:1.5px solid var(--navy);background:#fff;color:var(--navyDeep);border-radius:9px;padding:7px 10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+  .jfold{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:6px 0 4px;background:#fff}
+  .jfold .fh{display:flex;align-items:center;gap:10px;width:100%;border:0;padding:13px 14px;font:900 14px/1 Arial,sans-serif;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;text-align:left}
+  .jfold.prog .fh{background:#FFF4CC;color:#7a5600}.jfold.done .fh{background:#E3F2E8;color:#155e33}
+  .jfold .fh .c{margin-left:auto;font:800 12px Inter,Arial,sans-serif;background:#fff;border-radius:999px;padding:3px 9px}
+  .jrow{display:flex;align-items:center;gap:10px;width:100%;background:#fff;border:0;border-top:1px solid var(--line);padding:11px 14px;font-family:inherit;text-align:left;cursor:pointer;color:var(--ink)}
+  .jrow .ic{width:34px;height:34px;border-radius:9px;background:#EEF2F7;display:flex;align-items:center;justify-content:center;flex:none;color:var(--navyDeep)}
+  .jrow .ic svg{width:20px;height:20px}
+  .jrow .t{flex:1;min-width:0;line-height:1.3;font-size:14px}.jrow .t b{display:block;color:var(--navyDeep)}.jrow .t span{display:block;font-size:12.5px;color:var(--muted)}
+  .jrow .go{font-size:13px;font-weight:800;color:var(--navyDeep);border:1.5px solid var(--navy);border-radius:8px;padding:6px 10px}
+  .jempty{padding:12px 14px;font-size:13px;color:var(--muted);border-top:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -359,7 +369,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (L)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (M)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -680,6 +690,7 @@
       <h2 style="padding:4px 2px 0">REPORTS</h2>
       ${reportGroups('data-fl', state.jobIdx)}
       <button class="tile light" data-fl="${state.jobIdx}" data-type="EQUIPMENT"><span class="ic">${ICON.list}</span><span><span class="tt" style="display:block">Client's inventory</span><span class="ss" style="display:block">Equipment per location, SWL, safe / unsafe</span></span><span class="cnt" id="cntE"></span></button>
+      <div id="thisJob"></div>
       <button class="btn primary" style="margin-top:10px;height:60px;font-size:18px" data-jobfinish="${state.jobIdx}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Finish job</button>
       <button type="button" data-jobedit="${state.jobIdx}" style="border:0;background:none;color:var(--muted);font-weight:600;font-size:14px;font-family:inherit;padding:10px;cursor:pointer">⋯ Edit job details</button>
     </main>`;
@@ -862,7 +873,7 @@
   function invLeft(k, i){ try { const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j) return {};
       const id = (k + '_' + (j.card || j.customer || j.desc || 'job')).replace(/[^\w\-]+/g, '_');
       const all = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; const l = all[id] || Object.values(all).find(v => v && (v.also || []).includes(id)) || (j.sched ? Object.values(all).find(v => v && v.sched === j.sched) : null); const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
-      return { total:rows.length, open:rows.filter(r => !r.status).length }; } catch(e){ return {}; } }
+      return { total:rows.length, open:rows.filter(r => !(r.status === 'SAFE' || (r.status === 'UNSAFE' && String(r.reason || '').trim()))).length }; } catch(e){ return {}; } }
   // opening an inventory or report remembers where you were (e.g. a day in History), so coming back opens there again
   const PLACE = 'bco-ts-place';
   function keepPlace(){ try { sessionStorage.setItem(PLACE, JSON.stringify({ view:state.view, detailKey:state.detailKey, jobIdx:state.jobIdx, schedId:state.schedId, schedDate:state.schedDate, schedWeek:state.schedWeek, activeDate:state.activeDate, _schedBack:state._schedBack, pjKey:state.pjKey, pjIdx:state.pjIdx, y:window.scrollY, at:Date.now() })); } catch(e){} }
@@ -882,6 +893,46 @@
     if ((state.view === 'pastjob' && !(state.pjKey && state.sheets[state.pjKey] && (state.sheets[state.pjKey].jobs || [])[state.pjIdx])) || (state.view === 'detail' && !(state.detailKey && state.sheets[state.detailKey])) || (state.view === 'schedjob' && !(state.schedId && state.schedule[state.schedId]))){ state.view = 'today'; render(); return; }
     setTimeout(() => window.scrollTo(0, pl.y), 30);
   }
+  // THIS JOB on a job page: ⏳ In progress (unfinished reports + the inventory while items are left) and ✓ Completed (submitted reports)
+  const JF = 'bco-job-folds';
+  function jobFolds(){ let f = null; try { f = JSON.parse(sessionStorage.getItem(JF) || 'null'); } catch(e){} return f || { prog:true, done:false }; }
+  const idbAll = name => new Promise(res => { try { const rq = indexedDB.open(name, 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
+      rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => res(g.result || []); g.onerror = () => res([]); } catch(e){ res([]); } }; rq.onerror = () => res([]); } catch(e){ res([]); } });
+  async function fillThisJob(k, i, j, pj, inv){
+    const box = document.getElementById('thisJob'); if (!box) return;
+    const core = v => String(v || '').trim().toUpperCase().replace(/^C(?=\d)/, '');
+    const mineOf = r => r && r.state && r.state.f && (j.card ? core(r.job || r.state.f.jobno) === core(j.card) : norm2(r.state.f.customer) === norm2(j.customer));
+    const drafts = key => { try { return Object.values(JSON.parse(localStorage.getItem(key) || '{}') || {}).filter(mineOf); } catch(e){ return []; } };
+    const [fl, cr] = await Promise.all([idbAll('bc-forklift'), idbAll('bc-crane')]);
+    const F = fl.filter(mineOf), C = cr.filter(mineOf);
+    // counts on the Forklift / Crane tiles
+    const cnt = (list, a, b, t) => { const ni = list.filter(r => r.state.type !== 'LOAD TEST').length, nl = list.length - ni; const A = document.getElementById(a), B = document.getElementById(b), T = document.getElementById(t);
+      if (A && ni) A.textContent = '(' + ni + ')'; if (B && nl) B.textContent = '(' + nl + ')'; if (T && list.length) T.textContent = list.length + ' done'; };
+    cnt(F, 'cntI', 'cntL', 'cntF'); cnt(C, 'cntCI', 'cntCL', 'cntC');
+    const docN = r => { const m = String(r.state.f.docno || '').match(/\.(\d+)$/); return m ? Number(m[1]) : 999; };
+    const typ = r => r.state.type === 'LOAD TEST' ? 'Load test' : 'Inspection';
+    const what = (r, cranes) => { const f = r.state.f; return [cranes ? f.details : [f.make, f.model].filter(Boolean).join(' '), cranes ? f.make : '', f.serial ? 'Serial ' + f.serial : ''].filter(Boolean).join(' · '); };
+    const ic = c => c ? ICON.crane : ICON.forklift;
+    const row = (icon, title, sub, right, attrs) => `<button type="button" class="jrow" ${attrs}><span class="ic">${icon}</span><span class="t"><b>${esc(title)}</b><span>${esc(sub)}</span></span>${right}</button>`;
+    const prog = [].concat(
+      drafts('bc-crane-drafts').map(r => [r, true]), drafts('bc-forklift-drafts').map(r => [r, false]))
+      .sort((a, b) => (b[0].savedAt || 0) - (a[0].savedAt || 0))
+      .map(([r, c]) => row(ic(c), (r.state.f.docno || (c ? 'Crane report' : 'Forklift report')) + ' · ' + typ(r), [what(r, c), r.state._rid ? 'changes not submitted' : 'not finished'].filter(Boolean).join(' · '), '<span class="go">Continue</span>', `data-jr="${c ? 'cr' : 'fl'}" data-jid="${esc(r.id)}" data-jd="1"`));
+    if (inv.open) prog.push(row(ICON.list, "Client's inventory", inv.open + (inv.open === 1 ? ' item' : ' items') + ' still to check', '<span class="go">Open</span>', 'data-jinv="1"'));
+    const done = [].concat(C.map(r => [r, true]), F.map(r => [r, false]))
+      .sort((a, b) => (a[1] === b[1] ? docN(a[0]) - docN(b[0]) : a[1] ? -1 : 1))
+      .map(([r, c]) => row(ic(c), (r.state.f.docno || 'Report') + ' · ' + typ(r), what(r, c), r.state.status === 'UNSAFE' ? '<span class="pill bad">UNSAFE</span>' : r.state.status === 'SAFE' ? '<span class="pill ok">SAFE</span>' : '', `data-jr="${c ? 'cr' : 'fl'}" data-jid="${esc(r.id)}"`));
+    if (!inv.open && inv.total) done.push(row(ICON.list, "Client's inventory", 'All ' + inv.total + ' items marked', '<span class="pill ok">✓</span>', 'data-jinv="1"'));
+    if (!prog.length && !done.length){ box.innerHTML = ''; return; }
+    const draw = () => { const FO = jobFolds();
+      const fold = (key, cls, ttl, list, empty) => `<div class="jfold ${cls}"><button type="button" class="fh" data-jf="${key}" aria-expanded="${!!FO[key]}">${ttl}<span class="c">${list.length}</span><span class="ch">${FO[key] ? '▾' : '▸'}</span></button>${FO[key] ? (list.join('') || `<div class="jempty">${empty}</div>`) : ''}</div>`;
+      box.innerHTML = `<h2 style="padding:10px 2px 0">THIS JOB</h2>` + fold('prog', 'prog', '⏳ In progress', prog, 'Nothing in progress.') + fold('done', 'done', '✓ Completed', done, 'Reports move here when you tap Submit report.');
+      box.querySelectorAll('[data-jf]').forEach(b => b.onclick = () => { const FO = jobFolds(); FO[b.dataset.jf] = !FO[b.dataset.jf]; try { sessionStorage.setItem(JF, JSON.stringify(FO)); } catch(e){} draw(); });
+      box.querySelectorAll('[data-jr]').forEach(b => b.onclick = () => { try { localStorage.setItem('bco-open-report', JSON.stringify({ kind:b.dataset.jr, id:b.dataset.jid, draft:!!b.dataset.jd, at:Date.now() })); } catch(e){}
+        openReport(k, i, b.dataset.jr === 'cr' ? 'CR-OPEN' : 'FL-OPEN', pj); });
+      box.querySelectorAll('[data-jinv]').forEach(b => b.onclick = () => openReport(k, i, 'EQUIPMENT', pj)); };
+    draw();
+  }
   // report groups on a job: Forklift (inspection / load test), Crane / hoist (inspection / load test); tap a group to open it
   function reportGroups(attr, idx){
     const sub = (type, label, cnt) => `<button type="button" class="btn" ${attr}="${idx}" data-type="${type}" style="flex:1;height:52px;font-size:15px;background:#fff;color:var(--navyDeep);border:2px solid var(--navy)">${label}<span class="cnt" id="${cnt}" style="margin-left:6px;font-size:12px;font-weight:700;color:var(--label)"></span></button>`;
@@ -894,7 +945,7 @@
     keepPlace();
     const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || (j.done && !editPast)) return;
     try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
-    location.href = type === 'EQUIPMENT' ? '../equipment/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
+    location.href = type === 'EQUIPMENT' ? '../equipment/' : type === 'FL-OPEN' ? '../forklift/' : type === 'CR-OPEN' ? '../crane/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
   }
   // today's scheduled jobs, shown first so the technician sees the day's work; tap one to open it (and its inventory)
   // scheduled jobs after a day (next 14 days), so tomorrow's jobs and their inventories can be opened already
@@ -1006,6 +1057,7 @@
       <h2 style="padding:4px 2px 0">REPORTS</h2>
       ${tile('EQUIPMENT', ICON.list, "Client's inventory", 'Add or change items. Reports for an item open best from the item here.', 'cntE', true)}
       ${reportGroups('data-pj', i)}
+      <div id="thisJob"></div>
       <div class="hint">Certificates are made again from your changes.</div>
     </main>`;
   }
@@ -1499,18 +1551,9 @@
       const pj = state.view === 'pastjob'; const k = pj ? state.pjKey : curKey(); const j = ((state.sheets[k] || {}).jobs || [])[pj ? state.pjIdx : state.jobIdx];
       if (j){
         const core = v => String(v || '').trim().toUpperCase().replace(/^C(?=\d)/, '');
-        try { const eq = JSON.parse(localStorage.getItem('bco-equipment') || '{}'); const id = (k + '_' + (j.card || j.customer || 'job')).replace(/[^\w\-]+/g, '_');
-          const el = eq[id] || Object.values(eq).find(v => v && (v.also || []).includes(id)); const n = ((el && el.rows) || []).filter(r => r.serial || r.desc).length; if (n) document.getElementById('cntE').textContent = n + (n === 1 ? ' item' : ' items'); } catch(e){}
-        try { const rq = indexedDB.open('bc-forklift', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
-          rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => {
-            const mine = (g.result || []).filter(r => r && r.state && core(r.job || r.state.f.jobno) === core(j.card) && (j.card || norm2(r.state.f.customer) === norm2(j.customer)));
-            const ni = mine.filter(r => r.state.type !== 'LOAD TEST').length, nl = mine.length - ni;
-            const a = document.getElementById('cntI'), b = document.getElementById('cntL'), t = document.getElementById('cntF'); if (a && ni) a.textContent = '(' + ni + ')'; if (b && nl) b.textContent = '(' + nl + ')'; if (t && mine.length) t.textContent = mine.length + ' saved'; }; } catch(e){} }; } catch(e){}
-        try { const rq = indexedDB.open('bc-crane', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
-          rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => {
-            const mine = (g.result || []).filter(r => r && r.state && core(r.job || r.state.f.jobno) === core(j.card) && (j.card || norm2(r.state.f.customer) === norm2(j.customer)));
-            const ni = mine.filter(r => r.state.type !== 'LOAD TEST').length, nl = mine.length - ni;
-            const a = document.getElementById('cntCI'), b = document.getElementById('cntCL'), t = document.getElementById('cntC'); if (a && ni) a.textContent = '(' + ni + ')'; if (b && nl) b.textContent = '(' + nl + ')'; if (t && mine.length) t.textContent = mine.length + ' saved'; }; } catch(e){} }; } catch(e){}
+        const ji = pj ? state.pjIdx : state.jobIdx; const inv = invLeft(k, ji);
+        if (inv.total) document.getElementById('cntE').textContent = (inv.total - inv.open) + ' of ' + inv.total + ' done';
+        fillThisJob(k, ji, j, pj, inv);
       }
     }
     const dp = document.getElementById('dayPick');

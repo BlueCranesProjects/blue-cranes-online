@@ -922,6 +922,8 @@ const ACTIVE=(function(){try{const a=JSON.parse(load("bco-active-job")||"null");
   const ts=JSON.parse(load("dts-v1")||"null");const j=ts&&ts.sheets&&ts.sheets[a.date]&&ts.sheets[a.date].jobs&&ts.sheets[a.date].jobs[a.idx];
   if(ts&&(!j||(j.done&&!a.edit)||((j.card||"")!==(a.card||"")&&(j.customer||j.desc||"")!==(a.customer||""))))return null;if(j&&j.card)a.card=j.card;return a;}catch(e){return null;}})();
 const EMBED=/[?&]embed=1/.test(location.search),WANT_REPORTS=/[?&]reports=1/.test(location.search);
+// opened from the job page (In progress / Completed): that report opens straight away
+const HANDOFF=(()=>{try{const h=JSON.parse(load("bco-open-report")||"null");if(h&&h.kind==="cr"&&Date.now()-(h.at||0)<15*60000)return h;}catch(e){}return null;})();
 const jobKey=f=>String((f&&(f.jobno||f.customer))||"").trim().toLowerCase();
 function fresh(){keepDraftNow();state=blank();state.f.date=(ACTIVE&&ACTIVE.edit&&ACTIVE.date)||today();state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);
   state.f.engName=PROFILE?PROFILE.name||"":"";state.sig.sigEng=PROFILE?PROFILE.signature||null:null;
@@ -939,7 +941,7 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
 // opened from a crane / hoist on the client's inventory: a report for that item, with its details filled in
 (function(){let it=null;try{it=JSON.parse(load("bco-cr-item")||"null");localStorage.removeItem("bco-cr-item");}catch(e){}
   if(!it||!ACTIVE||EMBED||Date.now()-(it.at||0)>15*60000){
-    if(ACTIVE&&!EMBED)setTimeout(async()=>{await syncDrafts();const jc=jobCore(ACTIVE.card||"");const mine=draftList().filter(r=>jc&&jobCore(r.job)===jc&&!(state._did===r.id));
+    if(ACTIVE&&!EMBED&&!HANDOFF)setTimeout(async()=>{await syncDrafts();const jc=jobCore(ACTIVE.card||"");const mine=draftList().filter(r=>jc&&jobCore(r.job)===jc&&!(state._did===r.id));
       if(mine.length&&!$("repPanel").classList.contains("show")&&!$("modal").classList.contains("show")){const r=mine[0],f=r.state.f;modal(`<h3>Unfinished report</h3><p>${esc(f.docno||"")} ${f.serial?"· "+esc(f.serial):""} on this job was started but not saved as a report.</p><div class="btns"><button class="secondary" id="mNo">Later</button><button class="primary" id="mYes">Continue it</button></div>`);
         $("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();continueDraft(r.id);};}},800);
     return;}
@@ -962,6 +964,7 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
 window.BCC={async reports(){for(let i=0;i<80&&!window.BCC_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCC_READY;}catch(e){}return RDB.all();},buildPdf:st=>buildPdf(st),buildTechPdf:st=>buildPdf(st,{tech:true}),needsTech:st=>needsTech(st)};
 // a technician's report is worth making when something is marked X or W (or quote info was filled in)
 function needsTech(st){return ROWS.some(r=>r.kind!=="meas"&&visOf(r,st)&&valsOf(r,st).some(v=>v==="x"||v==="w"))||Object.values(st.quote||{}).some(hasQuote);}
+if(HANDOFF){try{localStorage.removeItem("bco-open-report");}catch(e){}if(ACTIVE&&!EMBED){$("repPanel").classList.remove("show");if(HANDOFF.draft){if(state._did!==HANDOFF.id)continueDraft(HANDOFF.id);}else RDB.all().then(a=>{const r=(a||[]).find(x=>x&&x.id===HANDOFF.id);if(!r||state._rid===r.id)return;keepDraft();useState(r.state);state._rid=r.id;state._did=null;state._saved=stSig(state);applyState();save();window.scrollTo(0,0);toast("Opened "+(state.f.docno||"report"));});}}
 BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");window.BCC_READY=syncReports();});
 
 </script>

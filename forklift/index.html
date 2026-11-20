@@ -981,13 +981,15 @@ if(state._rid&&!state._saved)state._saved=stSig(state);   // a report saved befo
 applyState();syncDoc();checkSession();save();updRepCount();
 function showGate(){modal(`<h3>No job started</h3><p>New forklift inspections and load tests open from the job you are busy with.</p><p>On the time sheet, tap <b>Start job</b> on the job, then <b>Forklift inspection / load test</b>.</p><button class="secondary" id="gRep" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">View saved reports</button><div class="btns"><a class="primary" href="../timesheet/" style="flex:1;padding:12px;border-radius:10px;font-weight:700;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Go to time sheet</a></div>`);$("gRep").onclick=()=>{closeModal();$("repPanel").classList.add("show");showReports();};}
 const WANT_REPORTS=/[?&]reports=1/.test(location.search);
+// opened from the job page (In progress / Completed): that report opens straight away
+const HANDOFF=(()=>{try{const h=JSON.parse(load("bco-open-report")||"null");if(h&&h.kind==="fl"&&Date.now()-(h.at||0)<15*60000)return h;}catch(e){}return null;})();
 const EMBED=/[?&]embed=1/.test(location.search);
 if(!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}else if(!ACTIVE)showGate();}
 // a past job opened from History: show its saved reports first, so one can be opened and changed
-if(ACTIVE&&!EMBED){setTimeout(async()=>{await syncDrafts();const jc=jobCore(ACTIVE.card||"");const mine=draftList().filter(r=>jc&&jobCore(r.job)===jc);
+if(ACTIVE&&!EMBED&&!HANDOFF){setTimeout(async()=>{await syncDrafts();const jc=jobCore(ACTIVE.card||"");const mine=draftList().filter(r=>jc&&jobCore(r.job)===jc);
   if(mine.length&&!$("repPanel").classList.contains("show")){const r=mine[0],f=r.state.f;modal(`<h3>Unfinished report</h3><p>${esc(f.docno||"")} ${f.serial?"· "+esc(f.serial):""} on this job was started but not saved as a report.</p><div class="btns"><button class="secondary" id="mNo">Later</button><button class="primary" id="mYes">Continue it</button></div>`);
     $("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();continueDraft(r.id);};}},800);}
-if(ACTIVE&&ACTIVE.edit&&!EMBED&&!load("bco-fl-item")){if(!state.f.serial&&!state.f.make&&ACTIVE.date&&state.f.date!==ACTIVE.date){state.f.date=ACTIVE.date;state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);applyState();save();}repScope="all";$("repSearch").value=ACTIVE.customer||"";$("repPanel").classList.add("show");showReports();toast("Tap Open on a report to change it, or close this list to add a new one");}
+if(ACTIVE&&ACTIVE.edit&&!EMBED&&!HANDOFF&&!load("bco-fl-item")){if(!state.f.serial&&!state.f.make&&ACTIVE.date&&state.f.date!==ACTIVE.date){state.f.date=ACTIVE.date;state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);applyState();save();}repScope="all";$("repSearch").value=ACTIVE.customer||"";$("repPanel").classList.add("show");showReports();toast("Tap Open on a report to change it, or close this list to add a new one");}
 const goBackTs=()=>{let r=null;try{r=document.referrer?new URL(document.referrer):null;}catch(e){}if(r&&r.origin===location.origin&&r.pathname!==location.pathname&&history.length>1)history.back();else location.href="../timesheet/";};
 $("repClose").onclick=()=>{if(WANT_REPORTS){goBackTs();return;}$("repPanel").classList.remove("show");if(!ACTIVE)showGate();};
 if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
@@ -1007,6 +1009,7 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
   modal(`<h3 style="margin:0 0 8px">Start a report for ${esc(N(it.serial)||"this forklift")}?</h3><p style="margin:0 0 12px">The report on screen is for ${esc(N(state.f.serial)||"another forklift")} and is not finished. Save it as PDF first if you still need it.</p>
     <div class="btns"><button class="secondary" id="mNo">Keep the open report</button><button class="primary" id="mYes">New report</button></div>`);
   $("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();startNew();};})();
+if(HANDOFF){try{localStorage.removeItem("bco-open-report");}catch(e){}if(ACTIVE&&!EMBED){$("repPanel").classList.remove("show");if(HANDOFF.draft){if(state._did!==HANDOFF.id)continueDraft(HANDOFF.id);}else RDB.all().then(a=>{const r=(a||[]).find(x=>x&&x.id===HANDOFF.id);if(!r||state._rid===r.id)return;keepDraft();state=Object.assign(blank(),JSON.parse(JSON.stringify(r.state)));state._rid=r.id;state._did=null;state._saved=stSig(state);applyState();save();window.scrollTo(0,0);toast("Opened "+(state.f.docno||"report"));});}}
 BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");window.BCF_READY=syncReports().then(renumberOld);});
 </script>
 </body>
