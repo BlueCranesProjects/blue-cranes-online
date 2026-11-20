@@ -88,7 +88,7 @@
   function download(wb, name){ XLSX.writeFile(wb, name, { compression:true }); }
   function sheet(rows, widths){ const ws = XLSX.utils.json_to_sheet(rows); if (widths) ws['!cols'] = widths.map(w => ({ wch:w })); return ws; }
   const COLS = ['Date', 'Time', 'Job card', 'Customer', 'Contact', 'Notes', 'Technician email'];
-  const ALIAS = { 'date':'date', 'day':'date', 'time':'time', 'start time':'time', 'job card':'card', 'job card no':'card', 'job card nr':'card', 'job nr':'card', 'job no':'card', 'job number':'card', 'job':'card', 'customer':'customer', 'client':'customer', 'contact':'contact', 'contact person':'contact', 'notes':'notes', 'note':'notes', 'description':'notes', 'technician email':'tech', 'tech email':'tech', 'email':'tech', 'technician':'tech', 'tech':'tech' };
+  const ALIAS = { 'date':'date', 'day':'date', 'time':'time', 'start time':'time', 'job card':'card', 'job card no':'card', 'job card nr':'card', 'job nr':'card', 'job no':'card', 'job number':'card', 'job':'card', 'customer':'customer', 'client':'customer', 'contact':'contact', 'contact person':'contact', 'client email':'email', 'customer email':'email', 'contact email':'email', 'email address':'email', 'client e-mail':'email', 'notes':'notes', 'note':'notes', 'description':'notes', 'technician email':'tech', 'tech email':'tech', 'email':'tech', 'technician':'tech', 'tech':'tech' };
   function toDate(v){
     if (v == null || v === '') return '';
     if (v instanceof Date && !isNaN(v)) return keyOf(v);
@@ -118,7 +118,7 @@
     const existing = new Map(S.jobs.map(j => [j.id, j]));
     return raw.map((r, n) => {
       const j = {}; Object.keys(r).forEach(k => { const f = ALIAS[String(k).trim().toLowerCase().replace(/[.:#]/g, '').replace(/\s+/g, ' ')]; if (f && j[f] == null) j[f] = r[k]; });
-      const out = { line:n + 2, date:toDate(j.date), time:toTime(j.time), card:String(j.card || '').trim(), customer:String(j.customer || '').trim(), contact:String(j.contact || '').trim(), notes:String(j.notes || '').trim(), tech:String(j.tech || '').trim().toLowerCase() };
+      const out = { line:n + 2, date:toDate(j.date), time:toTime(j.time), card:String(j.card || '').trim(), customer:String(j.customer || '').trim(), contact:String(j.contact || '').trim(), email:String(j.email || '').trim().toLowerCase(), notes:String(j.notes || '').trim(), tech:String(j.tech || '').trim().toLowerCase() };
       const errs = [], warns = [];
       if (!out.date) errs.push('date missing or not understood');
       if (!out.card && !out.customer) errs.push('job card or customer needed');
@@ -285,7 +285,7 @@
   }
   // a job made here, from the inventory tab, for one technician
   function newJob(){ const n = S.nj; const tech = String(n.tech || '').trim().toLowerCase(); const customer = String(n.customer || S.invCust || '').trim();
-    const j = { date:n.date || keyOf(new Date()), time:String(n.time || '').trim(), card:String(n.card || '').trim(), customer, contact:String(n.contact || '').trim(), notes:String(n.notes || '').trim(), tech };
+    const j = { date:n.date || keyOf(new Date()), time:String(n.time || '').trim(), card:String(n.card || '').trim(), customer, contact:String(n.contact || '').trim(), email:String(n.email || '').trim().toLowerCase(), notes:String(n.notes || '').trim(), tech };
     j.ready = !!(j.date && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(tech) && customer); j.id = jobId(j); return j; }
   function newJobForm(){ const j = newJob();
     return `<div class="row"><div class="field"><label for="njDate">Date</label><input type="date" id="njDate" data-nj="date" value="${esc(j.date)}"></div>
@@ -294,6 +294,7 @@
       <div class="field"><label for="njCust">Customer</label><input id="njCust" data-nj="customer" value="${esc(j.customer)}" placeholder="Filled in from the file"></div>
       <div class="row"><div class="field"><label for="njCard">Job card</label><input id="njCard" data-nj="card" value="${esc(j.card)}"></div>
         <div class="field"><label for="njCon">Contact</label><input id="njCon" data-nj="contact" value="${esc(j.contact)}"></div></div>
+      <div class="field"><label for="njEmail">Client email <span style="font-weight:400">(the signed reports go here)</span></label><input id="njEmail" type="email" inputmode="email" data-nj="email" value="${esc(j.email)}" placeholder="name@company.co.za"></div>
       <div class="field"><label for="njNotes">Notes</label><input id="njNotes" data-nj="notes" value="${esc(j.notes)}"></div>
       <span class="hint">Technicians show here once they have signed in to the app.</span>`; }
   const schedLabel = (job, n) => !job.ready ? 'Fill in the date, technician and customer' : `Schedule the job for ${nameOf(job.tech) || job.tech}${n ? ' with ' + n + (n === 1 ? ' item' : ' items') : ''}`;
@@ -358,6 +359,12 @@
       ${nfl ? B('data-flpdf', `⬇ Forklift reports (${nfl})`) : ''}
       ${(g.cr || []).length ? B('data-crpdf', `⬇ Crane / hoist reports (${g.cr.length})`) : ''}
       ${g.total || nfl || (g.cr || []).length ? B('data-jobpdf', '🖨 Job PDF (print)') + B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
+  // client sign-offs (kept on the technician's inventory): the hidden report tools put the client's name + signature on the client's reports
+  window.BC_SIGNOFFS = window.BC_SIGNOFFS || {}; S.signs = S.signs || {};
+  const soCore = c => String(c || '').trim().replace(/\s+/g, '').replace(/^C(?=\d)/i, '').toUpperCase();
+  const noteSign = l => { if (l && l.signoff && l.signoff.sig && soCore(l.job)) window.BC_SIGNOFFS[soCore(l.job)] = l.signoff; };
+  (function hookSigns(){ if (!window.Cloud || !window.Cloud.listKindOf) return setTimeout(hookSigns, 200); if (window.Cloud._soHooked) return; window.Cloud._soHooked = true;
+    const lk = window.Cloud.listKindOf.bind(window.Cloud); window.Cloud.listKindOf = async (...a) => { const r = await lk(...a); if (a[1] === 'equipment') (r || []).forEach(d => noteSign(d && d.data)); return r; }; })();
   let progBusy = false, progAt = 0;
   async function loadProgress(){
     if (progBusy || Date.now() - progAt < 20000) return; progBusy = true; progAt = Date.now(); const cache = {}, flc = {}, crc = {}; let changed = false;
@@ -372,6 +379,7 @@
         const cr = j.card ? crc[u.uid].filter(r => core(r.job || r.state.f.jobno) === core(j.card)) : [];
         if (cr.length){ const o = S.invProg[j.id] || {}; if ((o.cr || []).length !== cr.length) changed = true; S.invProg[j.id] = Object.assign(o, { cr, uid:u.uid }); }
         const l = cache[u.uid].find(x => x.sched === 'A_' + j.id) || (j.sheetDate ? cache[u.uid].find(x => x.id === listIdOf(j.sheetDate, j) || (x.also || []).includes(listIdOf(j.sheetDate, j))) : null); if (!l) continue;
+        if (l.signoff && l.signoff.sig && !S.signs[j.id]){ S.signs[j.id] = l.signoff; noteSign(l); changed = true; }
         const rows = (l.rows || []).filter(r => r.serial || r.desc); if (!rows.length) continue;
         const g = { fl:(S.invProg[j.id] || {}).fl || [], cr:(S.invProg[j.id] || {}).cr || [], total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
         const o = S.invProg[j.id]; if (!o || o.done !== g.done || o.total !== g.total || o.unsafe !== g.unsafe) changed = true; S.invProg[j.id] = g; }
@@ -625,6 +633,7 @@
       <div class="row"><div class="field"><label for="edCust">Customer</label><input id="edCust" data-ed="customer" value="${esc(e.customer)}"></div>
         <div class="field"><label for="edCard">Job card</label><input id="edCard" data-ed="card" value="${esc(e.card)}"></div>
         <div class="field"><label for="edCon">Contact</label><input id="edCon" data-ed="contact" value="${esc(e.contact)}"></div></div>
+      <div class="field"><label for="edEmail">Client email <span style="font-weight:400">(the signed reports go here)</span></label><input id="edEmail" type="email" inputmode="email" data-ed="email" value="${esc(e.email || '')}" placeholder="name@company.co.za"></div>
       <div class="field"><label for="edNotes">Notes</label><input id="edNotes" data-ed="notes" value="${esc(e.notes)}"></div>
       <div class="row"><button class="btn primary" id="edSave" style="flex:1">${S.busy ? 'Saving…' : isNew ? 'Schedule the job' : 'Save changes'}</button><button class="btn secondary" id="edCancel" style="flex:1">Cancel</button></div>
       <span class="hint">${isNew ? 'The technician sees the job on their schedule the next time they open the app. To add a client\'s inventory, use the <b>Import jobs</b> tab.' : 'The technician sees the change the next time they open the app. Inventory items and progress stay with the job.'}</span></section>`;
@@ -675,7 +684,7 @@
             const sum = [dl.length + (dl.length === 1 ? ' job' : ' jobs'), nb ? nb + ' busy' : '', nd ? nd + ' done' : '', dl.length - nd - nb ? (dl.length - nd - nb) + ' planned' : ''].filter(Boolean).join(' · ');
             h = `<tr class="dayh" data-day="${esc(j.date)}" tabindex="0" role="button" aria-expanded="${open}"><td colspan="6"><span class="dch" style="display:inline-block;transform:rotate(${open ? 0 : -90}deg)">▾</span> ${esc(niceDate(j.date))}${j.date === keyOf(new Date()) ? ' <span class="pill busy" style="margin-left:6px">Today</span>' : ''}<span class="dsum">${sum}</span></td></tr>`; }
           lastDate = j.date;
-          return h + `<tr data-dayrow="${esc(j.date)}" ${open ? '' : 'style="display:none"'}><td><input type="checkbox" data-sel="${esc(j.id)}" aria-label="Select job" ${S.sel.has(j.id) ? 'checked' : ''}></td><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact, (j.inv || []).length && !S.invProg[j.id] ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div>${progLine(j)}</td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
+          return h + `<tr data-dayrow="${esc(j.date)}" ${open ? '' : 'style="display:none"'}><td><input type="checkbox" data-sel="${esc(j.id)}" aria-label="Select job" ${S.sel.has(j.id) ? 'checked' : ''}></td><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact, (j.inv || []).length && !S.invProg[j.id] ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div>${S.signs[j.id] ? `<div class="hint" style="color:var(--ok);font-weight:700">✓ Signed by ${esc(S.signs[j.id].name)}${S.signs[j.id].email ? (S.signs[j.id].mail === 'sent' ? ' · emailed' : ' · ⏳ email waiting') : ''}</div>` : j.status === 'done' ? '<div class="hint" style="color:#7a5600;font-weight:700">Not signed by the client</div>' : ''}${progLine(j)}</td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
             <td style="white-space:nowrap">${j.status !== 'done' ? `<button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-edit="${esc(j.id)}" aria-label="Change job">✎ Edit</button> ` : ''}<button class="x" data-del="${esc(j.id)}" aria-label="Remove job">🗑 Remove</button></td></tr>`; }).join('')}
       </tbody></table></div>` : '<div class="empty">No jobs loaded for this period.</div>'}
     </section></main>`;
@@ -730,7 +739,7 @@
       const ok = S.preview.filter(r => !r.errs.length); const existing = new Map(S.jobs.map(j => [j.id, j])); S.busy = true; render();
       try {
         const now = new Date().toISOString(); const me = window.Cloud.email();
-        await window.Cloud.putJobs(ok.map(r => { const j = { id:r.id, date:r.date, time:r.time, card:r.card, customer:r.customer, contact:r.contact, notes:r.notes, tech:r.tech, updatedAt:now, loadedBy:me };
+        await window.Cloud.putJobs(ok.map(r => { const j = { id:r.id, date:r.date, time:r.time, card:r.card, customer:r.customer, contact:r.contact, email:r.email || '', notes:r.notes, tech:r.tech, updatedAt:now, loadedBy:me };
           if (!existing.has(r.id)){ j.status = 'planned'; j.createdAt = now; } return j; }));
         toast(ok.length + ' jobs loaded'); S.preview = null; S.fileName = ''; await refreshJobs(); S.tab = 'jobs';
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
@@ -761,7 +770,7 @@
       catch(e){ console.error(e); toast(e && e.userMsg ? e.userMsg : 'Could not read that file – check it is an Excel, Word (.docx) or PDF file with a table'); } };
     const il = $('iload'); if (il) il.onclick = async () => {
       const isNew = true; const job = newJob(); if (!job.ready) return; const ok = (S.inv || []).filter(r => !r.errs.length); S.busy = true; render();
-      try { const now = new Date().toISOString(); const base = !isNew ? {} : Object.assign({ date:job.date, time:job.time, card:job.card, customer:job.customer, contact:job.contact, notes:job.notes, tech:job.tech, loadedBy:window.Cloud.email() }, S.jobs.some(x => x.id === job.id) ? {} : { status:'planned', createdAt:now });
+      try { const now = new Date().toISOString(); const base = !isNew ? {} : Object.assign({ date:job.date, time:job.time, card:job.card, customer:job.customer, contact:job.contact, email:job.email, notes:job.notes, tech:job.tech, loadedBy:window.Cloud.email() }, S.jobs.some(x => x.id === job.id) ? {} : { status:'planned', createdAt:now });
         await window.Cloud.putJobs([Object.assign({ ...base, id:job.id, updatedAt:now }, ok.length ? { inv:ok.map(r => { const o = { serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc }; if (r.note) o.note = r.note; return o; }), invSite:S.invSite || '', invAt:now } : {})]);
         toast(isNew ? 'Job scheduled for ' + (nameOf(job.tech) || job.tech) + (ok.length ? ' with ' + ok.length + ' items' : '') : ok.length + ' items loaded for ' + (job.customer || job.card)); if (isNew){ S.nj = {}; S.invJob = ''; S.tab = 'jobs'; } S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
@@ -770,12 +779,12 @@
     const rf = $('refresh'); if (rf) rf.onclick = async () => { await refreshJobs(); progAt = 0; render(); toast('Updated'); };
     app.querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => { const j = S.jobs.find(x => x.id === b.dataset.edit); if (!j) return;
       if (!S.users.length) await refreshUsers();
-      S.editJob = j.id; S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', notes:j.notes || '' }; render(); window.scrollTo(0, 0); });
+      S.editJob = j.id; S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', email:j.email || '', notes:j.notes || '' }; render(); window.scrollTo(0, 0); });
     app.querySelectorAll('[data-ed]').forEach(el => { el.oninput = el.onchange = () => { S.ed[el.dataset.ed] = el.value; }; });
     const ao = $('admOut'); if (ao) ao.onclick = () => { const m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px';
       m.innerHTML = '<div class="card" style="max-width:380px;width:100%;gap:12px"><h2>Sign out?</h2><div class="row"><button class="btn primary" id="soYes" style="flex:1">Sign out</button><button class="btn secondary" id="soNo" style="flex:1">Cancel</button></div></div>'; document.body.appendChild(m);
       m.querySelector('#soNo').onclick = () => m.remove(); m.querySelector('#soYes').onclick = async () => { BC.cacheProfile(null); try { await window.Cloud.signOut(); } catch(e){} location.href = '../'; }; };
-    const nb = $('newJob'); if (nb) nb.onclick = async () => { if (!S.users.length) await refreshUsers(); S.editJob = '__new'; S.ed = { date:keyOf(new Date()), time:'', tech:'', customer:'', card:'', contact:'', notes:'' }; render(); window.scrollTo(0, 0); };
+    const nb = $('newJob'); if (nb) nb.onclick = async () => { if (!S.users.length) await refreshUsers(); S.editJob = '__new'; S.ed = { date:keyOf(new Date()), time:'', tech:'', customer:'', card:'', contact:'', email:'', notes:'' }; render(); window.scrollTo(0, 0); };
     const edc = $('edCancel'); if (edc) edc.onclick = () => { S.editJob = null; render(); };
     const es = $('edSave'); if (es) es.onclick = async () => {
       const isNew = S.editJob === '__new'; const j = isNew ? { status:'planned' } : S.jobs.find(x => x.id === S.editJob); if (!j) return; const e = S.ed;
@@ -786,7 +795,7 @@
       S.busy = true; render();
       try { const now = new Date().toISOString();
         if (isNew){ j.id = jobId({ date:e.date, card:String(e.card || '').trim(), customer:String(e.customer || '').trim(), tech }); }
-        const upd = { id:j.id, date:e.date, time:String(e.time || '').trim(), customer:String(e.customer || '').trim(), card:String(e.card || '').trim(), contact:String(e.contact || '').trim(), notes:String(e.notes || '').trim(), updatedAt:now, changedBy:window.Cloud.email() };
+        const upd = { id:j.id, date:e.date, time:String(e.time || '').trim(), customer:String(e.customer || '').trim(), card:String(e.card || '').trim(), contact:String(e.contact || '').trim(), email:String(e.email || '').trim().toLowerCase(), notes:String(e.notes || '').trim(), updatedAt:now, changedBy:window.Cloud.email() };
         if (j.status !== 'busy') upd.tech = tech;
         if (isNew && !S.jobs.some(x => x.id === j.id)) Object.assign(upd, { status:'planned', createdAt:now, loadedBy:window.Cloud.email() });
         await window.Cloud.putJobs([upd]); toast(isNew ? 'Job scheduled' : 'Job changed'); S.editJob = null; await refreshJobs();

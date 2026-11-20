@@ -190,7 +190,7 @@
     if (!list) return;
     const seen = {};
     list.forEach(j => { const id = 'A_' + j.id; seen[id] = 1; const old = state.schedule[id] || {};
-      const x = Object.assign({}, old, { id, assigned:true, jobId:j.id, date:j.date, time:j.time || '', card:j.card || '', customer:j.customer || '', contact:j.contact || '', notes:j.notes || '', invCount:Array.isArray(j.inv) ? j.inv.length : 0 });
+      const x = Object.assign({}, old, { id, assigned:true, jobId:j.id, date:j.date, time:j.time || '', card:j.card || '', customer:j.customer || '', contact:j.contact || '', email:j.email || '', notes:j.notes || '', invCount:Array.isArray(j.inv) ? j.inv.length : 0 });
       if (old._sent == null) x._sent = j.status || 'planned';
       state.schedule[id] = x; });
     Object.keys(state.schedule).forEach(id => { const x = state.schedule[id]; if (x.assigned && !seen[id] && !x.addedTo) delete state.schedule[id]; });
@@ -212,7 +212,10 @@
     state.profile = BC.cachedProfile();
     let local = lsRead();
     if (local){ state.sheets = local.sheets || {}; state.schedule = local.schedule || {}; state.settings = Object.assign(state.settings, local.settings || {}); }
-    const place = new URLSearchParams(location.search).get('job') ? null : takePlace();
+    let place = new URLSearchParams(location.search).get('job') ? null : takePlace();
+    // back from the client sign-off (Finish job): carry on to the finish form
+    try { const fn = JSON.parse(localStorage.getItem('bco-finish-now') || 'null'); localStorage.removeItem('bco-finish-now');
+      if (fn && Date.now() - (fn.at || 0) < 15 * 60000 && state.sheets[fn.date] && (state.sheets[fn.date].jobs || [])[fn.idx]){ place = null; state.activeDate = fn.date === todayKey() ? null : fn.date; Object.assign(state, { view:'job', jobIdx:fn.idx, _finishing:true }); } } catch(e){}
     render(); if (place) setTimeout(() => window.scrollTo(0, place.y), 0);
     // cloud.js is a module, so it runs after this script: wait for the page to finish loading first
     if (!window.Cloud && document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r, { once:true }));
@@ -369,7 +372,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (R)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (S)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -873,7 +876,7 @@
   function invLeft(k, i){ try { const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j) return {};
       const id = (k + '_' + (j.card || j.customer || j.desc || 'job')).replace(/[^\w\-]+/g, '_');
       const all = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; const l = all[id] || Object.values(all).find(v => v && (v.also || []).includes(id)) || (j.sched ? Object.values(all).find(v => v && v.sched === j.sched) : null); const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
-      return { total:rows.length, open:rows.filter(r => !(r.status === 'SAFE' || (r.status === 'UNSAFE' && String(r.reason || '').trim()))).length }; } catch(e){ return {}; } }
+      return { total:rows.length, open:rows.filter(r => !(r.status === 'SAFE' || (r.status === 'UNSAFE' && String(r.reason || '').trim()))).length, so:(l && l.signoff && l.signoff.sig) ? l.signoff : null }; } catch(e){ return {}; } }
   // opening an inventory or report remembers where you were (e.g. a day in History), so coming back opens there again
   const PLACE = 'bco-ts-place';
   function keepPlace(){ try { sessionStorage.setItem(PLACE, JSON.stringify({ view:state.view, detailKey:state.detailKey, jobIdx:state.jobIdx, schedId:state.schedId, schedDate:state.schedDate, schedWeek:state.schedWeek, activeDate:state.activeDate, _schedBack:state._schedBack, pjKey:state.pjKey, pjIdx:state.pjIdx, y:window.scrollY, at:Date.now() })); } catch(e){} }
@@ -918,10 +921,14 @@
       drafts('bc-crane-drafts').map(r => [r, true]), drafts('bc-forklift-drafts').map(r => [r, false]))
       .sort((a, b) => (b[0].savedAt || 0) - (a[0].savedAt || 0))
       .map(([r, c]) => row(ic(c), (r.state.f.docno || (c ? 'Crane report' : 'Forklift report')) + ' · ' + typ(r), [what(r, c), r.state._rid ? 'changes not submitted' : 'not finished'].filter(Boolean).join(' · '), '<span class="go">Continue</span>', `data-jr="${c ? 'cr' : 'fl'}" data-jid="${esc(r.id)}" data-jd="1"`));
+    const PEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3-1 5-4 7-4s1 3 4 3 4-3 7-3"/><path d="M14.5 4.5l3 3L9 16H6v-3z"/></svg>';
+    if (!inv.so) prog.push(row(PEN, 'Client sign-off', j.done ? 'Not signed' : 'Not signed yet – the client signs when you finish the job', '<span class="go">Sign now</span>', 'data-jsign="1"'));
     if (inv.open) prog.push(row(ICON.list, "Client's inventory", inv.open + (inv.open === 1 ? ' item' : ' items') + ' still to check', '<span class="go">Open</span>', 'data-jinv="1"'));
     const done = [].concat(C.map(r => [r, true]), F.map(r => [r, false]))
       .sort((a, b) => (a[1] === b[1] ? docN(a[0]) - docN(b[0]) : a[1] ? -1 : 1))
       .map(([r, c]) => row(ic(c), (r.state.f.docno || 'Report') + ' · ' + typ(r), what(r, c), r.state.status === 'UNSAFE' ? '<span class="pill bad">UNSAFE</span>' : r.state.status === 'SAFE' ? '<span class="pill ok">SAFE</span>' : '', `data-jr="${c ? 'cr' : 'fl'}" data-jid="${esc(r.id)}"`));
+    if (inv.so){ const t = inv.so.at ? new Date(inv.so.at).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' }) : '';
+      done.unshift(row(PEN, 'Client sign-off', 'Signed by ' + inv.so.name + (t ? ' · ' + t : '') + (inv.so.email ? (inv.so.mail === 'sent' ? ' · emailed' : ' · ⏳ email waiting') : ' · no email'), '<span class="pill ok">✓</span>', 'data-jsign="1"')); }
     if (!inv.open && inv.total) done.push(row(ICON.list, "Client's inventory", 'All ' + inv.total + ' items marked', '<span class="pill ok">✓</span>', 'data-jinv="1"'));
     if (!prog.length && !done.length){ box.innerHTML = ''; return; }
     const draw = () => { const FO = jobFolds();
@@ -930,7 +937,8 @@
       box.querySelectorAll('[data-jf]').forEach(b => b.onclick = () => { const FO = jobFolds(); FO[b.dataset.jf] = !FO[b.dataset.jf]; try { sessionStorage.setItem(JF, JSON.stringify(FO)); } catch(e){} draw(); });
       box.querySelectorAll('[data-jr]').forEach(b => b.onclick = () => { try { localStorage.setItem('bco-open-report', JSON.stringify({ kind:b.dataset.jr, id:b.dataset.jid, draft:!!b.dataset.jd, at:Date.now() })); } catch(e){}
         openReport(k, i, b.dataset.jr === 'cr' ? 'CR-OPEN' : 'FL-OPEN', pj); });
-      box.querySelectorAll('[data-jinv]').forEach(b => b.onclick = () => openReport(k, i, 'EQUIPMENT', pj)); };
+      box.querySelectorAll('[data-jinv]').forEach(b => b.onclick = () => openReport(k, i, 'EQUIPMENT', pj));
+      box.querySelectorAll('[data-jsign]').forEach(b => b.onclick = () => openReport(k, i, 'SIGNOFF', pj || j.done)); };
     draw();
   }
   // report groups on a job: Forklift (inspection / load test), Crane / hoist (inspection / load test); tap a group to open it
@@ -945,7 +953,7 @@
     keepPlace();
     const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || (j.done && !editPast)) return;
     try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
-    location.href = type === 'EQUIPMENT' ? '../equipment/' : type === 'FL-OPEN' ? '../forklift/' : type === 'CR-OPEN' ? '../crane/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
+    location.href = type === 'EQUIPMENT' ? '../equipment/' : type === 'SIGNOFF' ? '../equipment/?signoff=1' : type === 'SIGNOFF-FIN' ? '../equipment/?signoff=fin' : type === 'FL-OPEN' ? '../forklift/' : type === 'CR-OPEN' ? '../crane/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
   }
   // today's scheduled jobs, shown first so the technician sees the day's work; tap one to open it (and its inventory)
   // scheduled jobs after a day (next 14 days), so tomorrow's jobs and their inventories can be opened already
@@ -1485,7 +1493,8 @@
     app.querySelectorAll('[data-editjob]').forEach(b => b.onclick = () => { const i = Number(b.dataset.editjob); const sh = state.sheets[curKey()]; const j = sh && sh.jobs[i];
       if (j && !j.done) go('jobpage', { jobIdx:i, _finishing:false }); else go('job', { jobIdx:i, _finishing:false }); });
     app.querySelectorAll('[data-jobedit]').forEach(b => b.onclick = () => go('job', { jobIdx:Number(b.dataset.jobedit), _finishing:false, _jobBack:null }));
-    app.querySelectorAll('[data-jobfinish]').forEach(b => b.onclick = () => { const i = Number(b.dataset.jobfinish); const fin = () => go('job', { jobIdx:i, _finishing:true });
+    // Finish job: the client signs off first (once per job), then the finish form
+    app.querySelectorAll('[data-jobfinish]').forEach(b => b.onclick = () => { const i = Number(b.dataset.jobfinish); const fin = () => invLeft(curKey(), i).so ? go('job', { jobIdx:i, _finishing:true }) : openReport(curKey(), i, 'SIGNOFF-FIN');
       const left = invLeft(curKey(), i); if (!left.total || !left.open) return fin();
       confirmBox(left.open + ' of ' + left.total + ' inventory items are not marked Safe or Unsafe yet. Finish the job anyway?', 'Finish anyway', fin); });
     app.querySelectorAll('[data-finishk]').forEach(b => b.onclick = () => { const k = b.dataset.finishk; state.activeDate = k === todayKey() ? null : k; go('job', { jobIdx:Number(b.dataset.finishi), _finishing:true, schedId:null }); });

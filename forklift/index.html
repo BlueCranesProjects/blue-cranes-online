@@ -541,9 +541,13 @@ function afterSave(){const job=(state.f.jobno||"").trim();
   $("aStay").onclick=closeModal;$("aNext").onclick=()=>{closeModal();nextSameJob();};}
 function fmt(s){if(!s)return"";if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const [y,m,d]=s.split("-");return `${d}/${m}/${y}`;}
 
+// the client's sign-off for this job (signed once at Finish job, kept on the client's inventory): name + signature on the client's report
+function clientSign(st){const jc=v=>String(v||"").trim().replace(/\s+/g,"").replace(/^C(?=\d)/i,"").toUpperCase();const c=jc(st&&st.f&&st.f.jobno);if(!c)return null;
+  try{const m=(window.parent&&window.parent!==window&&window.parent.BC_SIGNOFFS)||window.BC_SIGNOFFS;if(m&&m[c]&&m[c].sig)return m[c];}catch(e){}
+  try{const eq=JSON.parse(localStorage.getItem("bco-equipment")||"{}")||{};for(const l of Object.values(eq))if(l&&l.signoff&&l.signoff.sig&&jc(l.job)===c)return l.signoff;}catch(e){}return null;}
 async function buildPdf(st){const prev=state;state=st;try{
   const {jsPDF}=window.jspdf;
-  const dims={};for(const im of [state.sig.sigCust,state.sig.sigEng])if(im)dims[im]=await imgDims(im);
+  const CS=clientSign(state);const dims={};for(const im of [state.sig.sigEng,CS&&CS.sig])if(im)dims[im]=await imgDims(im);
   function draw(IH){const doc=new jsPDF({unit:"mm",format:"a4"});
   const NAVY=[27,47,110],YEL=[245,196,0],GREY=[90,96,112],L=10,R=200,W=R-L;
   const f=state.f;
@@ -638,6 +642,7 @@ async function buildPdf(st){const prev=state;state=st;try{
     if(img){try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(48/d.w,12/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+40+(48-w)/2,y+17.2-h,w,h,undefined,"FAST");}catch(e){}}}
   // no customer's name / signature on the reports (removed 20 Nov)
   sig(L,"ENGINEER'S NAME:",f.engName,"ENGINEER'S SIGNATURE:",state.sig.sigEng);
+  if(CS)sig(L+98,"CLIENT'S NAME:",String(CS.name||"").toUpperCase(),"CLIENT'S SIGNATURE:",CS.sig);   // only once the client has signed off the job
   // overflow remarks page
   if(rem.length){let all=[];doc.setFontSize(9);rem.forEach(t=>all.push(...doc.splitTextToSize(t,W-4)));if(all.length>maxLines){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("REMARKS (continued) — Doc No "+(f.docno||"")+"  "+(f.customer||""),L,16);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(10,20,60);doc.text(all,L,24);}}
 

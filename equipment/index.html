@@ -100,6 +100,9 @@
   .fold{display:flex;align-items:center;gap:10px;width:100%;border:1px solid var(--line);border-left:5px solid var(--yellow);background:#fff;border-radius:12px;padding:13px 12px;font-weight:800;color:var(--navyDeep);font-size:15px;cursor:pointer;text-align:left}
   .fold .n{margin-left:auto;font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:#4a5370;font-weight:800}
   .fold .n.full{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .sor{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:6px 0;border-top:1px solid #eef1f6}.sor:first-of-type{border-top:0}.sor b{color:var(--navyDeep);text-align:right}
+  .spill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800;color:#fff}.spill.ok{background:var(--ok)}.spill.bad{background:var(--bad)}
+  .sodone{background:#E3F2E8;border:1px solid #b9dcc5;border-radius:14px;padding:13px 14px;color:#155e33;font-size:14px;line-height:1.5}.sodone b{display:block;font-size:16px}.sodone span{font-size:12px;color:#3d6b4d}
 </style>
 </head>
 <body>
@@ -238,7 +241,7 @@
       if (pre.size === (l.pre || []).length) return;
       l.pre = [...pre];
       if (n){ l.rows = l.rows.filter(r => r.office || r.serial || r.desc || r.make || r.swl || r.status); if (!l.location && job.invSite) l.location = job.invSite; }
-      saveList(l, true); if (n){ if (S.view === 'list') render(); toast(n + (n === 1 ? ' item' : ' items') + ' loaded by the office'); }
+      saveList(l, true); if (n){ if (S.view === 'list' || S.view === 'signoff') render(); toast(n + (n === 1 ? ' item' : ' items') + ' loaded by the office'); }
     } catch(e){ console.error('Office inventory failed', e); }
   }
   // forklifts and forklift machinery (not attachments / lifting gear used with them)
@@ -576,6 +579,59 @@
     </main>
     <div class="bar"><button class="btn navy" id="invPdf">${ICON.pdf} Inventory PDF</button></div>`;
   }
+  // ---------- client sign-off: the client signs once for the whole job (Finish job → here) ----------
+  // The name and signature go on the client's reports (forklift / crane) and the inventory PDF. The signed reports + inventory are then
+  // queued to be emailed to the client (mail:'waiting') – sending needs the email service (Firebase), see the project brief.
+  const SIGN_FIN = /[?&]signoff=fin/.test(location.search);
+  function schedEmail(l){ try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const sx = ts && l.sched && ts.schedule && ts.schedule[l.sched]; return (sx && sx.email) || ''; } catch(e){ return ''; } }
+  const idbAll = name => new Promise(res => { try { const rq = indexedDB.open(name, 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
+      rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => res(g.result || []); g.onerror = () => res([]); } catch(e){ res([]); } }; rq.onerror = () => res([]); } catch(e){ res([]); } });
+  const okEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
+  function vSignoff(l){
+    const so = l.signoff || {}, rows = (l.rows || []).filter(r => r.serial || r.desc), safe = rows.filter(r => r.status === 'SAFE').length, uns = rows.filter(r => r.status === 'UNSAFE').length;
+    const d = S.soDraft = S.soDraft || { name:so.name || '', email:so.email || schedEmail(l), sig:so.sig || '' };
+    const when = so.at ? new Date(so.at).toLocaleString('en-ZA', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+    return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), 'Client sign-off', `<a class="ib" href="../timesheet/" data-back="match" aria-label="Back">${ICON.back}</a>`) + `<main>
+      ${so.sig ? `<div class="sodone"><b>✓ Signed by ${esc(so.name)}${when ? ' · ' + esc(when) : ''}</b>${so.email ? (so.mail === 'sent' ? 'Emailed to ' : '⏳ To be emailed to ') + esc(so.email) : 'No email address – not emailed'}<br><span>Signing again replaces this signature.</span></div>` : ''}
+      <section class="card"><h2>What was done</h2>
+        <div class="sor"><span>Customer</span><b>${esc(l.customer || '–')}</b></div>
+        <div class="sor"><span>Items checked</span><b>${safe + uns === rows.length ? rows.length : (safe + uns) + ' of ' + rows.length}${safe ? ` · <span class="spill ok">${safe} SAFE</span>` : ''}${uns ? ` <span class="spill bad">${uns} UNSAFE</span>` : ''}</b></div>
+        <div class="sor"><span>Reports</span><b id="soN">…</b></div>
+        <div class="hint" id="soReps"></div></section>
+      <section class="card"><h2>Client</h2>
+        <div class="field"><label for="soName">Client's name</label><input id="soName" autocomplete="off" value="${esc(d.name)}"></div>
+        <div class="field"><label for="soEmail">Email the reports to</label><input id="soEmail" type="email" inputmode="email" autocomplete="off" placeholder="name@company.co.za" value="${esc(d.email)}">
+          <span class="hint">The client's reports and the inventory go to this address. Admin can fill it in on the job.</span></div>
+        <div class="field"><label>Client's signature</label><div style="position:relative;border:1.5px dashed var(--line);border-radius:10px;background:#fff;height:150px"><canvas id="soPad" style="width:100%;height:100%;touch-action:none;display:block"></canvas>
+          ${d.sig ? '' : '<span class="hint" id="soPh" style="position:absolute;left:12px;top:62px;pointer-events:none">Sign here</span>'}</div>
+          <div class="row" style="gap:8px"><button type="button" class="btn secondary small" id="soClr">Clear</button></div></div></section>
+      <button class="btn primary" id="soSign" style="height:58px;font-size:18px">✓ ${SIGN_FIN ? 'Sign &amp; finish job' : 'Save sign-off'}</button>
+      ${SIGN_FIN ? '<button class="btn secondary" id="soSkip">Skip – client not here</button>' : ''}
+    </main>`;
+  }
+  function wireSignoff(l){
+    const $ = id => document.getElementById(id), d = S.soDraft;
+    $('soName').oninput = e => d.name = e.target.value; $('soEmail').oninput = e => d.email = e.target.value.trim();
+    (async () => { const jc = jobCore(l.job); const mine = r => r && r.state && r.state.f && jc && jobCore(r.job || r.state.f.jobno) === jc;
+      const [fl, cr] = await Promise.all([idbAll('bc-forklift'), idbAll('bc-crane')]); const all = [...cr.filter(mine), ...fl.filter(mine)];
+      const n = $('soN'), h = $('soReps'); if (!n) return; n.textContent = all.length;
+      h.textContent = all.map(r => (r.state.f.docno || 'Report') + ' ' + (r.state.type === 'LOAD TEST' ? 'Load test' : 'Inspection')).sort((a, b) => a.localeCompare(b, undefined, { numeric:true })).join(' · '); })();
+    const c = $('soPad'), x = c.getContext('2d'); const r0 = c.getBoundingClientRect(), dp = window.devicePixelRatio || 1; c.width = r0.width * dp; c.height = r0.height * dp; x.setTransform(dp, 0, 0, dp, 0, 0); x.lineWidth = 2.4; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#13224F';
+    if (d.sig){ const im = new Image(); im.onload = () => { const k = Math.min(r0.width / im.width, r0.height / im.height) * 0.9, w = im.width * k, h = im.height * k; x.drawImage(im, (r0.width - w) / 2, (r0.height - h) / 2, w, h); }; im.src = d.sig; }
+    let on = false; const pt = e => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    c.onpointerdown = e => { on = true; c.setPointerCapture(e.pointerId); const [a, b] = pt(e); x.beginPath(); x.moveTo(a, b); const ph = $('soPh'); if (ph) ph.remove(); };
+    c.onpointermove = e => { if (!on) return; const [a, b] = pt(e); x.lineTo(a, b); x.stroke(); };
+    c.onpointerup = c.onpointercancel = () => { if (!on) return; on = false; d.sig = c.toDataURL('image/png'); };
+    $('soClr').onclick = () => { d.sig = ''; render(); };
+    const leave = () => { if (SIGN_FIN && S.active){ try { localStorage.setItem('bco-finish-now', JSON.stringify({ date:S.active.date, idx:S.active.idx, at:Date.now() })); } catch(e){} location.replace('../timesheet/'); } else history.length > 1 ? history.back() : location.replace('../timesheet/'); };
+    $('soSign').onclick = () => {
+      if (!String(d.name || '').trim()){ toast("Fill in the client's name"); $('soName').focus(); return; }
+      if (!d.sig){ toast('The client still has to sign'); return; }
+      if (d.email && !okEmail(d.email)){ toast('That email address doesn\'t look right'); $('soEmail').focus(); return; }
+      l.signoff = { name:String(d.name).trim(), email:d.email || '', sig:d.sig, at:new Date().toISOString(), by:(S.profile && S.profile.name) || '', mail:d.email ? 'waiting' : 'none' };
+      saveList(l, true); S.soDraft = null; toast('Signed by ' + l.signoff.name); setTimeout(leave, 400); };
+    const sk = $('soSkip'); if (sk) sk.onclick = leave;
+  }
   function vGate(){
     return head('Blue Cranes', "Client's inventory", backBtn('../timesheet/', 'Back to the time sheet')) + `<main>
       <section class="card"><h2>No job started</h2>
@@ -594,13 +650,14 @@
   function render(){
     const same = lastView === S.view, y = window.scrollY;
     if (!same) savePos();
-    app.innerHTML = S.view === 'inventory' ? vInventory() : S.view === 'customer' ? vCustomer() : S.view === 'gate' ? vGate() : vList();
+    app.innerHTML = S.view === 'signoff' && S.cur ? vSignoff(S.cur) : S.view === 'inventory' ? vInventory() : S.view === 'customer' ? vCustomer() : S.view === 'gate' ? vGate() : vList();
     let to = 0;
     if (same) to = y; else { try { to = Number(sessionStorage.getItem(posKey(S.view))) || 0; } catch(e){} }
     lastView = S.view; window.scrollTo(0, to); wire();
     if (!same && to > 0) [150, 500].forEach(ms => setTimeout(() => { if (lastView === S.view && Math.abs(window.scrollY - to) > 40) window.scrollTo(0, to); }, ms));
   }
   function wire(){
+    if (S.view === 'signoff' && S.cur){ wireSignoff(S.cur); return; }
     app.querySelectorAll('[data-cont]').forEach(b => b.onclick = () => continueList(b.dataset.cont));
     const $ = id => document.getElementById(id);
     const ti = $('toInv'); if (ti) ti.onclick = () => { S.view = 'inventory'; render(); };
@@ -784,6 +841,13 @@
     censusItems(l).forEach((grp, gi) => { if (gi) y += 5;
       grp.forEach(it => { cell([it.serial, it.desc, it.make, it.ton, it.loc, it.report], it.unsafe ? RED : INK); }); });
     y += 8; if (y > PH - 12){ doc.addPage(); y = 20; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...RED); doc.text('RED = UNSAFE FOR USE', L, y);
+    // client sign-off (once the client has signed the job): name, date and signature under the list
+    const so = l.signoff; if (so && so.sig){ const BH = 20; y += 8; if (y + BH > PH - 8){ doc.addPage(); y = 20; }
+      doc.setDrawColor(0); doc.setLineWidth(0.2); const c1 = 70, c2 = 35, c3 = 180 - c1 - c2; doc.rect(L, y, c1, BH); doc.rect(L + c1, y, c2, BH); doc.rect(L + c1 + c2, y, c3, BH);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...INK); doc.text('CLIENT NAME:', L + 1.5, y + 4.5); doc.text('DATE:', L + c1 + 1.5, y + 4.5); doc.text('CLIENT SIGNATURE:', L + c1 + c2 + 1.5, y + 4.5);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.text(String(so.name || '').toUpperCase(), L + 1.5, y + 13); doc.text(dmy(String(so.at || '').slice(0, 10)), L + c1 + 1.5, y + 13);
+      try { const dm = (await imgDims(so.sig)) || { w:3, h:1 }, k = Math.min((c3 - 6) / dm.w, (BH - 7) / dm.h); doc.addImage(so.sig, 'PNG', L + c1 + c2 + (c3 - dm.w * k) / 2, y + 5.5, dm.w * k, dm.h * k, undefined, 'FAST'); } catch(e){}
+      y += BH; }
     const rows = (l.rows || []).filter(r => r.serial || r.desc || r.make || r.swl);
     await unsafePages(doc, l, rows);
     return { blob: doc.output('blob'), name: `Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf` };
@@ -1036,7 +1100,7 @@
       if (S.active.customer && !S.cur.customer) S.cur.customer = S.active.customer;
       S.lists[id] = S.cur; lsSave();
     }
-    S.view = wantInv ? 'inventory' : S.active ? 'list' : 'gate'; S.invDirect = wantInv;   // opened straight from the time sheet: back goes back there
+    S.view = wantInv ? 'inventory' : S.active && /[?&]signoff=/.test(location.search) ? 'signoff' : S.active ? 'list' : 'gate'; S.invDirect = wantInv;   // opened straight from the time sheet: back goes back there
     render();
     const w = await BC.requireUser(); if (w.profile && w.profile.name && S.cur && !S.cur.tech){ S.cur.tech = w.profile.name; }
     if (window.Cloud) Cloud.onError = () => toast('Cloud save failed – kept on this phone');
