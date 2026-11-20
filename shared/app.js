@@ -53,6 +53,25 @@
   };
   BC.saveFile = (blob, name, type, title) => BC.saveFiles([{ blob, name, type }], title);
 
+  // Report "Job details" that fold up into a short summary – used by every report (forklift, crane, future ones).
+  // BC.foldDetails({ head, body, sum, badge, missing:() => ['customer', …], lines:() => ['line 1', 'line 2'] })
+  // → { render(), reset() }: opens by itself when something is missing when a report loads, otherwise folded;
+  //   after that only a tap on the header or summary opens / closes it. Page CSS: .sech/.sc/.chev and .jdsum.
+  BC.foldDetails = o => {
+    const E = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+    let open = null;
+    const render = () => {
+      if (!o.head) return; const miss = o.missing(); if (open === null) open = miss.length > 0;
+      o.head.classList.toggle('open', open); o.head.setAttribute('aria-expanded', open); o.body.style.display = open ? '' : 'none';
+      o.badge.textContent = miss.length ? miss.length + ' to fill in' : '✓ Done'; o.badge.classList.toggle('full', !miss.length);
+      o.sum.style.display = open ? 'none' : '';
+      o.sum.innerHTML = open ? '' : o.lines().filter(Boolean).map(E).join('<br>') + (miss.length ? '<br><span class="miss">Still to fill in: ' + E(miss.join(', ')) + '</span>' : '');
+    };
+    const tog = () => { open = !open; render(); };
+    if (o.head){ o.head.onclick = tog; o.sum.onclick = tog; }
+    return { render, reset(){ open = null; render(); } };
+  };
+
   // Turn a photo/scan of a signature into a trimmed PNG with a see-through background
   BC.fileToSig = async file => {
     if (file.type && !/^image\//.test(file.type) && !/\.(heic|heif|jpe?g|png|webp|gif|bmp)$/i.test(file.name)) throw new Error('type');

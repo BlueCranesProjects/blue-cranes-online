@@ -169,6 +169,13 @@
   .phbtn{flex:1;margin:0!important;text-align:center;padding:11px;border-radius:8px;border:1.5px solid var(--navy);background:#fff;color:var(--navy)!important;font-size:14px!important;font-weight:800!important;cursor:pointer}
   .phdel{border:1.5px solid var(--bad);background:#fff;color:var(--bad);border-radius:8px;padding:0 14px;font-weight:700;font-size:13px}
   #pdfBtn.done{background:var(--ok);color:#fff}
+  .sech{display:flex;align-items:center;gap:8px;width:100%;font:inherit;font-size:13px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.6px;padding:12px;border:1px solid var(--line);border-left:4px solid var(--yellow);background:#f4f6fb;border-radius:10px;cursor:pointer;text-align:left}
+  .sech .sc{margin-left:auto;font-size:12px;font-weight:800;letter-spacing:0;text-transform:none;padding:3px 9px;border-radius:999px;background:#fff;color:#4a5370;border:1px solid var(--line)}
+  .sech .sc.full{background:var(--ok);border-color:var(--ok);color:#fff}
+  .sech .chev{font-size:14px;transition:transform .2s}
+  .sech.open .chev{transform:rotate(180deg)}
+  .jdsum{margin:8px 2px 0;font-size:13px;line-height:1.45;color:#4a5370;cursor:pointer}
+  .jdsum .miss{color:var(--bad);font-weight:700}
 </style>
 </head>
 <body>
@@ -187,8 +194,9 @@
   <section class="card">
     <h2>Report type</h2>
     <div class="rtype"><button data-t="INSPECTION">Inspection</button><button data-t="LOAD TEST">Load test</button></div>
-    <h2 style="margin-top:16px">Job details</h2>
-    <div class="grid">
+    <button type="button" class="sech" id="jdHead" aria-expanded="false" style="margin-top:16px"><span>Job details</span><span class="sc" id="jdSc"></span><span class="chev">▾</span></button>
+    <div class="jdsum" id="jdSum"></div>
+    <div class="grid" id="jdBody" style="margin-top:12px">
       <div class="full"><label for="customer">Customer</label><input id="customer" autocomplete="off"></div>
       <div><label for="date">Date</label><input id="date" type="date"></div>
       <div><label for="jobno">Job no</label><input id="jobno" inputmode="numeric"></div>
@@ -407,7 +415,7 @@ let saveT;
 // ---- submitting: the report is saved to the account and put on the client's inventory (PDFs come from Saved reports, the job pack and Admin) ----
 function subBtn(){const b=$("pdfBtn");if(!b)return;const done=!!(state._saved&&state._saved===stSig(state));b.classList.toggle("done",done);
   b.textContent=done?"✓ Submitted":state._rid?"Submit changes":"Submit report";}
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>{FIELDS.forEach(f=>state.f[f]=$(f).value);store(KEY,JSON.stringify(state));keepDraft();subBtn();},250);}
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{FIELDS.forEach(f=>state.f[f]=$(f).value);store(KEY,JSON.stringify(state));keepDraft();subBtn();JD.render();},250);}
 // ---- unfinished reports: every report on screen that has content and is not saved (or changed since saving) is kept, so it can be finished later ----
 const DKEY="bc-forklift-drafts";
 function keepDraftNow(){try{if(typeof state!=="undefined"&&state&&state.f){FIELDS.forEach(f=>{const el=$(f);if(el&&el.value!==undefined&&document.readyState!=="loading")state.f[f]=el.value;});keepDraft();}}catch(e){}}
@@ -458,7 +466,13 @@ function setupPad(id){
 document.querySelectorAll(".clr").forEach(b=>b.onclick=()=>pads[b.dataset.c].clear());
 let rz;window.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>Object.values(pads).forEach(p=>p.size()),200);});
 
-function applyState(){FIELDS.forEach(f=>$(f).value=state.f[f]||"");syncNA();ITEMS.forEach((_,i)=>showNote(i,!!state.note[i]));render();Object.values(pads).forEach(p=>p.size());}
+// Job details fold up (shared with every report: BC.foldDetails)
+const JD=BC.foldDetails({head:$("jdHead"),body:$("jdBody"),sum:$("jdSum"),badge:$("jdSc"),
+  missing:()=>{const v=k=>String(($(k)||{}).value||"").trim(),m=[];[["customer","customer"],["make","manufacturer"],["serial","serial no"],["swl","SWL"],["lc","load centre"]].forEach(([k,t])=>{if(!v(k))m.push(t);});return m;},
+  lines:()=>{const v=k=>String(($(k)||{}).value||"").trim(),U=k=>v(k).toUpperCase();
+    return [[U("customer"),v("jobno"),v("docno")].filter(Boolean).join(" · "),
+            [[U("make"),U("model")].filter(Boolean).join(" "),v("serial")?"Serial "+U("serial"):"",v("swl")?v("swl")+" kg @ "+(v("lc")||"?")+" mm":"",v("mh")?"Mast "+v("mh")+" mm":"",U("location"),U("site")].filter(Boolean).join(" · ")];}});
+function applyState(){FIELDS.forEach(f=>$(f).value=state.f[f]||"");syncNA();ITEMS.forEach((_,i)=>showNote(i,!!state.note[i]));render();JD.reset();Object.values(pads).forEach(p=>p.size());}
 function today(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function addMonths(s,n){if(!s)return"";let [y,m,d]=s.split("-").map(Number);m+=n;y+=Math.floor((m-1)/12);m=((m-1)%12)+1;
   const last=new Date(y,m,0).getDate();d=Math.min(d,last);return y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0");}
