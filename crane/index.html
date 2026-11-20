@@ -365,7 +365,7 @@ function build(){
     if(r.n===11)h+=`<div class="sub"><select id="loadSel" class="ysel"><option value="">Rope or chain? Choose…</option><option value="rope">Rope</option><option value="chain">Chain</option></select></div>`;
     if(r.kind==="meas")h+=`<div class="sub"><div class="unit" style="flex:1"><input data-meas="${r.id}" inputmode="decimal" placeholder="${r.id==="F"?"Measured deflection":r.id==="G"?"Span / length":"Height"}"><span>mm</span></div><button type="button" class="na nab" data-measna="${r.id}">N/A</button></div>`;
     if(r.kind==="four"){h+=`<button class="pbtn" data-exp="${r.id}">Different per part ▾</button><div class="pp" id="pp-${r.id}">${COLS.map(([k,s],c)=>`<div class="pprow" id="pr-${r.id}-${c}"><span>${s}</span>${optBtns(`data-r="${r.id}" data-c="${c}"`,r.name+" "+s)}</div>`).join("")}</div>`;}
-    if(r.kind!=="meas")h+=photoBox(r.id,r.name)+`<div class="qbox" id="qb-${r.id}" style="display:none"></div>`;
+    if(r.kind!=="meas")h+=`<div class="qbox" id="qb-${r.id}" style="display:none"></div>`;
     h+=`<div class="sub notewrap" style="display:none"><input data-note="${r.id}" placeholder="Note / defect for item ${r.no}"></div><button class="notebtn" data-addnote="${r.id}">+ Add note</button></div>`;
   });
   itemsEl.innerHTML=h+(sec?"</div>":"");wirePhotos(itemsEl);
@@ -401,7 +401,7 @@ function render(){subBtn();
       COLS.forEach((_,c)=>{const pr=$("pr-"+r.id+"-"+c);pr.style.display=cs.includes(c)?"":"none";pr.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.v===state.res[r.id+"_"+c]));});}
     else $("mx-"+r.id).style.display="none";
     if(r.kind==="meas"){const inp=d.querySelector("[data-meas]"),v=state.val[r.id]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);d.querySelector(".unit").classList.toggle("isna",na);d.querySelector("[data-measna]").classList.toggle("on",na);}
-    if(r.kind!=="meas"){showPhoto(r.id,rowVals(r).includes("x"));const qb=$("qb-"+r.id),need=rowVals(r).some(v=>v==="x"||v==="w");qb.style.display=need?"":"none";if(need&&!qb.dataset.on)fillQuote(r.id);if(!need)qb.dataset.on="";}
+    if(r.kind!=="meas"){const qb=$("qb-"+r.id),need=rowVals(r).some(v=>v==="x"||v==="w");qb.style.display=need?"":"none";if(need&&!qb.dataset.on)fillQuote(r.id);if(!need)qb.dataset.on="";}
     const ni=d.querySelector("[data-note]");if(ni.value!==(state.note[r.id]||""))ni.value=state.note[r.id]||"";if(state.note[r.id])showNote(r.id,true);
   });
   document.querySelectorAll("[data-v2]").forEach(inp=>{const k=inp.dataset.v2,v=state.val[k]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);inp.closest(".unit").classList.toggle("isna",na);document.querySelector(`[data-vna="${k}"]`).classList.toggle("on",na);});
@@ -601,7 +601,8 @@ function missing(){const miss=[];readFields();
   return miss;}
 function xOf(r,st){return r.kind==="four"?activeCols(r.n,st).some(c=>st.res[r.id+"_"+c]==="x"):st.res[r.id]==="x";}
 function photosNeeded(){return ROWS.filter(r=>rowVisible(r)&&r.kind!=="meas"&&xOf(r,state)&&!(state.photo&&state.photo[r.id])).map(r=>({r,label:"#"+r.no+" "+esc(rname(r))}));}
-$("pdfBtn").onclick=()=>{readFields();const ph=photosNeeded();if(ph.length){photoBlock(ph,t=>{if(!openSec.has(t.r.sec)){openSec.add(t.r.sec);keepOpen();render();}$("pb-"+t.r.id).scrollIntoView({behavior:"smooth",block:"center"});});return;}
+// one photo place only: repair photos go in "For quote" (technician's report); no separate X photo is asked for
+$("pdfBtn").onclick=()=>{readFields();
   const miss=missing();
   if(miss.length){modal(`<h3>Some things are missing</h3><ul>${miss.map(m=>"<li>"+esc(m)+"</li>").join("")}</ul><div class="btns"><button class="secondary" id="mNo">Go back</button><button class="primary" id="mYes">Submit anyway</button></div>`);$("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();makePdf();};}
   else makePdf();};
