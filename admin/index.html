@@ -371,7 +371,7 @@
         if (!crc[u.uid]){ try { crc[u.uid] = (await window.Cloud.listKindOf(u.uid, 'crane')).map(d => d.data || {}).filter(r => r && r.state && r.state.f); } catch(e){ crc[u.uid] = []; } }
         const cr = j.card ? crc[u.uid].filter(r => core(r.job || r.state.f.jobno) === core(j.card)) : [];
         if (cr.length){ const o = S.invProg[j.id] || {}; if ((o.cr || []).length !== cr.length) changed = true; S.invProg[j.id] = Object.assign(o, { cr, uid:u.uid }); }
-        const l = cache[u.uid].find(x => x.sched === 'A_' + j.id) || (j.sheetDate ? cache[u.uid].find(x => x.id === listIdOf(j.sheetDate, j)) : null); if (!l) continue;
+        const l = cache[u.uid].find(x => x.sched === 'A_' + j.id) || (j.sheetDate ? cache[u.uid].find(x => x.id === listIdOf(j.sheetDate, j) || (x.also || []).includes(listIdOf(j.sheetDate, j))) : null); if (!l) continue;
         const rows = (l.rows || []).filter(r => r.serial || r.desc); if (!rows.length) continue;
         const g = { fl:(S.invProg[j.id] || {}).fl || [], cr:(S.invProg[j.id] || {}).cr || [], total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
         const o = S.invProg[j.id]; if (!o || o.done !== g.done || o.total !== g.total || o.unsafe !== g.unsafe) changed = true; S.invProg[j.id] = g; }

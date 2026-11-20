@@ -412,6 +412,26 @@
   function head(sub, title, left, right){ return `<header>${left || ''}<div style="flex:1;min-width:0"><div class="sub">${esc(sub)}</div><h1>${esc(title)}</h1></div>${right || ''}</header>`; }
   const backBtn = (href, label) => `<a class="ib" href="${href}" data-back="match" aria-label="${esc(label)}">${ICON.back}</a>`;
 
+  // earlier inventories for the same job number or customer (with items), newest first – to carry on with on a return visit
+  function earlierLists(l){ const c = norm(l.customer), jc = jobCore(l.job);
+    return Object.values(S.lists).filter(v => v && v.id !== l.id && String(v.date || '') <= String(l.date || '') && (v.rows || []).some(r => r.serial || r.desc) && ((jc && jobCore(v.job) === jc) || (c && norm(v.customer) === c)))
+      .sort((a, b) => String(b.date + (b.savedAt || '')).localeCompare(String(a.date + (a.savedAt || '')))); }
+  function continueList(fromId){
+    const t = S.lists[fromId], cur = S.cur; if (!t || !cur) return;
+    t.also = [...new Set([...(t.also || []), cur.id, ...(cur.also || [])])]; if (cur.sched && !t.sched) t.sched = cur.sched;
+    if (!(cur.rows || []).some(r => r.serial || r.desc)){ delete S.lists[cur.id]; if (cloudOK()) Cloud.deleteItem(docId(cur.id)); }
+    S.cur = t; S.contNote = t.date; saveList(t, true); render(); window.scrollTo(0, 0); toast('Carrying on with the inventory from ' + niceDate(t.date));
+  }
+  function contCard(l){
+    const from = S.contNote || (S.active && l.date && l.date < S.active.date ? l.date : '');
+    if (from) return `<section class="card" style="background:#EAF6EE;border-color:#BFE3CB"><b>Carrying on with the inventory from ${esc(niceDate(from))}</b><div class="hint">Everything filled in then is here; today's work is added to it. Reports keep their numbers.</div></section>`;
+    if ((l.rows || []).some(r => r.serial || r.desc)) return '';
+    const prev = earlierLists(l).slice(0, 3); if (!prev.length) return '';
+    return `<section class="card" style="border:2px solid var(--yellow)"><b>Back at ${esc(l.customer || prev[0].customer || 'this customer')}?</b>
+      <div class="hint" style="margin:4px 0 8px">Carry on with an earlier inventory – its items, Safe / Unsafe marks, photos and reports come along.</div>
+      ${prev.map(v => { const n = (v.rows || []).filter(r => r.serial || r.desc).length, d = (v.rows || []).filter(r => r.status).length;
+        return `<button class="btn" type="button" data-cont="${esc(v.id)}" style="margin-top:6px;background:var(--navyDeep);color:#fff;height:auto;padding:12px;text-align:left;display:block;width:100%">↻ ${esc(niceDate(v.date))} · Job ${esc(v.job || '–')}<span style="display:block;font-weight:500;font-size:13px;opacity:.85">${n} items · ${d} checked</span></button>`; }).join('')}</section>`;
+  }
   function vList(){
     const l = S.cur; const inv = inventory()[norm(l.customer)]; const known = inv ? inv.items : {};
     const MK = makesList(); const dupes = {}; (l.rows || []).forEach(r => { const k = norm(r.serial); if (k) dupes[k] = (dupes[k] || 0) + 1; });
@@ -420,6 +440,7 @@
     const sel = S.sel || null; const OPEN = openSet(); (l.rows || []).forEach(r => { if (!r.id) r.id = rowId(); });
     return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Client's inventory", backBtn('../timesheet/', 'Back to the time sheet'),
         `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main>
+      ${contCard(l)}
       <section class="card">
         <div class="field"><label for="fCust">Customer</label><input id="fCust" value="${esc(l.customer)}" readonly></div>
         <div class="grid2">
@@ -554,6 +575,7 @@
     if (!same && to > 0) [150, 500].forEach(ms => setTimeout(() => { if (lastView === S.view && Math.abs(window.scrollY - to) > 40) window.scrollTo(0, to); }, ms));
   }
   function wire(){
+    app.querySelectorAll('[data-cont]').forEach(b => b.onclick = () => continueList(b.dataset.cont));
     const $ = id => document.getElementById(id);
     const ti = $('toInv'); if (ti) ti.onclick = () => { S.view = 'inventory'; render(); };
     const tl = $('toList'); if (tl) tl.onclick = () => { S.view = 'list'; render(); };
@@ -975,6 +997,10 @@
       // the same scheduled job keeps one inventory, whether opened from the schedule or after starting it (even on another day)
       const sid = S.active.sched || (() => { try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const tj = ts.sheets[S.active.date].jobs[S.active.idx]; return tj.sched || ''; } catch(e){ return ''; } })();
       if (sid && !S.lists[id]){ const linked = Object.values(S.lists).find(v => v && v.sched === sid); if (linked) id = linked.id; }
+      // back on site another day: the job keeps the inventory it was continued from (or, with the same job number, the earlier one by itself)
+      if (!S.lists[id]){ const al = Object.values(S.lists).find(v => v && (v.also || []).includes(id)); if (al) id = al.id; }
+      if (!S.lists[id] && jobCore(S.active.card)){ const prev = earlierLists({ id, date:S.active.date, job:S.active.card, customer:'' }).find(v => jobCore(v.job) === jobCore(S.active.card));
+        if (prev){ prev.also = [...new Set([...(prev.also || []), id])]; saveList(prev, true); id = prev.id; S.contNote = prev.date; } }
       S.cur = S.lists[id] || { id, date:S.active.date, job:S.active.card || '', customer:S.active.customer || '', location:'', rows:[], tech:(S.profile && S.profile.name) || '' };
       if (!S.cur.rows.length && !S.lists[id]){ S.cur.rows.push({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'' }); }
       S.cur.rows.forEach(r => { if (!r.id) r.id = rowId(); });

@@ -812,6 +812,7 @@ function toEquipment(st){
   const date=f.date||today(),job=String(f.jobno||"").trim(),cust=String(f.customer||"").trim();
   let all={};try{all=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){}
   let id=st.list&&all[st.list]?st.list:(date+"_"+(job||cust||"job")).replace(/[^\w\-]+/g,"_");
+  if(!all[id]){const al=Object.values(all).find(v=>v&&(v.also||[]).includes(id));if(al)id=al.id;}   // inventory carried on from an earlier visit
   if(!all[id]){try{const a=JSON.parse(load("bco-active-job")||"null");const ts=JSON.parse(load("dts-v1")||"null");const sj=a&&ts&&ts.sheets&&ts.sheets[a.date]&&ts.sheets[a.date].jobs&&ts.sheets[a.date].jobs[a.idx];const sid=(a&&a.sched)||(sj&&sj.sched);
     const linked=sid&&Object.values(all).find(v=>v&&v.sched===sid);if(linked)id=linked.id;}catch(e){}}
   const l=all[id]||{id,date,job,customer:cust,location:f.site||"",rows:[],tech:(PROFILE&&PROFILE.name)||f.engName||""};

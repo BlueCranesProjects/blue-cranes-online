@@ -359,7 +359,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (J)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (K)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -861,7 +861,7 @@
   // client's inventory of a job (kept on the phone by the inventory tool): how many items still need a Safe / Unsafe mark
   function invLeft(k, i){ try { const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j) return {};
       const id = (k + '_' + (j.card || j.customer || j.desc || 'job')).replace(/[^\w\-]+/g, '_');
-      const all = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; const l = all[id] || (j.sched ? Object.values(all).find(v => v && v.sched === j.sched) : null); const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
+      const all = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; const l = all[id] || Object.values(all).find(v => v && (v.also || []).includes(id)) || (j.sched ? Object.values(all).find(v => v && v.sched === j.sched) : null); const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
       return { total:rows.length, open:rows.filter(r => !r.status).length }; } catch(e){ return {}; } }
   // opening an inventory or report remembers where you were (e.g. a day in History), so coming back opens there again
   const PLACE = 'bco-ts-place';
@@ -1500,7 +1500,7 @@
       if (j){
         const core = v => String(v || '').trim().toUpperCase().replace(/^C(?=\d)/, '');
         try { const eq = JSON.parse(localStorage.getItem('bco-equipment') || '{}'); const id = (k + '_' + (j.card || j.customer || 'job')).replace(/[^\w\-]+/g, '_');
-          const n = ((eq[id] && eq[id].rows) || []).filter(r => r.serial || r.desc).length; if (n) document.getElementById('cntE').textContent = n + (n === 1 ? ' item' : ' items'); } catch(e){}
+          const el = eq[id] || Object.values(eq).find(v => v && (v.also || []).includes(id)); const n = ((el && el.rows) || []).filter(r => r.serial || r.desc).length; if (n) document.getElementById('cntE').textContent = n + (n === 1 ? ' item' : ' items'); } catch(e){}
         try { const rq = indexedDB.open('bc-forklift', 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
           rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => {
             const mine = (g.result || []).filter(r => r && r.state && core(r.job || r.state.f.jobno) === core(j.card) && (j.card || norm2(r.state.f.customer) === norm2(j.customer)));
