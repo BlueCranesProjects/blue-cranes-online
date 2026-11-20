@@ -277,7 +277,10 @@
   const nowHM = () => { const d = new Date(); return p2(d.getHours()) + ':' + p2(d.getMinutes()); };
   // travel before each job = arrival at this site − start time (first job) or finish of the job before; after = last finish → clock out
   function travelInfo(sh, k){ const jobs = (sh && sh.jobs) || []; let prev = minsOf(sh && sh.clockIn); const before = []; let total = 0;
-    jobs.forEach((j, i) => { const a = minsOf(hhmm(j.startedAt, k)); let t = null; if (prev != null && a != null && a >= prev){ t = a - prev; total += t; } before[i] = t; prev = j.done ? minsOf(hhmm(j.doneAt, k)) : null; });
+    jobs.forEach((j, i) => { const a = minsOf(hhmm(j.startedAt, k)); let t = null;
+      if (j.travel != null && j.travel !== '' && !isNaN(Number(j.travel))){ t = Math.round(Number(j.travel) * 60); total += t; }   // travel the technician set by hand
+      else if (prev != null && a != null && a >= prev){ t = a - prev; total += t; }
+      before[i] = t; prev = j.done ? minsOf(hhmm(j.doneAt, k)) : null; });
     let after = null; const out = minsOf(sh && sh.clockOut); if (prev != null && out != null && out >= prev && jobs.length){ after = out - prev; total += after; }
     return { before, after, total, lastFin: prev }; }
   // a job's time = travel to it (from the start time or the previous job's finish) + time on site
@@ -355,7 +358,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (E)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (F)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -694,6 +697,10 @@
     const quick = !editing && !p;                          // Add job: just who/what, then start
     const finishing = editing && !!state._finishing && !j.done;
     const trTo = editing ? jobTravel(sh, state.jobIdx) : 0;
+    // travel to this job: worked out from the times, or set by hand (stepper, 15 min steps)
+    const trAuto = editing ? (() => { const c = Object.assign({}, sh, { jobs:sh.jobs.map((x, i) => i === state.jobIdx ? Object.assign({}, x, { travel:null }) : x) }); return jobTravel(c, state.jobIdx); })() : 0;
+    state._travSet = editing && j.travel != null && j.travel !== ''; state._trav = state._travSet ? Number(j.travel) : trAuto; state._travAuto = trAuto;
+    { const pj = editing && state.jobIdx > 0 ? sh.jobs[state.jobIdx - 1] : null; state._travFrom = !editing ? null : state.jobIdx === 0 ? minsOf(sh.clockIn) : pj && pj.done ? minsOf(hhmm(pj.doneAt, key)) : null; }
     const tArr0 = hhmm(j.startedAt, key), tFin0 = j.done ? hhmm(j.doneAt, key) : finishing ? nowHM() : '';
     if (finishing && !(Number(j.hrs) > 0)){ const a = minsOf(tArr0), f = minsOf(tFin0); state._hrs = a != null && f != null && f > a ? Math.round((f - a) / 5) * 5 / 60 : hoursSince(j.startedAt); }
     const hide = quick ? 'style="display:none"' : '';
@@ -713,13 +720,18 @@
         <div class="grid2" style="gap:10px;margin-top:18px">
           <div class="field"><label for="tArr">Arrived on site</label><input id="tArr" type="time" value="${esc(tArr0)}"></div>
           <div class="field" id="tFinBox" ${j.done || finishing ? '' : 'style="visibility:hidden"'}><label for="tFin">Finished</label><input id="tFin" type="time" value="${esc(tFin0)}"></div></div>
-        <span class="hint" style="display:block;margin:6px 0 18px">Time between finishing one job and arriving at the next is counted as travel.</span>
+        <div class="field" style="margin:14px 0 20px${editing ? '' : ';display:none'}"><span class="lab" id="travLab">Travel to this job</span>
+          <div class="stepper" role="group" aria-labelledby="travLab">
+            <button type="button" id="tvMinus" aria-label="Less travel">−</button>
+            <div class="val" id="tvVal" aria-live="polite">${fmtHM(state._trav)}</div>
+            <button type="button" id="tvPlus" aria-label="More travel">+</button></div>
+          <span class="hint" id="tvHint"></span></div>
         <div class="field"><span class="lab" id="hrsLab">Time on site</span>
           <div class="stepper" role="group" aria-labelledby="hrsLab">
             <button type="button" id="minus" aria-label="Less time">−</button>
             <div class="val" id="hrsVal" aria-live="polite">${fmtHM(state._hrs)}</div>
             <button type="button" id="plus" aria-label="More time">+</button></div>
-          <span class="hint" id="hrsHint">${finishing && j.startedAt ? 'Worked out from arrival to finish – adjust if needed. ' : ''}Steps of 0.5 h${trTo ? '<br><b>+ ' + fmtHM(trTo) + ' travel to this job</b> is added to the job\'s hours.' : ''}</span></div>
+          <span class="hint" id="hrsHint">${finishing && j.startedAt ? 'Worked out from arrival to finish – adjust if needed. ' : ''}Steps of 0.5 h. Travel above is added to the job's hours.</span></div>
         </div>
         <div class="field" ${quick || finishing ? 'style="display:none"' : ''}><span class="lab" id="doneLab">Job status</span>
           <div class="seg" role="group" aria-labelledby="doneLab" style="width:100%">
@@ -1148,7 +1160,7 @@
         <pre class="summary" id="waPreview" aria-label="Message preview" style="margin:0"></pre>
         <a class="btn" style="background:#128C4A;color:#fff;text-decoration:none" id="waSend" data-wa="${k}" href="#" target="_blank" rel="noopener">${ICON.wa} Send on WhatsApp</a>
         <span class="hint" id="waHint">Opens WhatsApp with this message ready – pick the chat or group to send it to.</span>
-        <span class="hint">App version 20 Nov (E)</span>
+        <span class="hint">App version 20 Nov (F)</span>
       </section>` : ''}
       <button class="btn primary" data-pdf="${k}">${ICON.pdf} Download PDF time sheet</button>
       <button class="btn secondary" data-reopen="${k}">✎ Edit this day – time sheet and job hours</button>
@@ -1577,7 +1589,15 @@
       const val = document.getElementById('hrsVal');
       document.getElementById('minus').onclick = () => { state._hrs = Math.max(0, state._hrs - 0.5); val.textContent = fmtHM(state._hrs); };
       document.getElementById('plus').onclick = () => { state._hrs = Math.min(24, state._hrs + 0.5); val.textContent = fmtHM(state._hrs); };
+      { const tv = document.getElementById('tvVal'), th = document.getElementById('tvHint');
+        const show = () => { tv.textContent = fmtHM(state._trav);
+          th.innerHTML = state._travSet ? 'Set by you · worked out from the times: ' + fmtHM(state._travAuto) + ' · <a href="#" id="tvAuto">use that</a>' : 'Worked out from the start time / previous job\'s finish to arriving here – adjust if needed. Steps of 15 min.';
+          const ua = document.getElementById('tvAuto'); if (ua) ua.onclick = e => { e.preventDefault(); state._travSet = false; state._trav = state._travAuto; show(); }; };
+        const step = d => { state._trav = Math.max(0, Math.min(12, Math.round((state._trav + d) * 4) / 4)); state._travSet = true; show(); };
+        if (tv){ document.getElementById('tvMinus').onclick = () => step(-0.25); document.getElementById('tvPlus').onclick = () => step(0.25); document.getElementById('tvMinus').addEventListener('refresh', show); show(); } }
       const tA = document.getElementById('tArr'), tF = document.getElementById('tFin');
+      if (tA) tA.addEventListener('change', () => { const a = minsOf(tA.value); if (state._travFrom == null || a == null || a < state._travFrom || !document.getElementById('tvVal')) return;
+        state._travAuto = Math.round((a - state._travFrom) / 5) * 5 / 60; if (!state._travSet) state._trav = state._travAuto; document.getElementById('tvMinus').dispatchEvent(new Event('refresh')); });
       const fromTimes = () => { const a = minsOf(tA.value), f = minsOf(tF.value); if (a == null || f == null || f <= a || document.getElementById('tFinBox').style.visibility === 'hidden') return; state._hrs = Math.round((f - a) / 5) * 5 / 60; val.textContent = fmtHM(state._hrs); };
       if (tA && tF){ tA.onchange = fromTimes; tF.onchange = fromTimes; }
       const del = document.getElementById('delJob');
@@ -1618,6 +1638,7 @@
             if (job.done && f != null && f < a){ err.textContent = 'The finish time is before the arrival time. Check the times.'; return; }
             job.startedAt = isoAt(k, tA.value); }
           if (job.done && tF && tF.value) job.doneAt = isoAt(k, tF.value); }
+        if (state.jobIdx != null && state._travSet) job.travel = state._trav; else delete job.travel;
         if (job.done && !job.doneAt) job.doneAt = new Date().toISOString();
         if (!job.done) delete job.doneAt;
         syncSchedDone(job);
