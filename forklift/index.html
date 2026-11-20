@@ -329,7 +329,6 @@ function build(){
           <div><label>Original (mm)</label><input inputmode="decimal" data-chain="${k}n"></div>
           <div><label>Measured (mm)</label><input inputmode="decimal" data-chain="${k}m"></div>
           <div class="wear" id="str-${k}">–</div></div>`).join("")}</div>`:""}
-      ${(n===CRACK||VALUE_ONLY.includes(n))?"":photoBox(i,name)}
       <div class="sub notewrap" style="display:none"><input data-note="${i}" placeholder="Note / defect for item ${n}"></div>
       <button class="notebtn" data-addnote="${i}">+ Add note</button>`;
     d.querySelectorAll(".opts button").forEach(b=>b.onclick=()=>{
@@ -361,7 +360,6 @@ function render(){subBtn();
     if(visible(i)&&isDone(i))done++;
     const nm=$("nm"+(i+1));if(nm.textContent!==itemName(i))nm.textContent=itemName(i);
     const vi=d.querySelector("[data-val]"); if(vi&&vi.value!==state.val[i])vi.value=state.val[i];
-    showPhoto(i,visible(i)&&state.res[i]==="x");
     const ni=d.querySelector("[data-note]"); if(ni.value!==state.note[i])ni.value=state.note[i];
     if(state.note[i])showNote(i,true);
   });
@@ -502,7 +500,7 @@ $("jobno").addEventListener("input",()=>{const j=$("jobno").value.trim();$("docn
 function photosNeeded(){return vis().filter(i=>state.res[i]==="x"&&!(state.photo&&state.photo[i])).map(i=>({i,label:"#"+dnum(i)+" "+esc(itemName(i))}));}
 $("pdfBtn").onclick=()=>{
   FIELDS.forEach(f=>state.f[f]=$(f).value);
-  {const ph=photosNeeded();if(ph.length){photoBlock(ph,t=>$("pb-"+t.i).scrollIntoView({behavior:"smooth",block:"center"}));return;}}
+  // no photos on forklift reports: Blue Cranes does not repair forklifts, an X is noted on the customer's report only
   const miss=[];
   if(!state.f.customer)miss.push("Customer");
   if(!state.f.make)miss.push("Manufacturer");
