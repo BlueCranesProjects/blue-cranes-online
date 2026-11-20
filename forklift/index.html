@@ -174,6 +174,7 @@
   .sech .sc.full{background:var(--ok);border-color:var(--ok);color:#fff}
   .sech .chev{font-size:14px;transition:transform .2s}
   .sech.open .chev{transform:rotate(180deg)}
+  .jdclose{width:100%;padding:12px;border-radius:10px;border:1.5px solid #c9d2e3;background:#f4f6fa;color:#0B3575;font-weight:800;font-size:15px;font-family:inherit;cursor:pointer}
   .jdsum{margin:8px 2px 0;font-size:13px;line-height:1.45;color:#4a5370;cursor:pointer}
   .jdsum .miss{color:var(--bad);font-weight:700}
 </style>
@@ -212,6 +213,7 @@
       <div><label for="site">Site address <span style="font-weight:400">(town)</span></label><input id="site" placeholder="e.g. Ceres"></div>
       <div><label for="location">Location <span style="font-weight:400">(where it's used)</span></label><input id="location" placeholder="e.g. Yard"></div>
       <div><label for="docno">Doc no <span style="font-weight:400">(automatic)</span></label><input id="docno" readonly tabindex="-1" placeholder="Fills in from job no" class="auto"></div>
+      <div class="full"><button type="button" class="jdclose" data-jdclose>▴ Fold up job details</button></div>
     </div>
   </section>
 

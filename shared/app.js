@@ -82,6 +82,8 @@
     };
     const tog = () => { open = !open; render(); };
     if (o.head){ o.head.onclick = tog; o.sum.onclick = tog; }
+    // a "Fold up" button at the bottom of the details (data-jdclose), so it can be closed without scrolling back up
+    if (o.body) o.body.querySelectorAll('[data-jdclose]').forEach(b => b.onclick = () => { open = false; render(); const t = o.head.getBoundingClientRect().top; if (t < 80) window.scrollTo({ top:Math.max(0, window.scrollY + t - 100) }); });
     return { render, reset(){ open = null; render(); } };
   };
 

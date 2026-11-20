@@ -211,6 +211,7 @@
   .phbtn{flex:1;margin:0!important;text-align:center;padding:11px;border-radius:8px;border:1.5px solid var(--navy);background:#fff;color:var(--navy)!important;font-size:14px!important;font-weight:800!important;cursor:pointer}
   .phdel{border:1.5px solid var(--bad);background:#fff;color:var(--bad);border-radius:8px;padding:0 14px;font-weight:700;font-size:13px}
   #pdfBtn.done{background:var(--ok);color:#fff}
+  .jdclose{width:100%;padding:12px;border-radius:10px;border:1.5px solid #c9d2e3;background:#f4f6fa;color:#0B3575;font-weight:800;font-size:15px;font-family:inherit;cursor:pointer}
   .jdsum{margin:8px 2px 0;font-size:13px;line-height:1.45;color:#4a5370;cursor:pointer}
   .jdsum b{color:var(--navy)}
   .jdsum .miss{color:var(--bad);font-weight:700}
@@ -247,6 +248,7 @@
       <div><label for="location">Location <span style="font-weight:400">(where it's used)</span></label><input id="location" placeholder="e.g. Workshop"></div>
       <div><label for="site">Site address <span style="font-weight:400">(town)</span></label><input id="site" placeholder="e.g. Ceres"></div>
       <div><label for="docno">Doc no <span style="font-weight:400">(automatic)</span></label><input id="docno" readonly tabindex="-1" placeholder="Fills in from job no" class="auto"></div>
+      <div class="full"><button type="button" class="jdclose" data-jdclose>▴ Fold up job details</button></div>
     </div>
     <div style="height:0" id="jdEnd"></div>
   </section>
@@ -401,7 +403,7 @@ function jdRender(){const h=$("jdHead");if(!h)return;const miss=jdMissing();if(j
   const U=v=>esc(String(v||"").toUpperCase()),mm=v=>/^n\/a$/i.test(String(v||""))?"N/A":v?esc(v)+" mm":"";
   const l1=[U(f.customer)||'<span class="miss">No customer</span>',esc(f.jobno||""),f.docno?"<b>"+esc(f.docno)+"</b>":""].filter(Boolean).join(" · ");
   const l2=[U(f.details),[f.make,f.model].filter(Boolean).map(U).join(" "),f.serial?"Serial "+U(f.serial):"",f.swl?esc(f.swl)+" kg":"",state.val.G?"Span "+mm(state.val.G):"",state.val.H?"Lift "+mm(state.val.H):"",U(f.location)].filter(Boolean).join(" · ");
-  $("jdSum").innerHTML=open?"":l1+"<br>"+l2+(miss.length?'<br><span class="miss">Still to fill in: '+miss.join(", ")+"</span>":"");$("jdSum").style.display=open?"none":"";}
+  $("jdSum").innerHTML=open?"":l1+(l2?"<br>"+l2:"")+(miss.length?'<br><span class="miss">Still to fill in: '+miss.join(", ")+"</span>":"");$("jdSum").style.display=open?"none":"";}
 function render(){jdRender();subBtn();
   let done=0,tot=0;
   $("parts").querySelectorAll("[data-part]").forEach(c=>c.checked=!!state.parts[c.dataset.part]);
@@ -465,6 +467,7 @@ function continueDraft(id){const r=drafts()[id];if(!r)return;keepDraft();useStat
 
 FIELDS.forEach(f=>$(f).addEventListener("input",save));
 {const tg=()=>{jdOpen=!jdOpen;jdRender();};$("jdHead").onclick=tg;$("jdSum").onclick=tg;}
+document.querySelectorAll("[data-jdclose]").forEach(b=>b.onclick=()=>{jdOpen=false;jdRender();const h=$("jdHead");if(h&&h.getBoundingClientRect().top<80)window.scrollTo({top:Math.max(0,window.scrollY+h.getBoundingClientRect().top-100)});});
 document.querySelectorAll("[data-v2]").forEach(inp=>inp.oninput=()=>{state.val[inp.dataset.v2]=inp.value;save();});
 document.querySelectorAll("[data-vna]").forEach(b=>b.addEventListener("click",e=>{e.preventDefault();const k=b.dataset.vna;state.val[k]=/^n\/a$/i.test(state.val[k]||"")?"":"N/A";render();save();}));
 document.querySelectorAll(".rtype button[data-t]").forEach(b=>b.onclick=()=>{state.type=b.dataset.t;render();save();});
