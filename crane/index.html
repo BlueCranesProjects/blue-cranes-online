@@ -649,13 +649,12 @@ function remarkLines(st){const f=st.f,out=[];
   // (no "Load tested at … kg (SWL + 10% overload)" line on the report – removed 21 Nov)
   if(f.remarks)out.push(...String(f.remarks).split("\n").filter(x=>x.trim()));
   // every item marked W or X gets a remark line by itself (with the technician's note, if any); notes on other items too
-  const MEAN={w:"W (worn but serviceable)",x:"X (needs urgent replacement)"};
-  ROWS.forEach(r=>{if(r.ui===false)return;const n=String((st.note||{})[r.id]||"").trim(),res=st.res||{};let tag="";
-    if(r.kind==="four"){const cs=activeCols(r.n,st).filter(c=>res[r.id+"_"+c]==="w"||res[r.id+"_"+c]==="x");
-      if(cs.length)tag=" – "+cs.map(c=>COLS[c][1]+" "+MEAN[res[r.id+"_"+c]]).join(", ");}
-    else if(res[r.id]==="w"||res[r.id]==="x")tag=" – "+MEAN[res[r.id]];
-    if(!tag&&!n)return;
-    out.push(`#${r.no} ${rname(r,st)}${tag}${n?(tag?". ":": ")+n:""}`);});
+  // (no "W (worn but serviceable)" / "X (needs urgent replacement)" wording – removed 21 Nov; the item, its parts and the note stay)
+  ROWS.forEach(r=>{if(r.ui===false)return;const n=String((st.note||{})[r.id]||"").trim(),res=st.res||{};let wx=false,parts="";
+    if(r.kind==="four"){const cs=activeCols(r.n,st).filter(c=>res[r.id+"_"+c]==="w"||res[r.id+"_"+c]==="x");if(cs.length){wx=true;if(activeCols(r.n,st).length>1)parts=" ("+cs.map(c=>COLS[c][1]).join(", ")+")";}}
+    else if(res[r.id]==="w"||res[r.id]==="x")wx=true;
+    if(!wx&&!n)return;
+    out.push(`#${r.no} ${rname(r,st)}${parts}${n?" – "+n:""}`);});
   return out;}
 const NAF=[208,212,220],isNA=v=>/^n\/a$/i.test(String(v==null?"":v).trim());
 function mark(doc,v,cx,cy){if(v==="ok"){doc.setDrawColor(29,138,74);doc.setLineWidth(0.6);doc.line(cx-1.7,cy,cx-0.5,cy+1.3);doc.line(cx-0.5,cy+1.3,cx+1.9,cy-1.4);doc.setLineWidth(0.2);doc.setDrawColor(150,156,170);}
