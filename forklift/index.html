@@ -468,7 +468,7 @@ document.querySelectorAll("[data-na]").forEach(b=>b.addEventListener("click",e=>
 document.querySelectorAll(".rtype button[data-t]").forEach(b=>b.onclick=()=>{state.type=b.dataset.t;render();save();});
 // Forklift ⇄ Electric pedestrian stacker: the wording, the items and the report number letter (F / S) follow
 function setMachine(m){FIELDS.forEach(f=>state.f[f]=$(f).value);state.machine=m==="STACKER"?"STACKER":"FORKLIFT";if(STK())state.val[31]="Battery";
-  if(state.f.docno)state.f.docno=String(state.f.docno).replace(/^[FS](?=\d)/i,PFX());applyState();save();}
+  if(state.f.docno){if(state.row)state.f.docno=String(state.f.docno).replace(/^[FS](?=\d)/i,PFX());else if(String(state.f.jobno||"").trim())state.f.docno=nextDoc(state.f.jobno);}applyState();save();}
 document.querySelectorAll(".rtype button[data-m]").forEach(b=>b.onclick=()=>{if((state.machine||"FORKLIFT")!==b.dataset.m){setMachine(b.dataset.m);toast(MNAME()+" report");}});
 document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{state.status=state.status===b.dataset.s?null:b.dataset.s;state.stAuto=false;
   const uns=state.status==="UNSAFE";state.wr={insp:uns,load:uns};render();save();});
@@ -534,9 +534,13 @@ function jobsMap(){try{return JSON.parse(load(JOBKEY)||"{}")}catch(e){return{}}}
 // next free suffix for a job; afterCurrent=true also counts the doc no on screen as used
 // job card C124926 -> report F124926.1, certificate C124926/1 (the job card's own C is left off)
 function jobCore(j){return String(j||"").trim().replace(/\s+/g,"").replace(/^C(?=\d)/i,"");}
-function nextDoc(job,afterCurrent){const core=jobCore(job),m=jobsMap();let n=Math.max(m[core]||0,m[job]||0);if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===core)n=Math.max(n,cur.n);}return PFX()+core+"."+(n+1);}
+// the highest report number of this kind already given out on the job's client's inventory (so job-page reports carry on after them)
+function invMax(core,pfx){let n=0;try{const eq=JSON.parse(load("bco-equipment")||"{}")||{};const rx=new RegExp("^"+pfx+"[^.]+\\.(\\d+)$","i");
+  Object.values(eq).forEach(l=>{if(!l||jobCore(l.job||"")!==core)return;(l.rows||[]).forEach(x=>{const no=String((x.report&&x.report.no)||"").replace(/\s+/g,"");const m=rx.exec(no);if(m&&!(pfx==="F"&&/^(CR|S)\d/i.test(no)))n=Math.max(n,+m[1]);if(x.rno&&x.rno.p===pfx)n=Math.max(n,x.rno.n);});});}catch(e){}return n;}
+// report numbers run per kind: F<job>.1, .2… for forklifts and S<job>.1, .2… for stackers
+function nextDoc(job,afterCurrent){const core=jobCore(job),m=jobsMap(),P=PFX();let n=Math.max(P==="S"?(m["S"+core]||0):Math.max(m[core]||0,m[job]||0),invMax(core,P));if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===core&&String(state.f.docno||"").trim().charAt(0).toUpperCase()===P)n=Math.max(n,cur.n);}return P+core+"."+(n+1);}
 function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec((d||"").trim().replace(/^[FS](?=.+\.\d+$)/,""));return m?{job:jobCore(m[1]),n:+m[2]}:null;}
-function recordDoc(){const d=parseDoc(state.f.docno);if(!d)return;const m=jobsMap();m[d.job]=Math.max(m[d.job]||0,d.n);store(JOBKEY,JSON.stringify(m));}
+function recordDoc(){const d=parseDoc(state.f.docno);if(!d)return;const k=(/^S/i.test(String(state.f.docno||"").trim())?"S":"")+d.job,m=jobsMap();m[k]=Math.max(m[k]||0,d.n);store(JOBKEY,JSON.stringify(m));}
 $("jobno").addEventListener("input",()=>{const j=$("jobno").value.trim();$("docno").value=j?nextDoc(j):"";save();});
 
 function photosNeeded(){return vis().filter(i=>state.res[i]==="x"&&!(state.photo&&state.photo[i])).map(i=>({i,label:"#"+dnum(i)+" "+esc(itemName(i))}));}
@@ -910,7 +914,8 @@ async function exportReports(recs,kind,label){
 const UTKEY="bc-forklift-understudy";
 function utSaved(){try{return JSON.parse(load(UTKEY)||"{}")}catch(e){return{}}}
 let utCloudT;function utStore(p){store(UTKEY,JSON.stringify(Object.assign(utSaved(),p)));clearTimeout(utCloudT);utCloudT=setTimeout(()=>{try{if(cloudOK()){const u=utSaved();window.Cloud.putItem("understudy",{kind:"understudy",name:u.name||"",lmi:u.lmi||"",sig:u.sig||"",updated:new Date().toISOString()});}}catch(e){}},1000);}
-function certNo(f){const d=parseDoc(f.docno);return d?`C${d.job}/${d.n}`:(f.docno?"C"+String(f.docno).replace(".","/"):"");}
+// the certificate number is the item's own number on the client's inventory (f.cno); older reports: the report number
+function certNo(f){const d=parseDoc(f.docno);if(d&&f.cno)return `C${d.job}/${f.cno}`;return d?`C${d.job}/${d.n}`:(f.docno?"C"+String(f.docno).replace(".","/"):"");}
 function monthYear(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s||""))return(s||"").toUpperCase();const [y,m]=s.split("-");return ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"][+m-1]+" "+y;}
 // certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
 const CERT_TOP=70,CERT_K=0.82;
@@ -1044,7 +1049,7 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
   if(!it||!ACTIVE||EMBED||Date.now()-(it.at||0)>15*60000)return;window.__FL_ITEM=1;
   const N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," ");FIELDS.forEach(f=>state.f[f]=$(f).value);
   const fill=()=>{state.row=it.row||null;state.list=it.list||null;if(it.machine==="STACKER"&&!STK()){state.machine="STACKER";state.val[31]="Battery";if(state.f.docno)state.f.docno=String(state.f.docno).replace(/^F(?=\d)/i,"S");}if(it.serial)state.f.serial=String(it.serial).toUpperCase();if(it.make&&!state.f.make)state.f.make=it.make;if(it.swl&&!state.f.swl)state.f.swl=String(it.swl).replace(/[^\d.]/g,"");if(it.loc&&!state.f.location)state.f.location=it.loc;if(it.site&&!state.f.site)state.f.site=it.site;};
-  const startNew=()=>{if(state.f.serial||state.f.make||state.f.model)recordDoc();fresh();state.type=it.type||state.type;if(it.machine==="STACKER"){state.machine="STACKER";state.val[31]="Battery";}fill();if(it.no&&state.f.jobno)state.f.docno=PFX()+jobCore(state.f.jobno)+"."+it.no;applyState();save();window.scrollTo(0,0);toast("New "+(state.type==="LOAD TEST"?"load test":"inspection")+(it.serial?" for "+N(it.serial):"")+" · "+state.f.docno);};
+  const startNew=()=>{if(state.f.serial||state.f.make||state.f.model)recordDoc();fresh();state.type=it.type||state.type;if(it.machine==="STACKER"){state.machine="STACKER";state.val[31]="Battery";}fill();if(it.no)state.f.cno=it.no;if((it.rno||it.no)&&state.f.jobno)state.f.docno=PFX()+jobCore(state.f.jobno)+"."+(it.rno||it.no);applyState();save();window.scrollTo(0,0);toast("New "+(state.type==="LOAD TEST"?"load test":"inspection")+(it.serial?" for "+N(it.serial):"")+" · "+state.f.docno);};
   const same=it.serial&&N(state.f.serial)===N(it.serial);
   const busy=!!(state.f.serial||state.f.make||state.f.model);
   if(same){fill();applyState();save();return;}

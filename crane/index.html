@@ -601,7 +601,10 @@ function toast(t){const e=$("toast");e.textContent=t;e.classList.add("show");cle
 function jobCore(j){return String(j||"").trim().replace(/\s+/g,"").replace(/^C(?=\d)/i,"");}
 function jobsMap(){try{return JSON.parse(load(JOBKEY)||"{}")}catch(e){return{}}}
 function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec(String(d||"").trim().replace(/^CR(?=.+\.\d+$)/i,""));return m?{job:jobCore(m[1]),n:+m[2]}:null;}
-function nextDoc(job,afterCurrent){const core=jobCore(job),m=jobsMap();let n=m[core]||0;if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===core)n=Math.max(n,cur.n);}return "CR"+core+"."+(n+1);}
+// the highest report number of this kind already given out on the job's client's inventory (so job-page reports carry on after them)
+function invMax(core,pfx){let n=0;try{const eq=JSON.parse(load("bco-equipment")||"{}")||{};const rx=new RegExp("^"+pfx+"[^.]+\\.(\\d+)$","i");
+  Object.values(eq).forEach(l=>{if(!l||jobCore(l.job||"")!==core)return;(l.rows||[]).forEach(x=>{const no=String((x.report&&x.report.no)||"").replace(/\s+/g,"");const m=rx.exec(no);if(m&&!(pfx==="F"&&/^(CR|S)\d/i.test(no)))n=Math.max(n,+m[1]);if(x.rno&&x.rno.p===pfx)n=Math.max(n,x.rno.n);});});}catch(e){}return n;}
+function nextDoc(job,afterCurrent){const core=jobCore(job),m=jobsMap();let n=Math.max(m[core]||0,invMax(core,"CR"));if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===core)n=Math.max(n,cur.n);}return "CR"+core+"."+(n+1);}
 function recordDoc(){const d=parseDoc(state.f.docno);if(!d)return;const m=jobsMap();m[d.job]=Math.max(m[d.job]||0,d.n);store(JOBKEY,JSON.stringify(m));}
 function fixNo(no){const d=parseDoc(no);return d?"CR"+d.job+"."+d.n:String(no||"");}
 $("jobno").addEventListener("input",()=>{const j=$("jobno").value.trim();$("docno").value=j?nextDoc(j):"";save();});
@@ -969,7 +972,7 @@ if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.c
         $("mNo").onclick=closeModal;$("mYes").onclick=()=>{closeModal();continueDraft(r.id);};}},800);
     return;}
   const N=s=>String(s||"").trim().toUpperCase().replace(/\s+/g," ");readFields();
-  const docFor=()=>it.no&&state.f.jobno?"CR"+jobCore(state.f.jobno)+"."+it.no:nextDoc(state.f.jobno||"");
+  const docFor=()=>(it.rno||it.no)&&state.f.jobno?"CR"+jobCore(state.f.jobno)+"."+(it.rno||it.no):nextDoc(state.f.jobno||"");
   // a saved or unfinished report for this item: open it instead of starting again
   const pick=async()=>{const reps=(await RDB.all()).filter(r=>r.state&&((it.row&&r.state.row===it.row)||(it.serial&&N(r.state.f.serial)===N(it.serial)&&jobCore(r.job)===jobCore(state.f.jobno)))).sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
     const dr=draftList().find(r=>r.state&&((it.row&&r.state.row===it.row)||(it.serial&&N(r.state.f.serial)===N(it.serial)&&jobCore(r.job)===jobCore(state.f.jobno))));return {rep:reps[0],dr};};
