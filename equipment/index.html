@@ -103,6 +103,22 @@
   .sor{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:6px 0;border-top:1px solid #eef1f6}.sor:first-of-type{border-top:0}.sor b{color:var(--navyDeep);text-align:right}
   .spill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800;color:#fff}.spill.ok{background:var(--ok)}.spill.bad{background:var(--bad)}
   .sodone{background:#E3F2E8;border:1px solid #b9dcc5;border-radius:14px;padding:13px 14px;color:#155e33;font-size:14px;line-height:1.5}.sodone b{display:block;font-size:16px}.sodone span{font-size:12px;color:#3d6b4d}
+  .custs{display:flex;flex-direction:column;gap:10px}
+  /* bigger screens (tablet, laptop): wider page, items side by side; phones stay as they are */
+  @media (min-width:700px){
+    .app{max-width:920px}
+    main.wide .folder{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    main.wide .folder > .fh, main.wide .folder > .empty, main.wide .folder > .item:not(.shut){grid-column:1/-1}
+    .custs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .modal-bg{align-items:center}.modal{border-radius:16px}
+  }
+  @media (min-width:1100px){
+    .app{max-width:1280px}
+    main{padding-left:24px;padding-right:24px}
+    main:not(.wide){width:100%;max-width:860px;margin:0 auto}
+    main.wide .folder{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .custs{grid-template-columns:repeat(3,minmax(0,1fr))}
+  }
 </style>
 </head>
 <body>
@@ -455,7 +471,7 @@
     const cnt = v => (l.rows || []).filter(r => v === '__none' ? !r.loc : r.loc === v).length;
     const sel = S.sel || null; const OPEN = openSet(); (l.rows || []).forEach(r => { if (!r.id) r.id = rowId(); });
     return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Client's inventory", backBtn('../timesheet/', 'Back to the time sheet'),
-        `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main>
+        `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main class="wide">
       ${contCard(l)}
       ${(() => { const F = folds(); if (F.jd == null) F.jd = false;
         const sum = [l.customer, 'Job ' + (l.job || '–'), niceDate(l.date), l.location].filter(Boolean).map(esc).join(' · ');
@@ -553,12 +569,12 @@
     const keys = Object.keys(inv).filter(k => !q || inv[k].name.toLowerCase().includes(q) || Object.values(inv[k].items).some(r => String(r.serial).toLowerCase().includes(q)))
       .sort((a,b) => inv[b].last.localeCompare(inv[a].last));
     const back = S.cur && !S.invDirect ? `<button class="ib" id="toList" aria-label="Back to the client's inventory">${ICON.back}</button>` : backBtn('../timesheet/', 'Back to the time sheet');
-    return head('Blue Cranes', 'All client inventories', back) + `<main>
+    return head('Blue Cranes', 'All client inventories', back) + `<main class="wide">
       <input type="search" id="q" placeholder="Search customer or serial nr…" value="${esc(S.q)}">
-      ${keys.length ? keys.map(k => { const c = inv[k]; const n = Object.keys(c.items).length;
+      <div class="custs">${keys.length ? keys.map(k => { const c = inv[k]; const n = Object.keys(c.items).length;
         return `<button class="cust" data-cust="${esc(k)}"><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:15px">${esc(c.name)}</div>
           <div class="hint">${n} ${n === 1 ? 'item' : 'items'} · last listed ${esc(niceDate(c.last))}</div></div><span class="pill">${n}</span></button>`; }).join('')
-        : `<div class="empty">${q ? 'Nothing matches “' + esc(S.q) + '”.' : 'No inventories yet.<br>Client\'s inventories made on jobs build up each customer\'s register here.'}</div>`}
+        : `<div class="empty">${q ? 'Nothing matches “' + esc(S.q) + '”.' : 'No inventories yet.<br>Client\'s inventories made on jobs build up each customer\'s register here.'}</div>`}</div>
     </main>`;
   }
   function vCustomer(){

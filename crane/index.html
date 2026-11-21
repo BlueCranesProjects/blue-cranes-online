@@ -215,6 +215,14 @@
   .jdsum{margin:8px 2px 0;font-size:13px;line-height:1.45;color:#4a5370;cursor:pointer}
   .jdsum b{color:var(--navy)}
   .jdsum .miss{color:var(--bad);font-weight:700}
+  /* bigger screens (tablet, laptop): wider page; on a laptop the checklist sits in two columns. Phones stay as they are. */
+  @media (min-width:700px){ .hrow,main,.pbody{max-width:900px} }
+  @media (min-width:1100px){
+    .hrow,main,.pbody{max-width:1240px}
+    .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+    #items{column-count:2;column-gap:22px}
+    .secw{break-inside:avoid;padding-bottom:2px}
+  }
 </style>
 </head>
 <body>
@@ -366,7 +374,7 @@ function build(){
   $("parts").querySelectorAll("[data-part]").forEach(c=>c.onchange=()=>{state.parts[c.dataset.part]=c.checked;render();save();});
   let sec="",h="";
   ROWS.forEach(r=>{if(r.ui===false)return;
-    if(r.sec!==sec){if(sec)h+=`</div>`;sec=r.sec;h+=`<button type="button" class="sech" data-sec="${sec}" aria-expanded="false"><span>${sec}</span><span class="sc" id="sc-${sec}"></span><span class="chev">▾</span></button><div class="secbody" id="sb-${sec}">`;}
+    if(r.sec!==sec){if(sec)h+=`</div></div>`;sec=r.sec;h+=`<div class="secw"><button type="button" class="sech" data-sec="${sec}" aria-expanded="false"><span>${sec}</span><span class="sc" id="sc-${sec}"></span><span class="chev">▾</span></button><div class="secbody" id="sb-${sec}">`;}
     h+=`<div class="item" id="it-${r.id}"><div class="row"><span class="num">${r.no}</span><span class="name"><span id="nm-${r.id}">${esc(r.name)}</span><span class="mixed" id="mx-${r.id}">different per part</span></span>
       ${r.kind==="meas"?"":optBtns(`data-r="${r.id}"`,r.name)}</div>`;
     if(r.n===11)h+=`<div class="sub"><select id="loadSel" class="ysel"><option value="">Rope or chain? Choose…</option><option value="rope">Rope</option><option value="chain">Chain</option></select></div>`;
@@ -375,7 +383,7 @@ function build(){
     if(r.kind!=="meas")h+=`<div class="qbox" id="qb-${r.id}" style="display:none"></div>`;
     h+=`<div class="sub notewrap" style="display:none"><input data-note="${r.id}" placeholder="Note / defect for item ${r.no}"></div><button class="notebtn" data-addnote="${r.id}">+ Add note</button></div>`;
   });
-  itemsEl.innerHTML=h+(sec?"</div>":"");wirePhotos(itemsEl);
+  itemsEl.innerHTML=h+(sec?"</div></div>":"");wirePhotos(itemsEl);
   itemsEl.querySelectorAll("[data-sec]").forEach(b=>b.onclick=()=>{const k=b.dataset.sec;if(openSec.has(k))openSec.delete(k);else openSec.add(k);keepOpen();render();if(openSec.has(k))b.scrollIntoView({behavior:"smooth",block:"start"});});
   $("loadSel").onchange=()=>{state.load=$("loadSel").value;render();save();};
   itemsEl.querySelectorAll(".opts button").forEach(b=>b.onclick=()=>{

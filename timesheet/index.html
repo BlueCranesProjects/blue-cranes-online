@@ -130,6 +130,25 @@
   .jrow .t{flex:1;min-width:0;line-height:1.3;font-size:14px}.jrow .t b{display:block;color:var(--navyDeep)}.jrow .t span{display:block;font-size:12.5px;color:var(--muted)}
   .jrow .go{font-size:13px;font-weight:800;color:var(--navyDeep);border:1.5px solid var(--navy);border-radius:8px;padding:6px 10px}
   .jempty{padding:12px 14px;font-size:13px;color:var(--muted);border-top:1px solid var(--line)}
+  /* bigger screens (tablet, laptop): the page goes wider and uses two columns; phones stay as they are */
+  .col,.span{display:contents}
+  @media (min-width:700px){
+    .app{max-width:900px}
+    main.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start;align-content:start}
+    main.two > .col{display:flex;flex-direction:column;gap:12px;min-width:0}
+    main.two > .span{display:flex;flex-direction:column;gap:12px;grid-column:1/-1}
+    main.two > .grid3.span{display:grid}
+    .modal-bg{align-items:center}.modal{border-radius:16px;max-width:560px}
+    .toast{bottom:90px}
+  }
+  @media (min-width:1100px){
+    .app{max-width:1240px}
+    main{padding:20px 24px 28px}
+    main:not(.two):not(.wide){width:100%;max-width:860px;margin:0 auto}
+    main.two{grid-template-columns:minmax(0,5fr) minmax(0,4fr);gap:20px}
+    .weekfit{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));align-items:start;align-content:start;gap:10px;flex:none}
+    .weekfit > section.shut{min-height:56px}
+  }
 </style>
 </head>
 <body>
@@ -372,7 +391,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 20 Nov (S)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 21 Nov (A)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -593,17 +612,18 @@
         : `<div class="jc busy"><button class="who" data-editjob="${i}"><span class="n">${esc(j.customer || j.desc || 'Job')}</span><span class="h">${[j.card ? 'Job ' + esc(j.card) : '', esc(j.contact || ''), j.startedAt ? 'arrived ' + (hhmm(j.startedAt, key) || new Date(j.startedAt).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' })) : ''].filter(Boolean).join(' · ')}</span></button><button class="go n" data-editjob="${i}">Open</button></div>`))
       .concat(todo.map(x => `<div class="jc"><button class="who" data-schedopen="${esc(x.id)}"><span class="n">${esc(x.customer || x.card || 'Job')}</span><span class="h">${[x.card ? 'Job ' + esc(x.card) : '', x.time ? esc(x.time) : '', esc(x.contact || '')].filter(Boolean).join(' · ')}</span></button><button class="go y" data-schedto="${esc(x.id)}">Start</button></div>`));
     const nDone = jobs.filter(j => j.done).length, nBusy = jobs.length - nDone;
-    return headerSteps(niceDate(key,true), 'Jobs', sh) + `<main style="gap:12px">
+    return headerSteps(niceDate(key,true), 'Jobs', sh) + `<main class="two" style="gap:12px"><div class="col">
       ${next}
       <button class="sumline" data-go="vehicle">${ICON.truck}<span style="flex:1;min-width:0"><b>${esc(sh.reg)}</b> · ${fmtKm(sh.firstOdo)} km${svc != null ? ' · service ' + (svc < 0 ? 'overdue' : 'in ' + fmtKm(svc) + ' km') : ''}</span><span style="color:var(--navy);font-weight:700">Details</span></button>
       <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 2px 0"><h2>TODAY'S JOBS</h2><span class="hint">${[nDone ? nDone + ' done' : '', nBusy ? nBusy + ' busy' : '', todo.length ? todo.length + ' to do' : ''].filter(Boolean).join(' · ') || 'none yet'}</span></div>
       ${cards.join('') || '<div class="empty">No jobs yet.</div>'}
       <button type="button" data-addjob style="border:0;background:none;color:var(--navy);font-weight:800;font-size:16px;font-family:inherit;padding:10px;cursor:pointer">+ Unplanned job</button>
+      </div><div class="col">
       ${comingUp(key)}
       ${jobs.length && busyIdx < 0 && tv.lastFin != null && key === todayKey() ? `<div class="trav">🚚 On the road since ${p2(Math.floor(tv.lastFin / 60))}:${p2(tv.lastFin % 60)} – counted as travel when you arrive at the next job</div>` : ''}
       ${jobs.length ? `<div class="hint" style="text-align:center">Job time ${fmtHM(jobHours(sh))}${tv.total ? ' (incl. travel)' : ''} · ${fmtKm(km)} km so far</div>` : ''}
       <button class="btn secondary" data-go="end">End day</button>
-      ${storeLine()}</main>` + tabs('today');
+      </div><div class="span">${storeLine()}</div></main>` + tabs('today');
   }
   function viewTodayOld(){
     const key = curKey(); const sh = state.sheets[key];
@@ -683,7 +703,7 @@
     const key = curKey(); const sh = state.sheets[key]; const j = sh && sh.jobs[state.jobIdx]; if (!j) return viewToday();
     if (j.done) return viewJob();
     const t = Date.parse(j.startedAt || ''); const since = isNaN(t) ? '' : new Date(t).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' });
-    return headerBack('JOB ' + (state.jobIdx + 1), 'today') + `<main>
+    return headerBack('JOB ' + (state.jobIdx + 1), 'today') + `<main class="two"><div class="col">
       <section class="card" style="display:flex;flex-direction:column;gap:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="pill prog">Busy</span>${since ? `<span class="hint">Started ${esc(since)}</span>` : ''}</div>
         <div style="font-size:19px;font-weight:700">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · '))}</div>
@@ -693,10 +713,11 @@
       <h2 style="padding:4px 2px 0">REPORTS</h2>
       ${reportGroups('data-fl', state.jobIdx)}
       <button class="tile light" data-fl="${state.jobIdx}" data-type="EQUIPMENT"><span class="ic">${ICON.list}</span><span><span class="tt" style="display:block">Client's inventory</span><span class="ss" style="display:block">Equipment per location, SWL, safe / unsafe</span></span><span class="cnt" id="cntE"></span></button>
+      </div><div class="col">
       <div id="thisJob"></div>
       <button class="btn primary" style="margin-top:10px;height:60px;font-size:18px" data-jobfinish="${state.jobIdx}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Finish job</button>
       <button type="button" data-jobedit="${state.jobIdx}" style="border:0;background:none;color:var(--muted);font-weight:600;font-size:14px;font-family:inherit;padding:10px;cursor:pointer">⋯ Edit job details</button>
-    </main>`;
+    </div></main>`;
   }
   function viewJob(){
     const key = curKey(); const sh = state.sheets[key]; if (!sh || !checkDone(sh)){ return viewToday(); }
@@ -831,7 +852,7 @@
     const nb = 'height:42px;font-size:14px;border-width:1.5px;padding:0 10px';
     const anyOpen = days.some(k => dayOpen(k, tk));
     // compact: the whole week fits on one screen; a day only grows when you open it
-    return headerMain('Week of ' + niceDate(ws), 'SCHEDULE', `<span class="pill ${total ? 'prog' : 'ok'}">${total} ${total===1?'job':'jobs'}</span>`) + `<main style="gap:6px;padding-top:10px;padding-bottom:12px">
+    return headerMain('Week of ' + niceDate(ws), 'SCHEDULE', `<span class="pill ${total ? 'prog' : 'ok'}">${total} ${total===1?'job':'jobs'}</span>`) + `<main class="wide" style="gap:6px;padding-top:10px;padding-bottom:12px">
       <div class="row" style="align-items:center;gap:6px;margin-bottom:2px">
         <button class="btn secondary" style="width:44px;${nb}" data-week="-7" aria-label="Previous week">‹</button>
         <button class="btn secondary" style="flex:1;${nb};${thisWeek ? 'opacity:.5' : ''}" data-week="0" ${thisWeek ? 'disabled' : ''}>This week</button>
@@ -1053,7 +1074,7 @@
   function viewPastJob(){
     const k = state.pjKey; const sh = state.sheets[k]; const i = state.pjIdx; const j = sh && sh.jobs && sh.jobs[i]; if (!j) return viewHistory();
     const tile = (type, ic, tt, ss, id, light) => `<button class="tile${light ? ' light' : ''}" data-pj="${i}" data-type="${type}"><span class="ic">${ic}</span><span><span class="tt" style="display:block">${tt}</span><span class="ss" style="display:block">${ss}</span></span><span class="cnt" id="${id}"></span></button>`;
-    return headerBack('JOB', 'history') + `<main>
+    return headerBack('JOB', 'history') + `<main class="two"><div class="col">
       <section class="card" style="display:flex;flex-direction:column;gap:6px">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${j.done ? '<span class="pill ok">✓ Completed</span>' : '<span class="pill prog">Not finished</span>'}<span class="hint">${esc(niceDate(k, true))} · Job ${i + 1} on the sheet</span></div>
         <div style="font-size:19px;font-weight:700">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · ') || 'Job')}</div>
@@ -1065,9 +1086,10 @@
       <h2 style="padding:4px 2px 0">REPORTS</h2>
       ${tile('EQUIPMENT', ICON.list, "Client's inventory", 'Add or change items. Reports for an item open best from the item here.', 'cntE', true)}
       ${reportGroups('data-pj', i)}
+      </div><div class="col">
       <div id="thisJob"></div>
       <div class="hint">Certificates are made again from your changes.</div>
-    </main>`;
+    </div></main>`;
   }
 
   function viewHistory(){
@@ -1076,13 +1098,13 @@
     const month = keys.filter(k=>k.startsWith(ym)).map(k=>state.sheets[k]);
     const mKm = month.reduce((a,s)=>a+((s.lastOdo? Number(s.lastOdo):lastOdo(s)) - Number(s.firstOdo) || 0),0);
     const mH = month.reduce((a,s)=>a+jobHours(s),0);
-    return headerMain(now.toLocaleDateString('en-ZA',{month:'long',year:'numeric'}), 'HISTORY', '') + `<main>
-      <div class="grid3">
+    return headerMain(now.toLocaleDateString('en-ZA',{month:'long',year:'numeric'}), 'HISTORY', '') + `<main class="two">
+      <div class="grid3 span">
         <div class="card" style="padding:10px 12px"><div class="k">Sheets</div><div class="big" style="font-size:24px">${month.length}</div></div>
         <div class="card" style="padding:10px 12px"><div class="k">Km</div><div class="big" style="font-size:24px">${fmtKm(mKm)}</div></div>
         <div class="card" style="padding:10px 12px"><div class="k">Job hrs</div><div class="big" style="font-size:22px;white-space:nowrap">${fmtHMs(mH)}</div></div>
       </div>
-      ${historyJobs(keys)}
+      <div class="col">${historyJobs(keys)}</div><div class="col">
       <h2 style="padding:6px 2px 0">TIME SHEETS</h2>
       ${keys.length ? keys.map(k=>{ const s = state.sheets[k]; const f = condFlags(s);
         const km = (s.lastOdo? Number(s.lastOdo):lastOdo(s)) - Number(s.firstOdo);
@@ -1091,8 +1113,8 @@
           <span style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:15px;font-weight:700">${esc(niceDate(k))}</span>${pill}</span>
           <span class="hint" style="display:flex;gap:14px;color:var(--label)"><span>${(s.jobs||[]).length} jobs</span><span>${fmtHM(jobHours(s))} job card</span><span>${fmtKm(km)} km</span></span></button>`; }).join('')
         : `<div class="empty">No time sheets yet.</div>`}
-      ${accountCard()}
-      ${storeLine()}</main>` + tabs('history');
+      </div><div class="span">${accountCard()}
+      ${storeLine()}</div></main>` + tabs('history');
   }
 
   // ---------- account, backup, install ----------

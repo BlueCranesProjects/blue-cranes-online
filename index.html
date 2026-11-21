@@ -56,6 +56,9 @@
   .me img{height:44px;max-width:120px;object-fit:contain;background:#FAFBFD;border:1px solid var(--line);border-radius:8px;padding:2px 6px}
   .status{font-size:12px;color:var(--muted);text-align:center}
   .toast{position:fixed;left:50%;bottom:calc(30px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--navyDeep);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:600;z-index:10;max-width:90%}
+  /* bigger screens (tablet, laptop): wider page, more tiles per row; phones stay as they are */
+  @media (min-width:700px){ .app{max-width:900px} .tiles{grid-template-columns:repeat(3,minmax(0,1fr))} }
+  @media (min-width:1100px){ .app{max-width:1200px} .tiles{grid-template-columns:repeat(4,minmax(0,1fr))} }
 </style>
 </head>
 <body>

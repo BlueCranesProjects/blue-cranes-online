@@ -177,6 +177,14 @@
   .jdclose{width:100%;padding:12px;border-radius:10px;border:1.5px solid #c9d2e3;background:#f4f6fa;color:#0B3575;font-weight:800;font-size:15px;font-family:inherit;cursor:pointer}
   .jdsum{margin:8px 2px 0;font-size:13px;line-height:1.45;color:#4a5370;cursor:pointer}
   .jdsum .miss{color:var(--bad);font-weight:700}
+  /* bigger screens (tablet, laptop): wider page; on a laptop the checklist sits in two columns. Phones stay as they are. */
+  @media (min-width:700px){ .hrow,main,.pbody{max-width:900px} }
+  @media (min-width:1100px){
+    .hrow,main,.pbody{max-width:1240px}
+    .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+    #items{column-count:2;column-gap:28px}
+    #items .item{break-inside:avoid}
+  }
 </style>
 </head>
 <body>
