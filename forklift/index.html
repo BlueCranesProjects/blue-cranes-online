@@ -543,10 +543,14 @@ $("pdfBtn").onclick=()=>{
 
 function afterSave(){const job=(state.f.jobno||"").trim();
   subBtn();if(!job){toast("✓ Report submitted");return;}
-  modal(`<h3>✓ Report submitted</h3><p>Doing another forklift for <b>${(state.f.customer||"this customer").replace(/</g,"&lt;")}</b> on job ${job}?</p>
+  // opened from the client's inventory → back to the inventory (like the crane report and every report added later); otherwise offer the next forklift
+  modal(state.list?`<h3>✓ Report submitted</h3><p>The client's inventory is updated with this result.</p>
+    <a class="primary" href="../equipment/" data-back="match" style="display:block;width:100%;padding:13px;border-radius:10px;font-weight:800;font-size:15px;margin-bottom:8px;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Back to the client's inventory</a>
+    <div class="btns"><button class="secondary" id="aStay">Stay on this report</button></div>`
+   :`<h3>✓ Report submitted</h3><p>Doing another forklift for <b>${(state.f.customer||"this customer").replace(/</g,"&lt;")}</b> on job ${job}?</p>
     <button class="primary" id="aNext" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">Next forklift → ${nextDoc(job,true)}</button>
     <div class="btns"><button class="secondary" id="aStay">Stay on this report</button></div>`);
-  $("aStay").onclick=closeModal;$("aNext").onclick=()=>{closeModal();nextSameJob();};}
+  $("aStay").onclick=closeModal;if($("aNext"))$("aNext").onclick=()=>{closeModal();nextSameJob();};}
 function fmt(s){if(!s)return"";if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const [y,m,d]=s.split("-");return `${d}/${m}/${y}`;}
 
 // the client's sign-off for this job (signed once at Finish job, kept on the client's inventory): name + signature on the client's report

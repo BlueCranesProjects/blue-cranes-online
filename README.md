@@ -27,7 +27,7 @@ Live: https://bluecranesprojects.github.io/blue-cranes-online/
    Share or download files with `BC.saveFiles([{ blob, name }])`.
 4. Add a tile to the `TOOLS` list at the top of the script in the root `index.html`.
 5. Add the new files to `SHELL` in `sw.js` and change `VERSION`.
-6. Report rules for every new report: Job details fold up with `BC.foldDetails(...)` (see `forklift/`), N/A boxes grey on the PDF, Submit report with a green Submitted indicator, Safe / Unsafe picked from the checklist, checklist groups fold up.
+6. Report rules for every new report: Job details fold up with `BC.foldDetails(...)` (see `forklift/`), N/A boxes grey on the PDF, Submit report with a green Submitted indicator, Safe / Unsafe picked from the checklist, checklist groups fold up. After Submit report, a report opened from the client's inventory offers "Back to the client's inventory" (see `afterSave` in `forklift/` and `crane/`); otherwise "Next … → <next doc no>". Job details have a "▴ Fold up job details" button at the bottom (`data-jdclose`). No customer's name / signature on the report screen – the client signs once at Finish job.
 
 ## Shared files
 
