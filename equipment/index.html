@@ -538,7 +538,7 @@
               <button type="button" class="st${r.status === 'UNSAFE' ? ' on-unsafe' : ''}" data-st="${i}" data-v="UNSAFE" aria-pressed="${r.status === 'UNSAFE'}">✕ Unsafe</button></div></div>
           ${r.status === 'UNSAFE' ? `<div class="field"><label for="u${i}" style="color:var(--bad)">Why is it unsafe? (required)</label><textarea id="u${i}" data-f="reason" rows="2" placeholder="e.g. Hook latch missing, chain stretched">${esc(r.reason)}</textarea></div>
             ${r.photo ? `<img class="photo" id="ph${i}" data-pid="${esc(r.photo)}" alt="Photo of the defect on item ${i+1}">` : ''}
-            <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label>
+            <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label><label class="btn secondary small" style="flex:1;cursor:pointer">🖼 From gallery<input type="file" accept="image/*" data-photo="${i}" style="display:none"></label>
               ${r.photo ? `<button type="button" class="btn secondary small" data-nophoto="${i}" style="color:var(--bad);border-color:var(--bad)">Remove photo</button>` : ''}</div>` : ''}
           ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
           </div>`; };
