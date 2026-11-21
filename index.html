@@ -76,7 +76,7 @@
       icon:'<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>' },
     { href:'crane/?reports=1', name:'Crane / Hoist Reports', text:'Inspection and load test reports. New ones open from the crane or hoist on the client\'s inventory.',
       icon:'<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18"/><path d="M6 5v14M18 5v14"/><path d="M12 5v6"/><path d="M10 11h4v3h-4z"/><path d="M12 14v3a1.5 1.5 0 1 1-1.5 1.5"/></svg>' },
-    { href:'forklift/', name:'Forklift Inspection', gate:true, text:'Opens from the job you are busy with on the time sheet.',
+    { href:'forklift/?reports=1', name:'Forklift Reports', text:'Forklift and stacker inspection and load test reports. New ones open from the forklift on the client\'s inventory or the job.',
       icon:'<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>' }
   ];
 
@@ -137,7 +137,7 @@
         </section>
         <div id="installBox"></div>
         ${S.cloud ? '<button class="btn secondary" id="signOut">Sign out</button>' : '<div class="status">Cloud saving is not set up – data stays on this phone.</div>'}
-        <div class="status">Blue Cranes Online · version 13 Nov</div>
+        <div class="status" id="appVer">${window.__ver || 'Blue Cranes Online'}</div>
       </main>`;
   }
 
@@ -247,6 +247,10 @@
     });
   })();
 })();
+
+  // the version line shows the app's real version, read from the offline worker (sw.js VERSION, e.g. bco-2026-11-21i → "21 Nov (I)")
+  (function showVer(){ fetch('sw.js', { cache:'no-store' }).then(r => r.text()).then(t => { const m = /bco-(\d{4})-(\d{2})-(\d{2})([a-z]?)/.exec(t); if (!m) return;
+    const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2]) - 1]; window.__ver = 'Blue Cranes Online · App version ' + Number(m[3]) + ' ' + mon + (m[4] ? ' (' + m[4].toUpperCase() + ')' : ''); const el = document.getElementById('appVer'); if (el) el.textContent = window.__ver; }).catch(() => {}); })();
 </script>
 </body>
 </html>
