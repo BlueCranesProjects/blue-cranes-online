@@ -300,7 +300,7 @@
       <div><label for="nextInsp">Next inspection date <span style="font-weight:400">(6 months)</span></label><input id="nextInsp" type="date"><div class="wrtext" id="wrt-insp">WHEN REPAIRED</div><label class="wr" id="wr-insp"><input type="checkbox" data-wr="insp">When repaired</label></div>
       <div><label for="nextLoad">Next load test due <span style="font-weight:400">(12 months)</span></label><input id="nextLoad" type="date"><div class="wrtext" id="wrt-load">WHEN REPAIRED</div><label class="wr" id="wr-load"><input type="checkbox" data-wr="load">When repaired</label></div>
       <div class="full"><label for="remarks">Remarks</label><textarea id="remarks" placeholder="Anything extra for the customer"></textarea>
-        <div style="font-size:11px;color:#6b7280;margin-top:4px">“This inspection is in accordance with SANS 10375” is printed on every report. Items marked W or X, item notes and the load test (SWL + 10%) are added to the remarks automatically.</div></div>
+        <div style="font-size:11px;color:#6b7280;margin-top:4px">“This inspection is in accordance with SANS 10375” is printed on every report. Items marked W or X and item notes are added to the remarks automatically.</div></div>
     </div>
   </section>
 
@@ -646,7 +646,7 @@ const kgN=v=>{const n=Number(String(v==null?"":v).replace(/\s/g,"").replace(",",
 const kgT=n=>String(Math.round(n*100)/100).replace(/\B(?=(\d{3})+(?!\d))/g," ").replace(".",",");
 const mmT=v=>{let s=String(v||"").trim();if(!s)return"";if(/^n\/a$/i.test(s))return"N/A";if(/^\d{4,}$/.test(s))s=s.replace(/\B(?=(\d{3})+(?!\d))/g," ");return /^[\d\s.,]+$/.test(s)?s+" mm":s;};
 function remarkLines(st){const f=st.f,out=[];
-  if(st.type==="LOAD TEST"){const s=kgN(f.swl);if(s)out.push(`Load tested at ${kgT(s*1.1)} kg (SWL ${kgT(s)} kg + 10% overload).`);}
+  // (no "Load tested at … kg (SWL + 10% overload)" line on the report – removed 21 Nov)
   if(f.remarks)out.push(...String(f.remarks).split("\n").filter(x=>x.trim()));
   // every item marked W or X gets a remark line by itself (with the technician's note, if any); notes on other items too
   const MEAN={w:"W (worn but serviceable)",x:"X (needs urgent replacement)"};
