@@ -932,7 +932,9 @@
     // counts on the Forklift / Crane tiles
     const cnt = (list, a, b, t) => { const ni = list.filter(r => r.state.type !== 'LOAD TEST').length, nl = list.length - ni; const A = document.getElementById(a), B = document.getElementById(b), T = document.getElementById(t);
       if (A && ni) A.textContent = '(' + ni + ')'; if (B && nl) B.textContent = '(' + nl + ')'; if (T && list.length) T.textContent = list.length + ' done'; };
-    cnt(F, 'cntI', 'cntL', 'cntF'); cnt(C, 'cntCI', 'cntCL', 'cntC');
+    const isStk = r => r.state.machine === 'STACKER' || /^S\d/i.test(String(r.state.f.docno || ''));
+    cnt(F.filter(r => !isStk(r)), 'cntI', 'cntL', 'cntF'); cnt(F.filter(isStk), 'cntSI', 'cntSL', '_'); cnt(C, 'cntCI', 'cntCL', 'cntC');
+    { const T = document.getElementById('cntF'); if (T && F.length) T.textContent = F.length + ' done'; }
     const docN = r => { const m = String(r.state.f.docno || '').match(/\.(\d+)$/); return m ? Number(m[1]) : 999; };
     const typ = r => r.state.type === 'LOAD TEST' ? 'Load test' : 'Inspection';
     const what = (r, cranes) => { const f = r.state.f; return [cranes ? f.details : [f.make, f.model].filter(Boolean).join(' '), cranes ? f.make : '', f.serial ? 'Serial ' + f.serial : ''].filter(Boolean).join(' · '); };
@@ -966,15 +968,17 @@
   function reportGroups(attr, idx){
     const sub = (type, label, cnt) => `<button type="button" class="btn" ${attr}="${idx}" data-type="${type}" style="flex:1;height:52px;font-size:15px;background:#fff;color:var(--navyDeep);border:2px solid var(--navy)">${label}<span class="cnt" id="${cnt}" style="margin-left:6px;font-size:12px;font-weight:700;color:var(--label)"></span></button>`;
     const grp = (g, ic, tt, ss, cnt, a, b) => `<button class="tile" type="button" data-grp="${g}" aria-expanded="${state._grp === g}"><span class="ic">${ic}</span><span style="flex:1"><span class="tt" style="display:block">${tt}</span><span class="ss" style="display:block">${ss}</span></span><span class="cnt" id="${cnt}"></span><span style="font-size:20px;color:var(--yellow);transform:rotate(${state._grp === g ? 180 : 0}deg)">▾</span></button>
-      <div class="grpsub" data-sub="${g}" style="display:${state._grp === g ? 'flex' : 'none'};gap:8px;margin:-4px 0 4px">${a}${b}</div>`;
-    return grp('fl', ICON.forklift, 'Forklift', 'Inspection or load test', 'cntF', sub('INSPECTION', 'Inspection', 'cntI'), sub('LOAD TEST', 'Load test', 'cntL'))
+      <div class="grpsub" data-sub="${g}" style="display:${state._grp === g ? 'flex' : 'none'};flex-wrap:wrap;gap:8px;margin:-4px 0 4px">${a}${b}</div>`;
+    // the Forklift tab also holds the electric pedestrian stacker (same report, S numbers)
+    const row2 = (x, y, t) => `<div style="flex:1 1 100%;display:flex;gap:8px;align-items:center">${t ? `<span style="font-size:12px;font-weight:800;color:var(--label);width:62px">${t}</span>` : ''}${x}${y}</div>`;
+    return grp('fl', ICON.forklift, 'Forklift', 'Forklift or electric stacker', 'cntF', row2(sub('INSPECTION', 'Inspection', 'cntI'), sub('LOAD TEST', 'Load test', 'cntL'), 'Forklift'), row2(sub('STACKER-INSPECTION', 'Inspection', 'cntSI'), sub('STACKER-LOAD TEST', 'Load test', 'cntSL'), 'Stacker'))
       + grp('cr', ICON.crane, 'Crane / hoist', 'Inspection or load test', 'cntC', sub('CRANE-INSPECTION', 'Inspection', 'cntCI'), sub('CRANE-LOAD TEST', 'Load test', 'cntCL'));
   }
   function openReport(k, i, type, editPast){
     keepPlace();
     const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || (j.done && !editPast)) return;
     try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
-    location.href = type === 'EQUIPMENT' ? '../equipment/' : type === 'SIGNOFF' ? '../equipment/?signoff=1' : type === 'SIGNOFF-FIN' ? '../equipment/?signoff=fin' : type === 'FL-OPEN' ? '../forklift/' : type === 'CR-OPEN' ? '../crane/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION');
+    location.href = type === 'EQUIPMENT' ? '../equipment/' : type === 'SIGNOFF' ? '../equipment/?signoff=1' : type === 'SIGNOFF-FIN' ? '../equipment/?signoff=fin' : type === 'FL-OPEN' ? '../forklift/' : type === 'CR-OPEN' ? '../crane/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : /^STACKER-/.test(type || '') ? '../forklift/?type=' + encodeURIComponent(type.slice(8)) + '&machine=STACKER' : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION') + '&machine=FORKLIFT';
   }
   // today's scheduled jobs, shown first so the technician sees the day's work; tap one to open it (and its inventory)
   // scheduled jobs after a day (next 14 days), so tomorrow's jobs and their inventories can be opened already
