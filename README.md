@@ -67,3 +67,11 @@ Everything for a person is under `users/{uid}/items/`:
 - Inspection certificate: lifting tackle, safety harnesses / lanyards, man cages (SANS 583:2015, SEE REPORT MC…, next inspection due, 3 inspection lines) and any other equipment that is not lifting machinery.
 - Forklifts and stackers: their own certificate from the forklift report.
 - Unsafe items that can't be repaired (shackles, round / web / wire rope slings, eye bolts, eye nuts, harnesses, lanyards) get no further inspection lines; repairable items (man cages, chain slings, other equipment) keep them.
+
+## Inventory (rule)
+
+- Search box above the items (item number, description, make, location, report number).
+- Item number in bold, the description underneath.
+- Inside To do / Completed the items are grouped by type (man cages, cranes, chain blocks, lever hoists, hoists, shackles, eye bolts, eye nuts, round / web / chain / wire rope slings, harnesses, lanyards …); anything else is grouped by its description. The census PDF and Excel use the same groups, each with a heading.
+- Slings (web, endless round, chain, steel wire rope) have a length in metres: in the app, a LENGTH column on the census and a LENGTH line on the certificate (the description on the certificate leaves the length out).
+- Man cages: W / X items have a For quote box (parts, repair notes); the technician's copy adds the quote page(s) (TECHNICIAN_Man_cage_reports_for_quote in Admin).
