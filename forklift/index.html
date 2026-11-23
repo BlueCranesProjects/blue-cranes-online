@@ -578,6 +578,16 @@ function afterSave(){const job=(state.f.jobno||"").trim();
   $("aStay").onclick=closeModal;if($("aNext"))$("aNext").onclick=()=>{closeModal();nextSameJob();};}
 function fmt(s){if(!s)return"";if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return s;const [y,m,d]=s.split("-");return `${d}/${m}/${y}`;}
 
+// the Blue Cranes letterhead at the top of every report page (client's report and technician's quote pages):
+// logo left, the offices right, Reg No / LME under it, and the navy rule 35 mm from the top of the page
+function letterhead(doc,L,R){const NAVY=[27,47,110],YEL=[245,196,0],GREY=[90,96,112],HB=35,LY=7,LH=HB-5.6-LY,LW=LH*900/464,SC=LW/60;
+  doc.addImage(LOGO,"JPEG",L,LY,LW,LH);const TOP=LY+4.3*SC+0.5,BOT=LY+30.6*SC,STEP=(BOT-TOP)/4;
+  const block=(x,rows)=>{doc.setDrawColor(...YEL);doc.setLineWidth(1.1);doc.line(x-4,TOP-3.3,x-4,BOT+0.8);doc.setLineWidth(0.25);
+    rows.forEach((r,k)=>{if(!r)return;const [t,bb]=r;if(bb){doc.setFont("helvetica","bold");doc.setFontSize(11.5);doc.setTextColor(...NAVY);}else{doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(60,66,80);}doc.text(t,x,TOP+k*STEP);});};
+  block(104,[["Crane House",1],["10 Mansell Road"],["Killarney Gardens"],["021 556 0498"],["admin@bluecranes.co.za"]]);
+  block(166,[["Saldanha",1],["022 714 2207"],null,["Vredendal",1],["027 217 2217"]]);
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Reg No CK 1990/024648/23",L,LY+LH+3.2);doc.text("LME 017",R,LY+LH+3.2,{align:"right"});
+  doc.setDrawColor(...NAVY);doc.setLineWidth(0.8);doc.line(L,HB,R,HB);doc.setLineWidth(0.25);return HB;}
 // the client's sign-off for this job (signed once at Finish job, kept on the client's inventory): name + signature on the client's report
 function clientSign(st){const jc=v=>String(v||"").trim().replace(/\s+/g,"").replace(/^C(?=\d)/i,"").toUpperCase();const c=jc(st&&st.f&&st.f.jobno);if(!c)return null;
   try{const m=(window.parent&&window.parent!==window&&window.parent.BC_SIGNOFFS)||window.BC_SIGNOFFS;if(m&&m[c]&&m[c].sig)return m[c];}catch(e){}
@@ -589,17 +599,8 @@ async function buildPdf(st){const prev=state;state=st;try{
   const NAVY=[27,47,110],YEL=[245,196,0],GREY=[90,96,112],L=10,R=200,W=R-L;
   const f=state.f;
   doc.setDrawColor(60,66,80);doc.setLineWidth(0.25);
-  // header
-  const LW=56,LH=LW*464/900,LY=10,SC=LW/60;doc.addImage(LOGO,"JPEG",L,LY,LW,LH);
-  // contact blocks, right side
-  // two contact blocks on the same 5-row grid: top row level with "BLUE", bottom row level with "LIFTING EQUIPMENT"
-  const TOP=LY+4.3*SC+0.5,BOT=LY+30.6*SC,STEP=(BOT-TOP)/4;
-  function block(x,rows){doc.setDrawColor(...YEL);doc.setLineWidth(1.2);doc.line(x-4,TOP-3.6,x-4,BOT+0.8);doc.setLineWidth(0.25);
-    rows.forEach((r,k)=>{if(!r)return;const [t,bb]=r;if(bb){doc.setFont("helvetica","bold");doc.setFontSize(12.5);doc.setTextColor(...NAVY);}else{doc.setFont("helvetica","normal");doc.setFontSize(11);doc.setTextColor(60,66,80);}doc.text(t,x,TOP+k*STEP);});}
-  block(104,[["Crane House",1],["10 Mansell Road"],["Killarney Gardens"],["021 556 0498"],["admin@bluecranes.co.za"]]);
-  block(166,[["Saldanha",1],["022 714 2207"],null,["Vredendal",1],["027 217 2217"]]);
-  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Reg No CK 1990/024648/23",L,LY+LH+3.2);doc.text("LME 017",R,LY+LH+3.2,{align:"right"});
-  doc.setDrawColor(...NAVY);doc.setLineWidth(0.8);doc.line(L,LY+LH+5.6,R,LY+LH+5.6);const HY=LY+LH+5.6-43;
+  // header: the letterhead, ending 35 mm from the top
+  const HY=letterhead(doc,L,R)-43;
   doc.setFontSize(9);doc.setTextColor(40,40,40);doc.setFont("helvetica","bold");doc.setFontSize(11);const dn=f.docno||"",dnw=doc.getTextWidth(dn);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.text("Doc No:",R-dnw-2,48.5+HY,{align:"right"});doc.setTextColor(190,30,30);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.text(dn,R,48.5+HY,{align:"right"});
   // title + fields
   doc.setDrawColor(60,66,80);doc.setLineWidth(0.25);doc.setTextColor(30,34,51);

@@ -696,9 +696,10 @@ function fillQuote(id){const b=$("qb-"+id);if(!b)return;b.dataset.on="1";const q
 // the quote page(s) at the back of the technician's report
 function quotePages(doc,st){const f=st.f||{},U=v=>String(v||"").toUpperCase(),L=12,R=198,NV=[19,34,79];
   const items=ROWS.filter(r=>r.kind!=="meas"&&visOf(r,st)&&valsOf(r,st).some(v=>v==="x"||v==="w"));
-  let y=0;const head=cont=>{doc.addPage();doc.setFillColor(...NV);doc.rect(0,0,210,20,"F");doc.setFillColor(245,196,0);doc.rect(0,20,210,1.6,"F");
-    doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(15);doc.text("TECHNICIAN'S REPORT – FOR QUOTE"+(cont?" (continued)":""),L,12.5);
-    doc.setFontSize(8.5);doc.setFont("helvetica","normal");doc.text("Internal – not for the client",R,12.5,{align:"right"});y=29;};
+  // every quote page has the same letterhead as the report (ending 35 mm from the top), then the navy "for quote" band
+  let y=0;const head=cont=>{doc.addPage();const hb=letterhead(doc,10,200);doc.setFillColor(...NV);doc.rect(10,hb+3,190,10,"F");doc.setFillColor(245,196,0);doc.rect(10,hb+13,190,1.2,"F");
+    doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(13);doc.text("TECHNICIAN'S REPORT – FOR QUOTE"+(cont?" (continued)":""),L,hb+9.8);
+    doc.setFontSize(8.5);doc.setFont("helvetica","normal");doc.text("Internal – not for the client",R,hb+9.8,{align:"right"});y=hb+22;};
   head(false);doc.setTextColor(20,24,40);
   const info=[["Doc No",f.docno],["Job no",f.jobno],["Date",f.date?fmtD(f.date):""],["Customer",U(f.customer)],["Site",U(f.location||f.site)],["Crane / hoist",U(f.details)],["Serial no",U(f.serial)],["SWL",f.swl?U(f.swl)+(/\d$/.test(String(f.swl))?" KG":""):""],["Technician",U(f.engName)]];
   doc.setFontSize(9.5);info.forEach(([k,v],i)=>{const x=i%2?L+95:L;if(i%2===0&&i)y+=5.6;doc.setFont("helvetica","bold");doc.text(k+":",x,y);doc.setFont("helvetica","normal");doc.text(doc.splitTextToSize(String(v||"–"),62)[0],x+27,y);});
@@ -741,6 +742,16 @@ function quotePages(doc,st){const f=st.f||{},U=v=>String(v||"").toUpperCase(),L=
     try{doc.addImage(it.p.src,"JPEG",x+(cw-w)/2,y+4.5+(ch-h)/2,w,h,undefined,"FAST");}catch(e){}
     doc.setDrawColor(180,184,196);doc.setLineWidth(0.25);doc.rect(x,y+4.5,cw,ch);});
 }
+// the Blue Cranes letterhead at the top of every report page (client's report and technician's quote pages):
+// logo left, the offices right, Reg No / LME under it, and the navy rule 35 mm from the top of the page
+function letterhead(doc,L,R){const NAVY=[27,47,110],YEL=[245,196,0],GREY=[90,96,112],HB=35,LY=7,LH=HB-5.6-LY,LW=LH*900/464,SC=LW/60;
+  doc.addImage(LOGO,"JPEG",L,LY,LW,LH);const TOP=LY+4.3*SC+0.5,BOT=LY+30.6*SC,STEP=(BOT-TOP)/4;
+  const block=(x,rows)=>{doc.setDrawColor(...YEL);doc.setLineWidth(1.1);doc.line(x-4,TOP-3.3,x-4,BOT+0.8);doc.setLineWidth(0.25);
+    rows.forEach((r,k)=>{if(!r)return;const [t,bb]=r;if(bb){doc.setFont("helvetica","bold");doc.setFontSize(11.5);doc.setTextColor(...NAVY);}else{doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(60,66,80);}doc.text(t,x,TOP+k*STEP);});};
+  block(104,[["Crane House",1],["10 Mansell Road"],["Killarney Gardens"],["021 556 0498"],["admin@bluecranes.co.za"]]);
+  block(166,[["Saldanha",1],["022 714 2207"],null,["Vredendal",1],["027 217 2217"]]);
+  doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY);doc.text("Reg No CK 1990/024648/23",L,LY+LH+3.2);doc.text("LME 017",R,LY+LH+3.2,{align:"right"});
+  doc.setDrawColor(...NAVY);doc.setLineWidth(0.8);doc.line(L,HB,R,HB);doc.setLineWidth(0.25);return HB;}
 // the client's sign-off for this job (signed once at Finish job, kept on the client's inventory): name + signature on the client's report
 function clientSign(st){const jc=v=>String(v||"").trim().replace(/\s+/g,"").replace(/^C(?=\d)/i,"").toUpperCase();const c=jc(st&&st.f&&st.f.jobno);if(!c)return null;
   try{const m=(window.parent&&window.parent!==window&&window.parent.BC_SIGNOFFS)||window.BC_SIGNOFFS;if(m&&m[c]&&m[c].sig)return m[c];}catch(e){}
@@ -751,14 +762,7 @@ async function buildPdf(st,opts){
   const CS=clientSign(st);const dims={};for(const im of [st.sig.sigEng,CS&&CS.sig])if(im)dims[im]=await imgDims(im);
   function draw(IH){const doc=new jsPDF({unit:"mm",format:"a4"});
     const NAVY=[27,47,110],YEL=[245,196,0],GREY_T=[90,96,112],L=10,R=200,W=R-L;
-    const LW=56,LH=LW*464/900,LY=10,SC=LW/60;doc.addImage(LOGO,"JPEG",L,LY,LW,LH);
-    const TOP=LY+4.3*SC+0.5,BOT=LY+30.6*SC,STEP=(BOT-TOP)/4;
-    function block(x,rows){doc.setDrawColor(...YEL);doc.setLineWidth(1.2);doc.line(x-4,TOP-3.6,x-4,BOT+0.8);doc.setLineWidth(0.25);
-      rows.forEach((r,k)=>{if(!r)return;const [t,bb]=r;if(bb){doc.setFont("helvetica","bold");doc.setFontSize(12.5);doc.setTextColor(...NAVY);}else{doc.setFont("helvetica","normal");doc.setFontSize(11);doc.setTextColor(60,66,80);}doc.text(t,x,TOP+k*STEP);});}
-    block(104,[["Crane House",1],["10 Mansell Road"],["Killarney Gardens"],["021 556 0498"],["admin@bluecranes.co.za"]]);
-    block(166,[["Saldanha",1],["022 714 2207"],null,["Vredendal",1],["027 217 2217"]]);
-    doc.setFont("helvetica","normal");doc.setFontSize(7);doc.setTextColor(...GREY_T);doc.text("Reg No CK 1990/024648/23",L,LY+LH+3.2);doc.text("LME 017",R,LY+LH+3.2,{align:"right"});
-    doc.setDrawColor(...NAVY);doc.setLineWidth(0.8);doc.line(L,LY+LH+5.6,R,LY+LH+5.6);const HY=LY+LH+5.6-43;
+    const HY=letterhead(doc,L,R)-43;   // the letterhead ends 35 mm from the top
     const dn=f.docno||"";doc.setFont("helvetica","bold");doc.setFontSize(11);const dnw=doc.getTextWidth(dn);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(40,40,40);doc.text("Doc No:",R-dnw-2,48.5+HY,{align:"right"});doc.setTextColor(190,30,30);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.text(dn,R,48.5+HY,{align:"right"});
     doc.setDrawColor(60,66,80);doc.setLineWidth(0.25);doc.setTextColor(30,34,51);
     let y=51+HY;doc.rect(L,y,W,8);doc.setFontSize(13);doc.text(st.type==="LOAD TEST"?"CRANE / HOIST LOAD TEST REPORT":"CRANE / HOIST INSPECTION REPORT",105,y+5.6,{align:"center"});
