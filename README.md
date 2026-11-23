@@ -10,7 +10,7 @@ Live: https://bluecranesprojects.github.io/blue-cranes-online/
 |---|---|
 | `timesheet/` | Daily Time Sheet – vehicle check, jobs, schedule, PDF, WhatsApp |
 | `forklift/` | Forklift Inspection / Load Test report and load test certificate |
-| `mancage/` | Man cage (work platform) inspection report to SANS 583:2015 – MC<job>.1 numbers, opens from a man cage on the client's inventory or the job's Man cage tab |
+| `mancage/` | Man cage (work platform) inspection report to SANS 583:2015 – MC<job>.1 numbers, opens from a man cage on the client's inventory or the job's Man cage tab; W / X items take up to 3 photos (camera or gallery), printed on a PHOTOS page after the report |
 | `equipment/` | Client's inventory per job (location, serial nr, description, manufacturer, SWL, safe/unsafe) and all client inventories |
 | `admin/` | Admin: schedule jobs (with client inventories from Excel), change/remove jobs, download per job the inventory PDF/Excel, certificates and forklift reports, export client inventories |
 
