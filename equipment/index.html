@@ -96,7 +96,14 @@
   .folder.prog .fh{background:#FFF4CC;color:#7a5600}.folder.done .fh{background:#E3F2E8;color:#155e33}
   .folder .fh .c{margin-left:auto;font:800 12px Inter,Arial,sans-serif;background:#fff;border-radius:999px;padding:3px 9px}
   .folder .fch{font-size:14px}
-  .folder > .item{margin:8px}
+  .folder > .item, .grp > .item{margin:8px}
+  .grp{border-top:1px solid var(--line)}
+  .grp .gh{display:flex;align-items:center;gap:10px;width:100%;border:0;background:#F4F6FB;padding:12px 14px;font:800 14.5px Inter,Arial,sans-serif;color:var(--navyDeep);cursor:pointer;text-align:left}
+  .grp .gh .c{margin-left:auto;font:800 12px Inter,Arial,sans-serif;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:#4a5370}
+  .grp .gh .c.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+  .isrch{display:flex;align-items:center;gap:8px;background:#fff;border:1.5px solid #c9d2e3;border-radius:12px;padding:0 12px;margin:2px 0 8px}
+  .isrch input{flex:1;border:0;outline:0;font:inherit;font-size:16px;padding:12px 0;background:none;min-width:0}
+  .isrch button{border:0;background:none;font-size:18px;color:#4a5370;cursor:pointer;padding:6px}
   .fold{display:flex;align-items:center;gap:10px;width:100%;border:1px solid var(--line);border-left:5px solid var(--yellow);background:#fff;border-radius:12px;padding:13px 12px;font-weight:800;color:var(--navyDeep);font-size:15px;cursor:pointer;text-align:left}
   .fold .n{margin-left:auto;font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:#4a5370;font-weight:800}
   .fold .n.full{background:var(--ok);color:#fff;border-color:var(--ok)}
@@ -107,8 +114,8 @@
   /* bigger screens (tablet, laptop): wider page, items side by side; phones stay as they are */
   @media (min-width:700px){
     .app{max-width:920px}
-    main.wide .folder{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
-    main.wide .folder > .fh, main.wide .folder > .empty, main.wide .folder > .item:not(.shut){grid-column:1/-1}
+    main.wide .grp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    main.wide .grp > .gh, main.wide .folder > .empty, main.wide .grp > .item:not(.shut){grid-column:1/-1}
     .custs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
     .modal-bg{align-items:center}.modal{border-radius:16px}
   }
@@ -291,6 +298,38 @@
   }
   // cranes, hoists, beams with chain hoists and winches get the crane / hoist inspection and load test report (chain blocks and lever hoists have their own report)
   // man cages / work platforms on lift trucks get the man cage inspection report (SANS 583) – no certificate
+  // type groups for the inventory list and the census PDF / Excel: all eye bolts together, all round slings together, …
+  const GROUPS = [
+    ['Man cages', r => isManCage(r)], ['Forklifts & stackers', r => isForklift(r)],
+    ['Load beams & spreaders', r => /load\s*beam|lifting\s*beam|spreader|lifting\s*frame/i.test(r.desc || '')],
+    ['Cranes & gantries', r => /crane|gantry|\bjib\b|monorail|runway|davit|a\s*-?\s*frame/i.test(r.desc || '')],
+    ['Chain blocks', r => /chain\s*block|block\s*(and|&)\s*tackle|\bc\s*\/?\s*b\b/i.test(r.desc || '')],
+    ['Lever hoists', r => /lever|ratchet\s*hoist|come\s*-?\s*along|pull\s*-?\s*lift/i.test(r.desc || '')],
+    ['Hoists', r => /hoist/i.test(r.desc || '')],
+    ['Winches & Tirfors', r => /winch|tirfor|tifor/i.test(r.desc || '')],
+    ['Beam trolleys', r => /trolley/i.test(r.desc || '')],
+    ['Beam clamps', r => /(beam|girder)\s*clamp/i.test(r.desc || '')],
+    ['Plate & drum clamps', r => /clamp/i.test(r.desc || '')],
+    ['Shackles', r => /shackle|\bbow\b|\bdee\b/i.test(r.desc || '')],
+    ['Eye bolts', r => /eye\s*-?\s*bolt/i.test(r.desc || '')],
+    ['Eye nuts', r => /eye\s*-?\s*nut/i.test(r.desc || '')],
+    ['Endless round slings', r => /round\s*sling|endless/i.test(r.desc || '')],
+    ['Web slings', r => /web|flat\s*sling|webbing|polyester/i.test(r.desc || '')],
+    ['Chain slings', r => /chain/i.test(r.desc || '')],
+    ['Wire rope slings', r => /wire|rope|\bswr\b/i.test(r.desc || '')],
+    ['Hooks, links & swivels', r => /hook|master\s*link|\blink\b|swivel|\bring\b|turnbuckle|rigging\s*screw/i.test(r.desc || '')],
+    ['Safety harnesses', r => /harness/i.test(r.desc || '')],
+    ['Lanyards & fall arrest', r => /lanyard|inertia|fall\s*arrest|retract|\bsrl\b|lifeline/i.test(r.desc || '')],
+    ['Other slings', r => /sling/i.test(r.desc || '')]];
+  const groupOf = r => { const g = GROUPS.find(([, t]) => t(r)); if (g) return g[0];
+    // anything else: its own description without the sizes, e.g. "DRUM HANDLER 500KG" → "Drum handler"
+    const d = String(r.desc || '').replace(/\b\d+([.,]\d+)?\s*(t|ton|tons|kg|m|mm|cm|lt?)?\b/gi, ' ').replace(/[-–\/,]+\s*$/, '').replace(/\s+/g, ' ').trim();
+    return d ? d.charAt(0).toUpperCase() + d.slice(1).toLowerCase() : 'New items'; };
+  const GORDER = GROUPS.map(g => g[0]);
+  // [[group name, [[row, index]…]]…] in a fixed order: machinery, tackle, safety gear, then everything else A–Z
+  function groupRows(pairs){ const m = new Map(); pairs.forEach(p => { const g = groupOf(p[0]); if (!m.has(g)) m.set(g, []); m.get(g).push(p); });
+    const rank = g => { const k = GORDER.indexOf(g); return k < 0 ? (g === 'New items' ? 9999 : 1000) : k; };
+    return [...m.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])); }
   const isManCage = r => !!r.mc || /man\s*-?\s*cage|work(ing)?\s*platform|personnel\s*(basket|cage|carrier)|man\s*basket|\bcradle\b|access\s*cage/i.test(r.desc || '');
   function openManCage(i){
     const l = S.cur; const r = l && l.rows[i]; if (!r) return;
@@ -533,10 +572,10 @@
       ${(() => { const one = (r, i) => { const k = norm(r.serial); if (r.make && !MK.includes(r.make)) MK.push(r.make); const seen = k && known[k] && known[k].job !== l.job;
         const ro = r.auto ? 'readonly' : ''; const rep = r.report && r.report.no ? r.report : null;
         const on = sel && sel.has(r.id); const isOpen = !sel && OPEN.has(r.id);
-        const sub = [r.serial, r.make && !/^unknown$/i.test(r.make) ? r.make : '', r.loc ? '📍 ' + r.loc : '', rep ? '📄 ' + rep.no : ''].filter(Boolean).join(' · ');
+        const sub = [r.serial ? r.desc : '', r.make && !/^unknown$/i.test(r.make) ? r.make : '', r.loc ? '📍 ' + r.loc : '', rep ? '📄 ' + rep.no : ''].filter(Boolean).join(' · ');
         const chip = r.status === 'SAFE' ? '<span class="pill ok">✓ Safe</span>' : r.status === 'UNSAFE' ? '<span class="pill bad">✕ Unsafe</span>' : '<span class="pill todo">Not done</span>';
         const summary = `<button type="button" class="isum" data-tog="${esc(r.id)}" aria-expanded="${isOpen}"><span class="num">${i+1}</span>
-            <span class="it"><b>${esc(r.desc || r.serial || 'New item')}</b><span class="hint">${esc(sub) || 'Tap to fill in'}</span></span>${chip}${sel ? '' : '<span class="chev" aria-hidden="true">▾</span>'}</button>`;
+            <span class="it"><b>${esc(r.serial || r.desc || 'New item')}</b><span class="hint">${esc(sub) || 'Tap to fill in'}</span></span>${chip}${sel ? '' : '<span class="chev" aria-hidden="true">▾</span>'}</button>`;
         if (!isOpen) return `<div class="item shut${r.status === 'UNSAFE' ? ' unsafe' : ''}${on ? ' sel' : ''}" data-i="${i}">
           ${sel ? `<label class="pick"><input type="checkbox" data-pick="${i}" ${on ? 'checked' : ''}> Select item ${i + 1}${r.desc ? ' – ' + esc(r.desc) : ''}</label>` : ''}${summary}</div>`;
         return `<div class="item${r.status === 'UNSAFE' ? ' unsafe' : ''}" data-i="${i}">
@@ -573,11 +612,22 @@
           ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
           </div>`; };
         // To do / Completed: an item is completed once it is marked Safe, or Unsafe with a reason
-        const all = (l.rows || []).map((r, i) => [r, i]).filter(([r]) => show(r)); if (!all.length) return '<div class="empty">No items yet. Tap <b>Add item</b> for each piece of equipment.</div>';
+        const all0 = (l.rows || []).map((r, i) => [r, i]).filter(([r]) => show(r)); if (!all0.length) return '<div class="empty">No items yet. Tap <b>Add item</b> for each piece of equipment.</div>';
+        // search: item number, description, make, location or report number
+        const q = String(S.q || '').trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean), cq = v => String(v || '').toLowerCase().replace(/[\s-]+/g, '');
+        const hit = r => { const t = [r.serial, r.desc, r.make, r.loc, r.report && r.report.no, groupOf(r)].join(' ').toLowerCase(), tc = cq(t); return words.every(w => t.includes(w) || tc.includes(cq(w))); };
+        const all = q ? all0.filter(([r]) => hit(r)) : all0;
+        const srch = `<div class="isrch">🔍<input id="iq" type="text" placeholder="Search items – e.g. eye bolt, EB12, cellar" value="${esc(S.q || '')}" autocomplete="off" enterkeyhint="search" aria-label="Search items">${q ? '<button type="button" id="iqX" aria-label="Clear the search">✕</button>' : ''}</div>`
+          + (q ? `<div class="hint" style="margin:-2px 4px 6px">${all.length ? all.length + (all.length === 1 ? ' item found' : ' items found') : 'Nothing found for “' + esc(S.q) + '”'}</div>` : '');
         const todo = all.filter(([r]) => !itemDone(r)), done = all.filter(([r]) => itemDone(r));
-        const F = folds(); const box = (k, ttl, list, cls) => `<div class="folder ${cls}"><button type="button" class="fh" data-fold="${k}" aria-expanded="${!!F[k]}">${ttl}<span class="c">${list.length}</span><span class="fch">${F[k] ? '▾' : '▸'}</span></button>
-          ${F[k] ? (list.map(([r, i]) => one(r, i)).join('') || `<div class="empty" style="margin:6px 0">${k === 'todo' ? 'Nothing left to do – every item is marked.' : 'Items move here once they are marked Safe or Unsafe.'}</div>`) : ''}</div>`;
-        return box('todo', '⏳ To do', todo, 'prog') + box('done', '✓ Completed', done, 'done'); })()}
+        // inside each folder the items are grouped by type, each group folds open on its own
+        const F = folds(); const grp = (k, list) => groupRows(list).map(([g, rs]) => { const gk = 'g|' + k + '|' + g, nb = rs.filter(([r]) => r.status === 'UNSAFE').length;
+            const on = !!q || !!F[gk] || rs.some(([r]) => r.id === S.focusId);
+            return `<div class="grp"><button type="button" class="gh" data-fold="${esc(gk)}" aria-expanded="${on}"><span>${esc(g)}</span>${nb ? `<span class="c bad">${nb} unsafe</span>` : ''}<span class="c"${nb ? ' style="margin-left:0"' : ''}>${rs.length}</span><span class="fch">${on ? '▾' : '▸'}</span></button>
+              ${on ? rs.map(([r, i]) => one(r, i)).join('') : ''}</div>`; }).join('');
+        const box = (k, ttl, list, cls) => { const on = !!q || !!F[k]; return `<div class="folder ${cls}"><button type="button" class="fh" data-fold="${k}" aria-expanded="${on}">${ttl}<span class="c">${list.length}</span><span class="fch">${on ? '▾' : '▸'}</span></button>
+          ${on ? (grp(k, list) || `<div class="empty" style="margin:6px 0">${q ? 'No matching items here.' : k === 'todo' ? 'Nothing left to do – every item is marked.' : 'Items move here once they are marked Safe or Unsafe.'}</div>`) : ''}</div>`; };
+        return srch + box('todo', '⏳ To do', todo, 'prog') + box('done', '✓ Completed', done, 'done'); })()}
       <div class="row">
         <button class="btn primary" id="add">${ICON.plus} Add item</button>
         ${(l.rows || []).length ? `<button class="btn secondary" id="copy" style="width:auto;padding:0 14px">Copy last</button>` : ''}
@@ -748,11 +798,14 @@
     app.querySelectorAll('[data-addmake]').forEach(b => { const i = Number(b.dataset.addmake); const inp = document.getElementById('mni' + i);
       const add = () => { const v = addMake(inp.value); if (!v){ inp.focus(); return; } l.rows[i].make = v; saveList(l); render(); toast(v + ' added to the list'); const n = document.getElementById('w' + i); if (n && !n.value) n.focus(); };
       b.onclick = add; inp.onkeydown = e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } }; });
-    app.querySelectorAll('[data-fold]').forEach(b => b.onclick = () => { const F = folds(); F[b.dataset.fold] = !F[b.dataset.fold]; keepFolds(); render(); });
-    app.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { const id = b.dataset.tog, o = openSet(); if (o.has(id)) o.delete(id); else o.add(id); keepOpen(); render(); });
+    app.querySelectorAll('[data-fold]').forEach(b => b.onclick = () => { const F = folds(), k = b.dataset.fold, was = b.getAttribute('aria-expanded') === 'true'; F[k] = !was; if (was && k.startsWith('g|')) S.focusId = null; keepFolds(); render(); });
+    app.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { const id = b.dataset.tog, o = openSet(); if (o.has(id)) o.delete(id); else { o.add(id); S.focusId = id; } keepOpen(); render(); });
+    { const iq = $('iq'); if (iq){ iq.oninput = () => { S.q = iq.value; const p = iq.selectionStart; render(); const n = $('iq'); if (n){ n.focus(); try { n.setSelectionRange(p, p); } catch(e){} } };
+        iq.onkeydown = e => { if (e.key === 'Enter') iq.blur(); };
+        const x = $('iqX'); if (x) x.onclick = () => { S.q = ''; render(); }; } }
     const ta = $('togAll'); if (ta) ta.onclick = () => { const shown = l.rows.filter(r => !l.curLoc || (l.curLoc === '__none' ? !r.loc : r.loc === l.curLoc)); const o = openSet();
       if (shown.some(r => !o.has(r.id))) shown.forEach(r => o.add(r.id)); else shown.forEach(r => o.delete(r.id)); keepOpen(); render(); };
-    const addRow = r => { l.rows = l.rows || []; l.rows.push(r); openRow(r.id); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
+    const addRow = r => { l.rows = l.rows || []; l.rows.push(r); openRow(r.id); S.focusId = r.id; S.q = ''; folds().todo = true; keepFolds(); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
     const curLoc = () => (l.curLoc && l.curLoc !== '__none') ? l.curLoc : '';
     $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'', loc:curLoc() });
     const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'', loc:curLoc() || p.loc || '' }); };
@@ -881,8 +934,8 @@
     const rows = (l.rows || []).filter(r => r.serial || r.desc);
     const items = rows.map(r => { const make = String(r.make || '').trim(); const desc = String(r.desc || '').trim();
       return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), make:make && !/^unknown$/i.test(make) ? make.toUpperCase() : '', ton:tonText(r.swl), loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', report:repNo(r) }; });
-    const order = []; items.forEach(it => { if (!order.includes(it.loc)) order.push(it.loc); });
-    return order.map(loc => items.filter(it => it.loc === loc));
+    // grouped by type (all eye bolts together…), each group with its heading
+    return groupRows(rows.map((r, k) => [r, k])).map(([g, rs]) => Object.assign(rs.map(([, k]) => items[k]), { title:g.toUpperCase() }));
   }
   async function listDoc(l){
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
@@ -907,7 +960,11 @@
       if (y + h > PH - 12){ doc.addPage(); y = 15; colHead(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color); }
       lines.forEach((ls, k) => { doc.setDrawColor(0); doc.rect(X[k], y, W[k], h); doc.text(ls, X[k] + 1.5, y + 4.2); }); y += h; };
     head();
-    censusItems(l).forEach((grp, gi) => { if (gi) y += 5;
+    censusItems(l).forEach((grp, gi) => { if (gi) y += 4;
+      // group heading: navy band across the table, e.g. "EYE BOLTS · 10"
+      if (y + 7 + 6 > PH - 12){ doc.addPage(); y = 15; colHead(); }
+      doc.setFillColor(227, 234, 245); doc.setDrawColor(0); doc.rect(L, y, 180, 7, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(11, 53, 117);
+      doc.text(grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'), L + 1.5, y + 4.8); y += 7;
       grp.forEach(it => { cell([it.serial, it.desc, it.make, it.ton, it.loc, it.report], it.unsafe ? RED : INK); }); });
     y += 8; if (y > PH - 12){ doc.addPage(); y = 20; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...RED); doc.text('RED = UNSAFE FOR USE', L, y);
     // client sign-off (once the client has signed the job): name, date and signature under the list
@@ -933,6 +990,7 @@
     ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { const c = ws.getCell(4, k + 1); c.value = h; c.font = { name:'Arial', bold:true }; c.border = box; });
     let r = 6;
     censusItems(l).forEach((grp, gi) => { if (gi) r++;
+      { ws.mergeCells(r, 1, r, 6); const c = ws.getCell(r, 1); c.value = grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'); c.font = { name:'Arial', bold:true, color:{ argb:'FF0B3575' } }; c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE3EAF5' } }; c.border = box; r++; }
       grp.forEach(it => { [it.serial, it.desc, it.make, it.ton, it.loc, it.report].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : { name:'Arial' }; c.border = box; }); r++; }); });
     r++; const f = ws.getCell(r, 1); f.value = 'RED = UNSAFE FOR USE'; f.font = { name:'Arial', bold:true, color:red };
     const buf = await wb.xlsx.writeBuffer();
