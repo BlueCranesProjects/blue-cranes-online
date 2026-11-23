@@ -757,6 +757,7 @@ function clientSign(st){const jc=v=>String(v||"").trim().replace(/\s+/g,"").repl
   try{const m=(window.parent&&window.parent!==window&&window.parent.BC_SIGNOFFS)||window.BC_SIGNOFFS;if(m&&m[c]&&m[c].sig)return m[c];}catch(e){}
   try{const eq=JSON.parse(localStorage.getItem("bco-equipment")||"{}")||{};for(const l of Object.values(eq))if(l&&l.signoff&&l.signoff.sig&&jc(l.job)===c)return l.signoff;}catch(e){}return null;}
 async function buildPdf(st,opts){
+  const TECH=!!(opts&&opts.tech);   // the technician's version: marked TECHNICIAN'S REPORT – INTERNAL on every page
   st=JSON.parse(JSON.stringify(st));st.parts=Object.assign(blank().parts,st.parts||{});st.val=Object.assign(blank().val,st.val||{});st.res=st.res||{};st.note=st.note||{};st.wr=Object.assign(blank().wr,st.wr||{});st.photo=st.photo||{};st.sig=Object.assign(blank().sig,st.sig||{});
   const {jsPDF}=window.jspdf,f=st.f;
   const CS=clientSign(st);const dims={};for(const im of [st.sig.sigEng,CS&&CS.sig])if(im)dims[im]=await imgDims(im);
@@ -765,7 +766,8 @@ async function buildPdf(st,opts){
     const HY=letterhead(doc,L,R)-43;   // the letterhead ends 35 mm from the top
     const dn=f.docno||"";doc.setFont("helvetica","bold");doc.setFontSize(11);const dnw=doc.getTextWidth(dn);doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(40,40,40);doc.text("Doc No:",R-dnw-2,48.5+HY,{align:"right"});doc.setTextColor(190,30,30);doc.setFont("helvetica","bold");doc.setFontSize(11);doc.text(dn,R,48.5+HY,{align:"right"});
     doc.setDrawColor(60,66,80);doc.setLineWidth(0.25);doc.setTextColor(30,34,51);
-    let y=51+HY;doc.rect(L,y,W,8);doc.setFontSize(13);doc.text(st.type==="LOAD TEST"?"CRANE / HOIST LOAD TEST REPORT":"CRANE / HOIST INSPECTION REPORT",105,y+5.6,{align:"center"});
+    if(TECH){doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(190,30,30);doc.text("TECHNICIAN'S REPORT – INTERNAL",L,48.5+HY);doc.setTextColor(30,34,51);}
+    let y=51+HY;doc.rect(L,y,W,8);doc.setFontSize(13);doc.text((st.type==="LOAD TEST"?"CRANE / HOIST LOAD TEST REPORT":"CRANE / HOIST INSPECTION REPORT")+(TECH?" – TECHNICIAN'S COPY":""),105,y+5.6,{align:"center"});
     y+=8;const rh=7;
     function cell(x,yy,w,label,val){doc.setDrawColor(60,66,80);if(isNA(val)){doc.setFillColor(...NAF);doc.rect(x,yy,w,rh,"FD");}else doc.rect(x,yy,w,rh);doc.setFont("helvetica","bold");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(label,x+1.5,yy+4.6);const lw=doc.getTextWidth(label)+3;doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(10,20,60);
       let fs=10,t=String(val||"");while(fs>7&&doc.getTextWidth(t)>w-lw-2){fs-=0.5;doc.setFontSize(fs);}doc.text(doc.splitTextToSize(t,w-lw-2)[0]||"",x+lw,yy+4.8);}
@@ -820,7 +822,7 @@ async function buildPdf(st,opts){
     const leg=(v,x,t)=>{if(v==="na"){doc.setFillColor(...NAF);doc.setDrawColor(150,156,170);doc.rect(x-3.5,y-2.2,7,4.4,"FD");}mark(doc,v,x,y);doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(t,x+4,y+1.2);};
     leg("ok",L+3,"NO APPARENT DEFECT");leg("w",L+48,"WORN BUT SERVICEABLE");leg("x",L+98,"PARTS NEED URGENT REPLACEMENT");leg("na",L+163,"NOT APPLICABLE");
     doc.setFont("helvetica","normal");doc.setTextColor(60,66,80);doc.setFontSize(6.5);doc.text("L/T long travel · C/T cross travel · H hoist · A/H auxiliary hoist · grey = not applicable",L,y+6);
-    if(over){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("REMARKS (continued) — Doc No "+(f.docno||"")+"  "+U(f.customer),L,16);doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(10,20,60);let all=[];rem.forEach(t=>all.push(...doc.splitTextToSize(t,W)));doc.text(all,L,24);}
+    if(over){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("REMARKS (continued) — Doc No "+(f.docno||"")+"  "+U(f.customer),L,16);if(TECH){doc.setTextColor(190,30,30);doc.setFontSize(9);doc.text("TECHNICIAN'S REPORT – INTERNAL",R,16,{align:"right"});doc.setFontSize(12);doc.setTextColor(...NAVY);}doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(10,20,60);let all=[];rem.forEach(t=>all.push(...doc.splitTextToSize(t,W)));doc.text(all,L,24);}
     // (no photo page on the client's report: repair photos go on the technician's report only)
     return {doc,end:y+6,ih};}
   let p=draw();const n=ROWS.filter(r=>r.sec==="Safety"||r.sec==="Electrical").length+2;p=draw(Math.max(3.9,Math.min(4.7,p.ih+(288-p.end)/n)));
