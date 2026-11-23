@@ -967,8 +967,7 @@
     const mcNo = kind === 'mc' && r.report && r.report.no ? String(r.report.no).toUpperCase() : '';
     if (mcNo){ doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN));
       doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' : 'SAFE FOR USE AT TIME OF INSPECTION', VX, y); doc.setFontSize(13); doc.text('SEE REPORT ' + mcNo, VX, y + 6.5);
-      let ex = 0; if (unsafe && r.reason && !/^See report /i.test(r.reason)){ const ls = doc.splitTextToSize(U(r.reason), W).slice(0, 2); doc.setFontSize(10.5); doc.text(ls, VX, y + 12); ex = 6 + (ls.length - 1) * 4.5; }
-      doc.setTextColor(...INK); y += 7.9 * CERT_K + 6.5 + ex; }
+      doc.setTextColor(...INK); y += 7.9 * CERT_K + 6.5; }   // no reason on the certificate: the report says what is wrong
     else row('REMARKS', unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' + (r.reason ? ' – ' + U(r.reason) : '') : 'SAFE FOR USE AT TIME OF INSPECTION', unsafe ? RED : GREEN);
     y += (22 - 7.9) * CERT_K; doc.setFontSize(12.5);
     doc.text('INSPECTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
@@ -1009,7 +1008,7 @@
       doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN)); doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF TEST' : 'SAFE FOR USE AT TIME OF TEST', VX, y);
       const crNo = r.cr && r.report && r.report.no ? String(r.report.no) : '';
       if (crNo){ doc.setFontSize(13); doc.text('SEE REPORT ' + crNo, VX, y + 6.5); }
-      if (unsafe && r.reason && !(crNo && /^See report /i.test(r.reason))){ doc.setFontSize(10.5); doc.text(doc.splitTextToSize(U(r.reason), R - VX).slice(0, 2), VX, y + (crNo ? 12 : 6)); }
+      if (unsafe && r.reason && !crNo){   /* with a report, the reason stays on the report only */ doc.setFontSize(10.5); doc.text(doc.splitTextToSize(U(r.reason), R - VX).slice(0, 2), VX, y + (crNo ? 12 : 6)); }
       doc.setTextColor(...INK); y += 22 * CERT_K; doc.setFontSize(12.5);
       doc.text('TESTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
       y += 18 * CERT_K; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
