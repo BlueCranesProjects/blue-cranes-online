@@ -211,6 +211,8 @@
     list.forEach(j => { const id = 'A_' + j.id; seen[id] = 1; const old = state.schedule[id] || {};
       const x = Object.assign({}, old, { id, assigned:true, jobId:j.id, date:j.date, time:j.time || '', card:j.card || '', customer:j.customer || '', contact:j.contact || '', email:j.email || '', order:j.order || '', site:j.site || '', notes:j.notes || '', invCount:Array.isArray(j.inv) ? j.inv.length : 0 });
       if (old._sent == null) x._sent = j.status || 'planned';
+      // already started or finished (on this or another phone / tablet): it is on a time sheet, so no second "Start"
+      if (!x.addedTo && (j.status === 'busy' || j.status === 'done')){ x.addedTo = j.sheetDate || j.date; x._sent = j.status; if (j.status === 'done') x.done = true; }
       state.schedule[id] = x; });
     Object.keys(state.schedule).forEach(id => { const x = state.schedule[id]; if (x.assigned && !seen[id] && !x.addedTo) delete state.schedule[id]; });
     lsWrite(); render();
@@ -595,8 +597,19 @@
     }
     return viewJobs();
   }
+  // a planned job that is already on today's sheet (started as an unplanned job, or on another device) is not shown again
+  function linkSched(key, sh){
+    const jobs = (sh && sh.jobs) || [], cn = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    schedFor(key).filter(x => !x.addedTo).forEach(x => {
+      let j = jobs.find(j => j.sched === x.id);
+      if (!j && x.card) j = jobs.find(j => !j.sched && cn(j.card) && cn(j.card) === cn(x.card));
+      if (!j) return;
+      if (!j.sched){ j.sched = x.id; if (!j.contact && x.contact) j.contact = x.contact; saveSheet(key); }
+      x.addedTo = key; if (j.done) x.done = true; saveSched(x.id); });
+  }
   function viewJobs(){
     const key = curKey(); const sh = state.sheets[key]; const jobs = sh.jobs || [];
+    linkSched(key, sh);
     const todo = schedFor(key).filter(x => !x.addedTo);
     const busyIdx = jobs.findIndex(j => !j.done);
     const km = lastOdo(sh) - Number(sh.firstOdo);
