@@ -333,6 +333,7 @@
   const isTackle = r => { const d = r.desc || ''; if (isForklift(r) || isHarness(r)) return false; return TACKLE.test(d) && !/hoist|crane|gantry|chain\s*block|lever\s*(block|hoist)|winch|tirfor|monorail|runway/i.test(d); };
   // inspection certificate: safety gear, lifting tackle, man cages and any other equipment that is not lifting machinery
   // (cranes, hoists, chain blocks, lever hoists, winches… get a load test certificate; forklifts and stackers have their own)
+  const NOREPAIR = /shackle|\bbow\b|eye\s*-?\s*bolt|eye\s*-?\s*nut|round\s*sling|endless|web\s*-?\s*sling|webbing|flat\s*sling|wire\s*rope\s*sling|^(?!.*chain).*\bslings?\b|harness|lanyard/i;
   const isInspCert = r => !isForklift(r) && (isManCage(r) || isHarness(r) || isTackle(r) || !MACHINE.test(r.desc || ''));
   const isHarness = r => /harness|lanyard|fall\s*arrest|inertia\s*reel|self[\s-]*retract/i.test(r.desc || '');
   const isCertItem = r => !isForklift(r) && !!(r.desc || r.serial) && (isInspCert(r) || MACHINE.test(r.desc || ''));
@@ -968,10 +969,13 @@
     doc.text('INSPECTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
     y += 15 * CERT_K; doc.text('INSPECTION DATE', L, y); doc.text(dmy(r.at || l.date), L + 44, y);
     doc.setFontSize(11);
-    if (kind === 'mc'){ y += 15 * CERT_K; doc.setFontSize(12.5); doc.text('NEXT INSPECTION DUE', L, y); doc.text(unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(r.at ? String(r.at).slice(0, 10) : l.date, 6)) + '  (6 MONTHS)', L + 64, y); return; }
-    ['1ST', '2ND', '3RD'].forEach((n, k) => { y += (k ? 12 : 15) * CERT_K; doc.text(n + ' INSPECTION', L, y); doc.text('DATE', L + 50, y); dots(L + 62, L + 84, y); doc.text('NAME', L + 87, y); dots(L + 100, L + 124, y); doc.text('SIGNATURE', L + 127, y); dots(L + 150, R, y);
+    // items that can't be repaired (shackles, round / web slings, eye bolts, eye nuts…) get no further inspections once unsafe;
+    // man cages and other equipment keep them, because they can be repaired
+    const noMore = unsafe && NOREPAIR.test(r.desc || '');
+    if (kind === 'mc'){ y += 15 * CERT_K; doc.setFontSize(12.5); doc.text('NEXT INSPECTION DUE', L, y); doc.text(monthYear(addMonths(r.at ? String(r.at).slice(0, 10) : l.date, 6)) + '  (6 MONTHS)', L + 64, y); return; }
+    if (!noMore) ['1ST', '2ND', '3RD'].forEach((n, k) => { y += (k ? 12 : 15) * CERT_K; doc.text(n + ' INSPECTION', L, y); doc.text('DATE', L + 50, y); dots(L + 62, L + 84, y); doc.text('NAME', L + 87, y); dots(L + 100, L + 124, y); doc.text('SIGNATURE', L + 127, y); dots(L + 150, R, y);
       y += 12 * CERT_K; doc.text('JOB NO', L, y); dots(L + 17, L + 46, y); doc.text('REMARKS', L + 50, y); dots(L + 71, R, y); });
-    if (tackle){ y += 14 * CERT_K; doc.setFontSize(9.5); doc.text('LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017', L, y); }
+    if (tackle){ y += (noMore ? 22 : 14) * CERT_K; doc.setFontSize(9.5); doc.text('LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017', L, y); }
   }
   async function certDoc(l, idx, opts){ opts = opts || {};
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
