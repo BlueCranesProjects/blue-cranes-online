@@ -958,12 +958,18 @@
     y += 13 * CERT_K; const VX = L + 68, W = R - VX;
     const row = (a, v, color) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); if (color) doc.setTextColor(...color);
       const lines = doc.splitTextToSize(String(v || ''), W).slice(0, 4); doc.text(lines, VX, y); doc.setTextColor(...INK); y += 7.9 * CERT_K + (Math.max(1, lines.length) - 1) * 5; };
-    row('CERTIFICATE No', no); if (r.report && r.report.no && (kind === 'mc' || r.mc)) row('REPORT No', U(r.report.no)); row('CUSTOMER NAME', U(l.customer)); row('SITE ADDRESS', U(l.location)); row('ITEM LOCATION', U(r.loc)); row('ITEM No', U(r.serial));
+    row('CERTIFICATE No', no); row('CUSTOMER NAME', U(l.customer)); row('SITE ADDRESS', U(l.location)); row('ITEM LOCATION', U(r.loc)); row('ITEM No', U(r.serial));
     const tons = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').replace(/\s/g, '').replace(',', '.'); const n = Number(t); return t && !isNaN(n) ? String(Math.round(n / 10) / 100).replace('.', ',') + ' TON' : U(v); };
     row('DESCRIPTION OF ITEM', U(r.desc)); row('SAFE WORKING LOAD', tackle ? tons(r.swl) : kgText(r.swl)); row('MANUFACTURED BY', tackle ? (U(r.make) || 'UNKNOWN') : /^unknown$/i.test(r.make || '') ? '' : U(r.make));
     if (kind === 'h') row('DATE OF MANUFACTURE', U(r.dom));
     // same grid as the load test certificates: REMARKS is the last row, then the same gaps and columns below it
-    row('REMARKS', unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' + (r.reason ? ' – ' + U(r.reason) : '') : 'SAFE FOR USE AT TIME OF INSPECTION', unsafe ? RED : GREEN);
+    // a man cage with its report: SEE REPORT … under the remarks, the same place as on the forklift and crane certificates
+    const mcNo = kind === 'mc' && r.report && r.report.no ? String(r.report.no).toUpperCase() : '';
+    if (mcNo){ doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN));
+      doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' : 'SAFE FOR USE AT TIME OF INSPECTION', VX, y); doc.setFontSize(13); doc.text('SEE REPORT ' + mcNo, VX, y + 6.5);
+      let ex = 0; if (unsafe && r.reason && !/^See report /i.test(r.reason)){ const ls = doc.splitTextToSize(U(r.reason), W).slice(0, 2); doc.setFontSize(10.5); doc.text(ls, VX, y + 12); ex = 6 + (ls.length - 1) * 4.5; }
+      doc.setTextColor(...INK); y += 7.9 * CERT_K + 6.5 + ex; }
+    else row('REMARKS', unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' + (r.reason ? ' – ' + U(r.reason) : '') : 'SAFE FOR USE AT TIME OF INSPECTION', unsafe ? RED : GREEN);
     y += (22 - 7.9) * CERT_K; doc.setFontSize(12.5);
     doc.text('INSPECTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
     y += 15 * CERT_K; doc.text('INSPECTION DATE', L, y); doc.text(dmy(r.at || l.date), L + 44, y);
