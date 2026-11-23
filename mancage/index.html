@@ -201,6 +201,12 @@
   .qphotos .qp{position:relative;aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:#eee}
   .qphotos .qp img{width:100%;height:100%;object-fit:cover;display:block}
   .qphotos .qp button{position:absolute;top:3px;right:3px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(19,34,79,.85);color:#fff;font-weight:800;cursor:pointer}
+  .mph{margin:8px 0 0 34px;padding:10px;border-radius:10px;background:#fff8e1;border:1px solid #f0dc8a;display:flex;flex-direction:column;gap:8px}
+  .mph .mt{font-size:13px;font-weight:800;color:#6B5200}
+  .mphs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .mphs div{position:relative;aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:#eee}
+  .mphs img{width:100%;height:100%;object-fit:cover;display:block}
+  .mphs button{position:absolute;top:3px;right:3px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-weight:800;font-size:14px;line-height:28px;padding:0;cursor:pointer}
   .qcams{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .qcam{display:flex;align-items:center;justify-content:center;gap:6px;border:1.5px dashed #c9a227;background:#fff;border-radius:8px;height:44px;font-weight:800;color:#6B5200;cursor:pointer;position:relative}
   .qcam input{position:absolute;inset:0;opacity:0;cursor:pointer}
@@ -373,7 +379,7 @@ function build(){
     if(false)h+=`<div class="sub"><select id="loadSel" class="ysel"><option value="">Rope or chain? Choose…</option><option value="rope">Rope</option><option value="chain">Chain</option></select></div>`;
     if(r.kind==="meas")h+=`<div class="sub"><div class="unit" style="flex:1"><input data-meas="${r.id}" inputmode="decimal" placeholder="${r.id==="F"?"Measured deflection":r.id==="G"?"Span / length":"Height"}"><span>mm</span></div><button type="button" class="na nab" data-measna="${r.id}">N/A</button></div>`;
     if(r.kind==="four"){h+=`<button class="pbtn" data-exp="${r.id}">Different per part ▾</button><div class="pp" id="pp-${r.id}">${COLS.map(([k,s],c)=>`<div class="pprow" id="pr-${r.id}-${c}"><span>${s}</span>${optBtns(`data-r="${r.id}" data-c="${c}"`,r.name+" "+s)}</div>`).join("")}</div>`;}
-    if(r.kind!=="meas")h+=`<div class="qbox" id="qb-${r.id}" style="display:none"></div>`;
+    if(r.kind!=="meas")h+=`<div class="qbox" id="qb-${r.id}" style="display:none"></div><div class="mph" id="mph-${r.id}" style="display:none"></div>`;
     h+=`<div class="sub notewrap" style="display:none"><input data-note="${r.id}" placeholder="Note / defect for item ${r.no}"></div><button class="notebtn" data-addnote="${r.id}">+ Add note</button></div>`;
   });
   itemsEl.innerHTML=h+(sec?"</div></div>":"");wirePhotos(itemsEl);
@@ -420,7 +426,7 @@ function render(){jdRender();subBtn();
       COLS.forEach((_,c)=>{const pr=$("pr-"+r.id+"-"+c);pr.style.display=cs.includes(c)?"":"none";pr.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.v===state.res[r.id+"_"+c]));});}
     else $("mx-"+r.id).style.display="none";
     if(r.kind==="meas"){const inp=d.querySelector("[data-meas]"),v=state.val[r.id]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);d.querySelector(".unit").classList.toggle("isna",na);d.querySelector("[data-measna]").classList.toggle("on",na);}
-    if(r.kind!=="meas"){const qb=$("qb-"+r.id),need=false;qb.style.display=need?"":"none";if(need&&!qb.dataset.on)fillQuote(r.id);if(!need)qb.dataset.on="";}
+    if(r.kind!=="meas"){const qb=$("qb-"+r.id),need=false;qb.style.display=need?"":"none";if(need&&!qb.dataset.on)fillQuote(r.id);if(!need)qb.dataset.on="";mcPhotoBox(r,vals.includes("w")||vals.includes("x"));}
     const ni=d.querySelector("[data-note]");if(ni.value!==(state.note[r.id]||""))ni.value=state.note[r.id]||"";if(state.note[r.id])showNote(r.id,true);
   });
   document.querySelectorAll("[data-v2]").forEach(inp=>{const k=inp.dataset.v2,v=state.val[k]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);inp.closest(".unit").classList.toggle("isna",na);document.querySelector(`[data-vna="${k}"]`).classList.toggle("on",na);});
@@ -487,6 +493,18 @@ function photoBox(key,label){return `<div class="phbox" id="pb-${key}" style="di
 function wirePhotos(root){root.querySelectorAll("[data-photo]").forEach(inp=>inp.onchange=async e=>{const f=e.target.files&&e.target.files[0];if(!f)return;const k=inp.dataset.photo,sp=inp.parentNode.querySelector("span");sp.textContent="Loading…";
     try{state.photo=state.photo||{};state.photo[k]=await photoData(f);render();save();toast("Photo added");}catch(err){upErr(err);render();}e.target.value="";});
   root.querySelectorAll("[data-phdel]").forEach(b=>b.onclick=()=>{if(state.photo)delete state.photo[b.dataset.phdel];render();save();});}
+// a W or X item: take a photo with the camera or pick one from the phone's gallery (up to 3 per item, printed on the report's photo page)
+const MPH_MAX=3;
+function phKeys(id,st){st=st||state;return Array.from({length:MPH_MAX},(_,k)=>id+"_p"+k).filter(k=>st.photo&&st.photo[k]&&st.photo[k].src);}
+function mcPhotoBox(r,on){const el=$("mph-"+r.id);if(!el)return;if(!on){el.style.display="none";return;}el.style.display="";
+  const ks=phKeys(r.id),sig=ks.map(k=>k+":"+state.photo[k].src.length).join(",")||"-";if(el.dataset.sig===sig&&el.innerHTML)return;el.dataset.sig=sig;
+  el.innerHTML=`<div class="mt">📷 Photo of this item <span style="font-weight:600">(optional${ks.length?" · "+ks.length+" of "+MPH_MAX:", up to "+MPH_MAX})</span></div>`+
+    (ks.length?`<div class="mphs">${ks.map(k=>`<div><img src="${state.photo[k].src}" alt="Photo"><button type="button" data-mphdel="${k}" aria-label="Remove photo">✕</button></div>`).join("")}</div>`:"")+
+    (ks.length<MPH_MAX?`<div class="qcams"><label class="qcam"><input type="file" accept="image/*" capture="environment" data-mphadd class="vh" aria-label="Take a photo with the camera">📷 Take photo</label><label class="qcam"><input type="file" accept="image/*" multiple data-mphadd class="vh" aria-label="Pick photos from the gallery">🖼 From gallery</label></div>`:"");
+  el.querySelectorAll("[data-mphadd]").forEach(inp=>inp.onchange=async e=>{const fs=[...(e.target.files||[])];if(!fs.length)return;inp.parentNode.lastChild.textContent=" Loading…";
+    let n=0;try{state.photo=state.photo||{};for(const f of fs){const free=Array.from({length:MPH_MAX},(_,k)=>r.id+"_p"+k).find(k=>!(state.photo[k]&&state.photo[k].src));if(!free)break;state.photo[free]=await photoData(f);n++;}
+      el.dataset.sig="";render();save();toast(n>1?n+" photos added":"Photo added");}catch(err){el.dataset.sig="";upErr(err);render();}e.target.value="";});
+  el.querySelectorAll("[data-mphdel]").forEach(b=>b.onclick=()=>{if(state.photo)delete state.photo[b.dataset.mphdel];el.dataset.sig="";render();save();});}
 function showPhoto(key,need){const b=$("pb-"+key);if(!b)return;const p=state.photo&&state.photo[key];b.style.display=need||p?"":"none";b.classList.toggle("miss",!!need&&!p);
   const im=b.querySelector(".phimg");if(p){if(im.getAttribute("src")!==p.src)im.src=p.src;im.style.display="";}else{im.removeAttribute("src");im.style.display="none";}
   b.querySelector(".phdel").style.display=p?"":"none";b.querySelector(".phwarn").style.display=need&&!p?"":"none";b.querySelector(".phbtn span").textContent=p?"Retake photo":"Take photo";}
@@ -803,7 +821,19 @@ async function buildPdf(st,opts){
     const leg=(v,x,t)=>{if(v==="na"){doc.setFillColor(...NAF);doc.setDrawColor(150,156,170);doc.rect(x-3.5,y-2.2,7,4.4,"FD");}mark(doc,v,x,y);doc.setFont("helvetica","normal");doc.setFontSize(7.5);doc.setTextColor(60,66,80);doc.text(t,x+4,y+1.2);};
     leg("ok",L+3,"NO APPARENT DEFECT");leg("w",L+48,"WORN BUT SERVICEABLE");leg("x",L+98,"PARTS NEED URGENT REPLACEMENT");leg("na",L+163,"NOT APPLICABLE");
     if(over){doc.addPage();doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("REMARKS (continued) — Doc No "+(f.docno||"")+"  "+U(f.customer),L,16);if(TECH){doc.setTextColor(190,30,30);doc.setFontSize(9);doc.text("TECHNICIAN'S REPORT – INTERNAL",R,16,{align:"right"});doc.setFontSize(12);doc.setTextColor(...NAVY);}doc.setFont("helvetica","normal");doc.setFontSize(9.5);doc.setTextColor(10,20,60);let all=[];rem.forEach(t=>all.push(...doc.splitTextToSize(t,W)));doc.text(all,L,24);}
-    // (no photo page on the client's report: repair photos go on the technician's report only)
+    // photos of the W / X items on their own page(s) after the report, 2 a row
+    const ph=[];ROWS.forEach(r=>{const v=st.res[r.id];if(v!=="w"&&v!=="x")return;const ks=phKeys(r.id,st);ks.forEach((k,n)=>ph.push({label:"#"+r.no+" "+r.name+" – "+(v==="x"?"X":"W")+(ks.length>1?" ("+(n+1)+"/"+ks.length+")":""),note:st.note[r.id]||"",p:st.photo[k]}));});
+    if(ph.length){const cols=2,gap=6,cw=(W-gap)/cols,chh=cw*0.75,rowH=chh+13;let py=0;
+      const head=()=>{doc.addPage();py=letterhead(doc,L,R)+4;doc.setFont("helvetica","bold");doc.setFontSize(12);doc.setTextColor(...NAVY);doc.text("PHOTOS",L,py+4);
+        doc.setFontSize(9);doc.setTextColor(40,40,40);doc.setFont("helvetica","normal");doc.text([f.docno?"Doc No: "+f.docno:"",U(f.customer),f.serial?"Serial "+U(f.serial):""].filter(Boolean).join("   ·   "),R,py+4,{align:"right"});
+        if(TECH){doc.setFont("helvetica","bold");doc.setTextColor(190,30,30);doc.text("TECHNICIAN'S REPORT – INTERNAL",L+22,py+4);}py+=9;};
+      head();
+      ph.forEach((it,k)=>{const c=k%cols;if(c===0&&k>0)py+=rowH;if(c===0&&py+rowH>290)head();const x=L+c*(cw+gap);
+        doc.setFont("helvetica","bold");doc.setFontSize(8.5);doc.setTextColor(20,24,40);doc.text(doc.splitTextToSize(it.label,cw)[0]||"",x,py+3);
+        if(it.note){doc.setFont("helvetica","normal");doc.setFontSize(8);doc.setTextColor(70,76,90);doc.text(doc.splitTextToSize(it.note,cw)[0]||"",x,py+7);}
+        const sc=Math.min(cw/it.p.w,chh/it.p.h),w=it.p.w*sc,h=it.p.h*sc;doc.setFillColor(244,246,251);doc.rect(x,py+9,cw,chh,"F");
+        try{doc.addImage(it.p.src,"JPEG",x+(cw-w)/2,py+9+(chh-h)/2,w,h,undefined,"FAST");}catch(e){}
+        doc.setDrawColor(180,184,196);doc.setLineWidth(0.25);doc.rect(x,py+9,cw,chh);});}
     return {doc,end:y+6,ih};}
   let p=draw();p=draw(Math.max(5,Math.min(7,p.ih+(286-p.end)/15)));   // rows sized to fill the page
   const tech=false;
