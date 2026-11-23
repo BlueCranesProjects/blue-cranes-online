@@ -209,7 +209,7 @@
     if (!list) return;
     const seen = {};
     list.forEach(j => { const id = 'A_' + j.id; seen[id] = 1; const old = state.schedule[id] || {};
-      const x = Object.assign({}, old, { id, assigned:true, jobId:j.id, date:j.date, time:j.time || '', card:j.card || '', customer:j.customer || '', contact:j.contact || '', email:j.email || '', notes:j.notes || '', invCount:Array.isArray(j.inv) ? j.inv.length : 0 });
+      const x = Object.assign({}, old, { id, assigned:true, jobId:j.id, date:j.date, time:j.time || '', card:j.card || '', customer:j.customer || '', contact:j.contact || '', email:j.email || '', order:j.order || '', site:j.site || '', notes:j.notes || '', invCount:Array.isArray(j.inv) ? j.inv.length : 0 });
       if (old._sent == null) x._sent = j.status || 'planned';
       state.schedule[id] = x; });
     Object.keys(state.schedule).forEach(id => { const x = state.schedule[id]; if (x.assigned && !seen[id] && !x.addedTo) delete state.schedule[id]; });
@@ -391,7 +391,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 21 Nov (I)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 23 Nov (A)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -694,7 +694,7 @@
     if (had >= 0){ state.activeDate = null; go('jobpage', { jobIdx:had, schedId:null }); return; }
     askOdo(k, 'Start ' + ([x.card, x.customer].filter(Boolean).join(' · ') || 'job'), odo => {
       sh.jobs = sh.jobs || [];
-      sh.jobs.push({ sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', odo, arrOdo:odo, hrs:0, notes:x.notes || '', done:false, startedAt:new Date().toISOString() });
+      sh.jobs.push({ sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', order:x.order || '', site:x.site || '', odo, arrOdo:odo, hrs:0, notes:x.notes || '', done:false, startedAt:new Date().toISOString() });
       x.addedTo = k; saveSched(id); saveSheet(k);
       state.activeDate = null; toast('Job started'); go('jobpage', { jobIdx:sh.jobs.length - 1, schedId:null, prefill:null }); });
   }
@@ -708,6 +708,7 @@
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="pill prog">Busy</span>${since ? `<span class="hint">Started ${esc(since)}</span>` : ''}</div>
         <div style="font-size:19px;font-weight:700">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · '))}</div>
         ${j.contact ? `<div class="hint" style="font-size:14px;color:var(--label)">Contact: <b>${esc(j.contact)}</b></div>` : ''}
+        ${(() => { const so = invLeft(curKey(), state.jobIdx), site = so.loc || j.site || ''; return j.order || site ? `<div class="hint" style="font-size:14px;color:var(--label)">${[j.order ? 'Order nr: <b>' + esc(j.order) + '</b>' : '', site ? 'Site: <b>' + esc(site) + '</b>' : ''].filter(Boolean).join(' · ')}</div>` : ''; })()}
         ${j.notes ? `<div class="hint" style="font-size:14px">${esc(j.notes)}</div>` : ''}
       </section>
       <h2 style="padding:4px 2px 0">REPORTS</h2>
@@ -748,6 +749,10 @@
         <div class="field"><label for="customer">Customer</label><input id="customer" autocomplete="organization" value="${esc(j.customer||j.desc||'')}" ${ro}></div>
         ${locked && j.contact ? `<div class="field"><label for="contact">Contact person</label><input id="contact" value="${esc(j.contact)}" ${ro}></div>` : ''}
         ${!locked ? `<div class="field"><label for="contactIn">Contact person (optional)</label><input id="contactIn" autocomplete="name" value="${esc(j.contact || '')}"></div>` : ''}
+        <div class="grid2" style="gap:10px"><div class="field"><label for="orderIn">Order nr</label><input id="orderIn" autocomplete="off" value="${esc(j.order || '')}"></div>
+          ${(() => { const il = state.jobIdx != null ? (invLeft(curKey(), state.jobIdx).loc || '') : ''; return il
+            ? `<div class="field"><label for="siteIn">Site</label><input id="siteIn" value="${esc(il)}" readonly aria-readonly="true" style="background:#EEF2F7;color:var(--label);border-style:dashed"><span class="hint">From the client's inventory – change it there (Job details).</span></div>`
+            : `<div class="field"><label for="siteIn">Site</label><input id="siteIn" autocomplete="off" placeholder="e.g. Ceres" value="${esc(j.site || '')}"></div>`; })()}</div>
         </div>
         <div ${hide}>
         <div class="field"><label for="odo">Odometer at this job (km)</label><input id="odo" class="num" inputmode="numeric" value="${esc(j.odo)}" required>
@@ -897,7 +902,7 @@
   function invLeft(k, i){ try { const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j) return {};
       const id = (k + '_' + (j.card || j.customer || j.desc || 'job')).replace(/[^\w\-]+/g, '_');
       const all = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; const l = all[id] || Object.values(all).find(v => v && (v.also || []).includes(id)) || (j.sched ? Object.values(all).find(v => v && v.sched === j.sched) : null); const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
-      return { total:rows.length, open:rows.filter(r => !(r.status === 'SAFE' || (r.status === 'UNSAFE' && String(r.reason || '').trim()))).length, so:(l && l.signoff && l.signoff.sig) ? l.signoff : null }; } catch(e){ return {}; } }
+      return { total:rows.length, open:rows.filter(r => !(r.status === 'SAFE' || (r.status === 'UNSAFE' && String(r.reason || '').trim()))).length, so:(l && l.signoff && l.signoff.sig) ? l.signoff : null, loc:(l && l.location) || '' }; } catch(e){ return {}; } }
   // opening an inventory or report remembers where you were (e.g. a day in History), so coming back opens there again
   const PLACE = 'bco-ts-place';
   function keepPlace(){ try { sessionStorage.setItem(PLACE, JSON.stringify({ view:state.view, detailKey:state.detailKey, jobIdx:state.jobIdx, schedId:state.schedId, schedDate:state.schedDate, schedWeek:state.schedWeek, activeDate:state.activeDate, _schedBack:state._schedBack, pjKey:state.pjKey, pjIdx:state.pjIdx, y:window.scrollY, at:Date.now() })); } catch(e){} }
@@ -977,7 +982,7 @@
   function openReport(k, i, type, editPast){
     keepPlace();
     const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || (j.done && !editPast)) return;
-    try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
+    try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', order:j.order || '', site:j.site || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
     location.href = type === 'EQUIPMENT' ? '../equipment/' : type === 'SIGNOFF' ? '../equipment/?signoff=1' : type === 'SIGNOFF-FIN' ? '../equipment/?signoff=fin' : type === 'FL-OPEN' ? '../forklift/' : type === 'CR-OPEN' ? '../crane/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : /^STACKER-/.test(type || '') ? '../forklift/?type=' + encodeURIComponent(type.slice(8)) + '&machine=STACKER' : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION') + '&machine=FORKLIFT';
   }
   // today's scheduled jobs, shown first so the technician sees the day's work; tap one to open it (and its inventory)
@@ -1004,7 +1009,7 @@
   }
   function openSchedInv(id){
     const x = state.schedule[id]; if (!x) return;
-    try { localStorage.setItem('bco-active-job', JSON.stringify({ date:x.date, sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', at:new Date().toISOString() })); } catch(e){}
+    try { localStorage.setItem('bco-active-job', JSON.stringify({ date:x.date, sched:id, card:x.card || '', customer:x.customer || '', contact:x.contact || '', order:x.order || '', site:x.site || '', at:new Date().toISOString() })); } catch(e){}
     keepPlace(); location.href = '../equipment/';
   }
   function schedActions(x){
@@ -1083,6 +1088,7 @@
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${j.done ? '<span class="pill ok">✓ Completed</span>' : '<span class="pill prog">Not finished</span>'}<span class="hint">${esc(niceDate(k, true))} · Job ${i + 1} on the sheet</span></div>
         <div style="font-size:19px;font-weight:700">${esc([j.card, j.customer || j.desc].filter(Boolean).join(' · ') || 'Job')}</div>
         ${j.contact ? `<div class="hint" style="font-size:14px;color:var(--label)">Contact: <b>${esc(j.contact)}</b></div>` : ''}
+        ${(() => { const so = invLeft(k, i), site = so.loc || j.site || ''; return j.order || site ? `<div class="hint" style="font-size:14px;color:var(--label)">${[j.order ? 'Order nr: <b>' + esc(j.order) + '</b>' : '', site ? 'Site: <b>' + esc(site) + '</b>' : ''].filter(Boolean).join(' · ')}</div>` : ''; })()}
         <div class="hint" style="font-size:14px">${esc(fmtHM(jobTotal(sh, i)))} on the job${jobSplit(sh, i) ? ' (' + esc(jobSplit(sh, i)) + ')' : ''}${j.odo !== '' && j.odo != null ? ' · odometer ' + esc(fmtKm(j.odo)) + ' km' : ''}</div>
         ${j.notes ? `<div class="hint" style="font-size:14px">${esc(j.notes)}</div>` : ''}
         <button class="btn secondary" type="button" data-pjedit="${i}" style="height:46px;font-size:14px;border-width:1.5px;margin-top:4px">✎ Edit job details (hours, notes, status)</button>
@@ -1710,7 +1716,7 @@
         if (!jf.card.value.trim() && !jf.customer.value.trim()){ err.textContent = 'Add a job card no. or a customer.'; return; }
         const cIn = document.getElementById('contactIn');
         if (state.jobIdx == null && !state.prefill){   // Add job → start it straight away, no odometer or hours yet
-          const nj = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '' };
+          const nj = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '', order: (document.getElementById('orderIn') || {}).value ? document.getElementById('orderIn').value.trim() : '', site: (document.getElementById('siteIn') || {}).value ? document.getElementById('siteIn').value.trim() : '' };
           askOdo(k, 'Start ' + ([nj.card, nj.customer].filter(Boolean).join(' · ') || 'job'), odo => {
             sh.jobs = sh.jobs || [];
             sh.jobs.push(Object.assign(nj, { odo, arrOdo:odo, hrs:0, notes:'', done:false, startedAt:new Date().toISOString() }));
@@ -1720,7 +1726,8 @@
         const needOdo = finishing || state._done || jf.odo.value.trim() !== '';
         if (needOdo && isNaN(odo)){ err.textContent = 'Enter the odometer reading at this job.'; return; }
         if (needOdo && odo < Number(sh.firstOdo)){ err.textContent = 'That reading is lower than this morning\'s first reading (' + fmtKm(sh.firstOdo) + ' km). Check the number.'; return; }
-        const job = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '', odo: needOdo ? odo : '', hrs: state._hrs, notes: jf.notes.value.trim(), done: !!state._done };
+        const oIn = document.getElementById('orderIn'), sIn = document.getElementById('siteIn');
+        const job = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '', order: oIn ? oIn.value.trim() : '', site: sIn ? sIn.value.trim() : '', odo: needOdo ? odo : '', hrs: state._hrs, notes: jf.notes.value.trim(), done: !!state._done };
         if (state.jobIdx != null){ const was = sh.jobs[state.jobIdx]; if (was && was.startedAt) job.startedAt = was.startedAt; if (was && was.arrOdo != null) job.arrOdo = was.arrOdo;
           if (was && was.sched){ Object.assign(job, { sched: was.sched, card: was.card || '', customer: was.customer || '', contact: was.contact || '' }); }
           if (was && was.done && job.done) job.doneAt = was.doneAt;

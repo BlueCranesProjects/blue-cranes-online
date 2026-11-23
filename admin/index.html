@@ -87,8 +87,8 @@
   async function xlsxReady(){ for (let i = 0; i < 60 && !window.XLSX; i++) await new Promise(r => setTimeout(r, 100)); if (!window.XLSX) throw new Error('Excel tool not loaded'); }
   function download(wb, name){ XLSX.writeFile(wb, name, { compression:true }); }
   function sheet(rows, widths){ const ws = XLSX.utils.json_to_sheet(rows); if (widths) ws['!cols'] = widths.map(w => ({ wch:w })); return ws; }
-  const COLS = ['Date', 'Time', 'Job card', 'Customer', 'Contact', 'Notes', 'Technician email'];
-  const ALIAS = { 'date':'date', 'day':'date', 'time':'time', 'start time':'time', 'job card':'card', 'job card no':'card', 'job card nr':'card', 'job nr':'card', 'job no':'card', 'job number':'card', 'job':'card', 'customer':'customer', 'client':'customer', 'contact':'contact', 'contact person':'contact', 'client email':'email', 'customer email':'email', 'contact email':'email', 'email address':'email', 'client e-mail':'email', 'notes':'notes', 'note':'notes', 'description':'notes', 'technician email':'tech', 'tech email':'tech', 'email':'tech', 'technician':'tech', 'tech':'tech' };
+  const COLS = ['Date', 'Time', 'Job card', 'Order nr', 'Customer', 'Site', 'Contact', 'Notes', 'Technician email'];
+  const ALIAS = { 'date':'date', 'day':'date', 'time':'time', 'start time':'time', 'job card':'card', 'job card no':'card', 'job card nr':'card', 'job nr':'card', 'job no':'card', 'job number':'card', 'job':'card', 'customer':'customer', 'client':'customer', 'contact':'contact', 'contact person':'contact', 'client email':'email', 'order':'order', 'order nr':'order', 'order no':'order', 'order number':'order', 'po':'order', 'po nr':'order', 'po no':'order', 'po number':'order', 'purchase order':'order', 'site':'site', 'site address':'site', 'town':'site', 'customer email':'email', 'contact email':'email', 'email address':'email', 'client e-mail':'email', 'notes':'notes', 'note':'notes', 'description':'notes', 'technician email':'tech', 'tech email':'tech', 'email':'tech', 'technician':'tech', 'tech':'tech' };
   function toDate(v){
     if (v == null || v === '') return '';
     if (v instanceof Date && !isNaN(v)) return keyOf(v);
@@ -118,7 +118,7 @@
     const existing = new Map(S.jobs.map(j => [j.id, j]));
     return raw.map((r, n) => {
       const j = {}; Object.keys(r).forEach(k => { const f = ALIAS[String(k).trim().toLowerCase().replace(/[.:#]/g, '').replace(/\s+/g, ' ')]; if (f && j[f] == null) j[f] = r[k]; });
-      const out = { line:n + 2, date:toDate(j.date), time:toTime(j.time), card:String(j.card || '').trim(), customer:String(j.customer || '').trim(), contact:String(j.contact || '').trim(), email:String(j.email || '').trim().toLowerCase(), notes:String(j.notes || '').trim(), tech:String(j.tech || '').trim().toLowerCase() };
+      const out = { line:n + 2, date:toDate(j.date), time:toTime(j.time), card:String(j.card || '').trim(), customer:String(j.customer || '').trim(), contact:String(j.contact || '').trim(), email:String(j.email || '').trim().toLowerCase(), order:String(j.order || '').trim(), site:String(j.site || '').trim(), notes:String(j.notes || '').trim(), tech:String(j.tech || '').trim().toLowerCase() };
       const errs = [], warns = [];
       if (!out.date) errs.push('date missing or not understood');
       if (!out.card && !out.customer) errs.push('job card or customer needed');
@@ -285,7 +285,7 @@
   }
   // a job made here, from the inventory tab, for one technician
   function newJob(){ const n = S.nj; const tech = String(n.tech || '').trim().toLowerCase(); const customer = String(n.customer || S.invCust || '').trim();
-    const j = { date:n.date || keyOf(new Date()), time:String(n.time || '').trim(), card:String(n.card || '').trim(), customer, contact:String(n.contact || '').trim(), email:String(n.email || '').trim().toLowerCase(), notes:String(n.notes || '').trim(), tech };
+    const j = { date:n.date || keyOf(new Date()), time:String(n.time || '').trim(), card:String(n.card || '').trim(), customer, contact:String(n.contact || '').trim(), email:String(n.email || '').trim().toLowerCase(), order:String(n.order || '').trim(), site:String(n.site || '').trim(), notes:String(n.notes || '').trim(), tech };
     j.ready = !!(j.date && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(tech) && customer); j.id = jobId(j); return j; }
   function newJobForm(){ const j = newJob();
     return `<div class="row"><div class="field"><label for="njDate">Date</label><input type="date" id="njDate" data-nj="date" value="${esc(j.date)}"></div>
@@ -294,6 +294,8 @@
       <div class="field"><label for="njCust">Customer</label><input id="njCust" data-nj="customer" value="${esc(j.customer)}" placeholder="Filled in from the file"></div>
       <div class="row"><div class="field"><label for="njCard">Job card</label><input id="njCard" data-nj="card" value="${esc(j.card)}"></div>
         <div class="field"><label for="njCon">Contact</label><input id="njCon" data-nj="contact" value="${esc(j.contact)}"></div></div>
+      <div class="row"><div class="field"><label for="njOrder">Order nr</label><input id="njOrder" data-nj="order" value="${esc(j.order)}" autocomplete="off"></div>
+        <div class="field"><label for="njSite">Site <span style="font-weight:400">(town / site – fills the site on the inventory and reports)</span></label><input id="njSite" data-nj="site" value="${esc(j.site)}" placeholder="e.g. Ceres" autocomplete="off"></div></div>
       <div class="field"><label for="njEmail">Client email <span style="font-weight:400">(the signed reports go here)</span></label><input id="njEmail" type="email" inputmode="email" data-nj="email" value="${esc(j.email)}" placeholder="name@company.co.za"></div>
       <div class="field"><label for="njNotes">Notes</label><input id="njNotes" data-nj="notes" value="${esc(j.notes)}"></div>
       <span class="hint">Technicians show here once they have signed in to the app.</span>`; }
@@ -358,6 +360,7 @@
       ${g.total ? B('data-invpdf', '⬇ Inventory PDF') + B('data-cen', '⬇ Excel') + B('data-certs', '⬇ Certificates') : ''}
       ${nfl ? B('data-flpdf', `⬇ Forklift reports (${nfl})`) : ''}
       ${(g.cr || []).length ? B('data-crpdf', `⬇ Crane / hoist reports (${g.cr.length})`) : ''}
+      ${j.sheetDate || j.status === 'done' || j.status === 'busy' ? B('data-tspdf', '⬇ Time sheet') : ''}
       ${g.total || nfl || (g.cr || []).length ? B('data-jobpdf', '🖨 Job PDF (print)') + B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
   // client sign-offs (kept on the technician's inventory): the hidden report tools put the client's name + signature on the client's reports
   window.BC_SIGNOFFS = window.BC_SIGNOFFS || {}; S.signs = S.signs || {};
@@ -443,22 +446,29 @@
             if (b.doc.getNumberOfPages() > n) quote.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), from:n }); } }
         parts.push(...quote); }
       finally { t.done(); } }
-    try { const day = j.sheetDate || j.date; const sheets = (await window.Cloud.listKindOf(g.uid, 'sheet')).map(d => d.data || {}); const sh = sheets.find(x => x.date === day);
-      if (sh){ let prof = {}, set = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
-        try { const ss = await window.Cloud.listKindOf(g.uid, 'settings'); set = (ss[0] && (ss[0].data || ss[0])) || {}; } catch(e){}
-        const t = await hiddenTool('../timesheet/?embed=1', w => w.BCT && w.BCT.sheetPdfOf && w.BCT);
-        try { const f = await t.api.sheetPdfOf(sh, prof, set); if (f) parts.push({ blob:await own(f.blob) }); } finally { t.done(); } } } catch(e){ console.error('time sheet', e); }
+    { const f = await sheetFileOf(g.uid, j.sheetDate || j.date, j); if (f) parts.push({ blob:f.blob }); }
     if (!parts.length) return null;
     const P = await pdfLib(); const out = await P.PDFDocument.create();
     for (const p of parts){ const src = await P.PDFDocument.load(new Uint8Array(await p.blob.arrayBuffer())); const idx = src.getPageIndices().filter(i => i >= (p.from || 0));
       (await out.copyPages(src, idx)).forEach(pg => out.addPage(pg)); }
     return { blob:new Blob([await out.save()], { type:'application/pdf' }), name:packName('Job', { job:j.card, customer:j.customer, date:j.sheetDate || j.date }), type:'application/pdf' };
   }
-  // which = 'inv' | 'certs' | 'fl' | 'cr' | 'all' | 'job'
+  // the technician's time sheet of one day as a PDF ({ blob, name }), or null when there is none
+  async function sheetFileOf(uid, day, j){
+    try { const sheets = (await window.Cloud.listKindOf(uid, 'sheet')).map(d => d.data || {}); const sh = sheets.find(x => x.date === day); if (!sh) return null;
+      let prof = {}, set = {}; try { const ps = await window.Cloud.listKindOf(uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
+      try { const ss = await window.Cloud.listKindOf(uid, 'settings'); set = (ss[0] && (ss[0].data || ss[0])) || {}; } catch(e){}
+      const t = await hiddenTool('../timesheet/?embed=1', w => w.BCT && w.BCT.sheetPdfOf && w.BCT);
+      try { const f = await t.api.sheetPdfOf(sh, prof, set); if (!f) return null;
+        return { blob:new Blob([new Uint8Array(await f.blob.arrayBuffer())], { type:'application/pdf' }), name:packName('Time_sheet', { job:(j && (j.card || j.job)) || '', customer:(j && j.customer) || '', date:day }), type:'application/pdf' }; }
+      finally { t.done(); } } catch(e){ console.error('time sheet', e); return null; } }
+  // which = 'inv' | 'certs' | 'fl' | 'cr' | 'ts' | 'all' | 'job'
   async function jobFiles(id, which){
     const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return [];
     if (which === 'job'){ const f = await jobPdf(id); return f ? [f] : []; }
     const files = [];
+    // the day's time sheet: its own download, and in All files (zip)
+    if (which === 'ts' || which === 'all'){ const f = await sheetFileOf(g.uid, j.sheetDate || j.date, j); if (f) files.push(f); if (which === 'ts') return files; }
     if (g.list && (which === 'inv' || which === 'certs' || which === 'all')){
       const t = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
       try { const l = JSON.parse(JSON.stringify(g.list));
@@ -468,7 +478,7 @@
           let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
           const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, await utFor(g.uid, l, null));
           if ((g.fl || []).some(r => r.state.type === 'LOAD TEST')){ const ft = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
-            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const c = await ft.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
+            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const c = await ft.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + (r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
           const f = await t.api.mergeCerts(l, parts); if (f) files.push(f); }
         // copy the files into this page before the hidden page is closed
         for (const f of files) f.blob = new Blob([new Uint8Array(await f.blob.arrayBuffer())], { type:f.type || f.blob.type || 'application/pdf' });
@@ -566,11 +576,12 @@
             if (r._cr){ const a = await cz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); crp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
               if (cz.api.buildTechPdf && cz.api.needsTech(r.state)){ const b = await cz.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); tcp.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), name:b.name }); } continue; }
             const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); flp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
-            if (r.state.type === 'LOAD TEST'){ const c = await fk.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + ((/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
+            if (r.state.type === 'LOAD TEST'){ const c = await fk.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + (r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
           if (flp.length) await put(await onePdf(flp, packName('Forklift_reports', l)));
           if (crp.length) await put(await onePdf(crp, packName('Crane_hoist_reports', l)));
           if (tcp.length) await put(await onePdf(tcp, packName('TECHNICIAN_Crane_hoist_reports_for_quote', l)));
           if (parts.length){ const c = await eq.api.mergeCerts(l, parts); if (c) await put(c); }
+          if (l.date){ const ts = await sheetFileOf(g.u.uid, l.date, { card:l.job, customer:l.customer }); if (ts) await put(ts); }
         } catch(e){ console.error(e); dir.file('PROBLEM.txt', 'Some files of this job could not be made: ' + (e && e.message || e)); }
       }
       say('Packing the zip…');
@@ -633,6 +644,8 @@
       <div class="row"><div class="field"><label for="edCust">Customer</label><input id="edCust" data-ed="customer" value="${esc(e.customer)}"></div>
         <div class="field"><label for="edCard">Job card</label><input id="edCard" data-ed="card" value="${esc(e.card)}"></div>
         <div class="field"><label for="edCon">Contact</label><input id="edCon" data-ed="contact" value="${esc(e.contact)}"></div></div>
+      <div class="row"><div class="field"><label for="edOrder">Order nr</label><input id="edOrder" data-ed="order" value="${esc(e.order || '')}" autocomplete="off"></div>
+        <div class="field"><label for="edSite">Site <span style="font-weight:400">(town / site – fills the site on the inventory and reports)</span></label><input id="edSite" data-ed="site" value="${esc(e.site || '')}" placeholder="e.g. Ceres" autocomplete="off"></div></div>
       <div class="field"><label for="edEmail">Client email <span style="font-weight:400">(the signed reports go here)</span></label><input id="edEmail" type="email" inputmode="email" data-ed="email" value="${esc(e.email || '')}" placeholder="name@company.co.za"></div>
       <div class="field"><label for="edNotes">Notes</label><input id="edNotes" data-ed="notes" value="${esc(e.notes)}"></div>
       <div class="row"><button class="btn primary" id="edSave" style="flex:1">${S.busy ? 'Saving…' : isNew ? 'Schedule the job' : 'Save changes'}</button><button class="btn secondary" id="edCancel" style="flex:1">Cancel</button></div>
@@ -684,7 +697,7 @@
             const sum = [dl.length + (dl.length === 1 ? ' job' : ' jobs'), nb ? nb + ' busy' : '', nd ? nd + ' done' : '', dl.length - nd - nb ? (dl.length - nd - nb) + ' planned' : ''].filter(Boolean).join(' · ');
             h = `<tr class="dayh" data-day="${esc(j.date)}" tabindex="0" role="button" aria-expanded="${open}"><td colspan="6"><span class="dch" style="display:inline-block;transform:rotate(${open ? 0 : -90}deg)">▾</span> ${esc(niceDate(j.date))}${j.date === keyOf(new Date()) ? ' <span class="pill busy" style="margin-left:6px">Today</span>' : ''}<span class="dsum">${sum}</span></td></tr>`; }
           lastDate = j.date;
-          return h + `<tr data-dayrow="${esc(j.date)}" ${open ? '' : 'style="display:none"'}><td><input type="checkbox" data-sel="${esc(j.id)}" aria-label="Select job" ${S.sel.has(j.id) ? 'checked' : ''}></td><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.contact, (j.inv || []).length && !S.invProg[j.id] ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div>${S.signs[j.id] ? `<div class="hint" style="color:var(--ok);font-weight:700">✓ Signed by ${esc(S.signs[j.id].name)}${S.signs[j.id].email ? (S.signs[j.id].mail === 'sent' ? ' · emailed' : ' · ⏳ email waiting') : ''}</div>` : j.status === 'done' ? '<div class="hint" style="color:#7a5600;font-weight:700">Not signed by the client</div>' : ''}${progLine(j)}</td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
+          return h + `<tr data-dayrow="${esc(j.date)}" ${open ? '' : 'style="display:none"'}><td><input type="checkbox" data-sel="${esc(j.id)}" aria-label="Select job" ${S.sel.has(j.id) ? 'checked' : ''}></td><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.order ? 'Order ' + j.order : '', j.site, j.contact, (j.inv || []).length && !S.invProg[j.id] ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div>${S.signs[j.id] ? `<div class="hint" style="color:var(--ok);font-weight:700">✓ Signed by ${esc(S.signs[j.id].name)}${S.signs[j.id].email ? (S.signs[j.id].mail === 'sent' ? ' · emailed' : ' · ⏳ email waiting') : ''}</div>` : j.status === 'done' ? '<div class="hint" style="color:#7a5600;font-weight:700">Not signed by the client</div>' : ''}${progLine(j)}</td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
             <td style="white-space:nowrap">${j.status !== 'done' ? `<button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-edit="${esc(j.id)}" aria-label="Change job">✎ Edit</button> ` : ''}<button class="x" data-del="${esc(j.id)}" aria-label="Remove job">🗑 Remove</button></td></tr>`; }).join('')}
       </tbody></table></div>` : '<div class="empty">No jobs loaded for this period.</div>'}
     </section></main>`;
@@ -739,7 +752,7 @@
       const ok = S.preview.filter(r => !r.errs.length); const existing = new Map(S.jobs.map(j => [j.id, j])); S.busy = true; render();
       try {
         const now = new Date().toISOString(); const me = window.Cloud.email();
-        await window.Cloud.putJobs(ok.map(r => { const j = { id:r.id, date:r.date, time:r.time, card:r.card, customer:r.customer, contact:r.contact, email:r.email || '', notes:r.notes, tech:r.tech, updatedAt:now, loadedBy:me };
+        await window.Cloud.putJobs(ok.map(r => { const j = { id:r.id, date:r.date, time:r.time, card:r.card, customer:r.customer, contact:r.contact, email:r.email || '', order:r.order || '', site:r.site || '', notes:r.notes, tech:r.tech, updatedAt:now, loadedBy:me };
           if (!existing.has(r.id)){ j.status = 'planned'; j.createdAt = now; } return j; }));
         toast(ok.length + ' jobs loaded'); S.preview = null; S.fileName = ''; await refreshJobs(); S.tab = 'jobs';
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
@@ -758,6 +771,7 @@
     wireDays();
     app.querySelectorAll('[data-jobpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.jobpdf, 'job', b));
     app.querySelectorAll('[data-allpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.allpdf, 'all', b));
+    app.querySelectorAll('[data-tspdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.tspdf, 'ts', b));
     if (S.tab === 'jobs') loadProgress();
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
     app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b){ const j = newJob(); const n = (S.inv || []).filter(r => !r.errs.length).length; b.disabled = !(j.ready && !S.busy); b.textContent = schedLabel(j, n); } };
@@ -770,7 +784,7 @@
       catch(e){ console.error(e); toast(e && e.userMsg ? e.userMsg : 'Could not read that file – check it is an Excel, Word (.docx) or PDF file with a table'); } };
     const il = $('iload'); if (il) il.onclick = async () => {
       const isNew = true; const job = newJob(); if (!job.ready) return; const ok = (S.inv || []).filter(r => !r.errs.length); S.busy = true; render();
-      try { const now = new Date().toISOString(); const base = !isNew ? {} : Object.assign({ date:job.date, time:job.time, card:job.card, customer:job.customer, contact:job.contact, email:job.email, notes:job.notes, tech:job.tech, loadedBy:window.Cloud.email() }, S.jobs.some(x => x.id === job.id) ? {} : { status:'planned', createdAt:now });
+      try { const now = new Date().toISOString(); const base = !isNew ? {} : Object.assign({ date:job.date, time:job.time, card:job.card, customer:job.customer, contact:job.contact, email:job.email, order:job.order || '', site:job.site || '', notes:job.notes, tech:job.tech, loadedBy:window.Cloud.email() }, S.jobs.some(x => x.id === job.id) ? {} : { status:'planned', createdAt:now });
         await window.Cloud.putJobs([Object.assign({ ...base, id:job.id, updatedAt:now }, ok.length ? { inv:ok.map(r => { const o = { serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc }; if (r.note) o.note = r.note; return o; }), invSite:S.invSite || '', invAt:now } : {})]);
         toast(isNew ? 'Job scheduled for ' + (nameOf(job.tech) || job.tech) + (ok.length ? ' with ' + ok.length + ' items' : '') : ok.length + ' items loaded for ' + (job.customer || job.card)); if (isNew){ S.nj = {}; S.invJob = ''; S.tab = 'jobs'; } S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
@@ -779,12 +793,12 @@
     const rf = $('refresh'); if (rf) rf.onclick = async () => { await refreshJobs(); progAt = 0; render(); toast('Updated'); };
     app.querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => { const j = S.jobs.find(x => x.id === b.dataset.edit); if (!j) return;
       if (!S.users.length) await refreshUsers();
-      S.editJob = j.id; S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', email:j.email || '', notes:j.notes || '' }; render(); window.scrollTo(0, 0); });
+      S.editJob = j.id; S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', email:j.email || '', order:j.order || '', site:j.site || '', notes:j.notes || '' }; render(); window.scrollTo(0, 0); });
     app.querySelectorAll('[data-ed]').forEach(el => { el.oninput = el.onchange = () => { S.ed[el.dataset.ed] = el.value; }; });
     const ao = $('admOut'); if (ao) ao.onclick = () => { const m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px';
       m.innerHTML = '<div class="card" style="max-width:380px;width:100%;gap:12px"><h2>Sign out?</h2><div class="row"><button class="btn primary" id="soYes" style="flex:1">Sign out</button><button class="btn secondary" id="soNo" style="flex:1">Cancel</button></div></div>'; document.body.appendChild(m);
       m.querySelector('#soNo').onclick = () => m.remove(); m.querySelector('#soYes').onclick = async () => { BC.cacheProfile(null); try { await window.Cloud.signOut(); } catch(e){} location.href = '../'; }; };
-    const nb = $('newJob'); if (nb) nb.onclick = async () => { if (!S.users.length) await refreshUsers(); S.editJob = '__new'; S.ed = { date:keyOf(new Date()), time:'', tech:'', customer:'', card:'', contact:'', email:'', notes:'' }; render(); window.scrollTo(0, 0); };
+    const nb = $('newJob'); if (nb) nb.onclick = async () => { if (!S.users.length) await refreshUsers(); S.editJob = '__new'; S.ed = { date:keyOf(new Date()), time:'', tech:'', customer:'', card:'', contact:'', email:'', order:'', site:'', notes:'' }; render(); window.scrollTo(0, 0); };
     const edc = $('edCancel'); if (edc) edc.onclick = () => { S.editJob = null; render(); };
     const es = $('edSave'); if (es) es.onclick = async () => {
       const isNew = S.editJob === '__new'; const j = isNew ? { status:'planned' } : S.jobs.find(x => x.id === S.editJob); if (!j) return; const e = S.ed;
@@ -795,7 +809,7 @@
       S.busy = true; render();
       try { const now = new Date().toISOString();
         if (isNew){ j.id = jobId({ date:e.date, card:String(e.card || '').trim(), customer:String(e.customer || '').trim(), tech }); }
-        const upd = { id:j.id, date:e.date, time:String(e.time || '').trim(), customer:String(e.customer || '').trim(), card:String(e.card || '').trim(), contact:String(e.contact || '').trim(), email:String(e.email || '').trim().toLowerCase(), notes:String(e.notes || '').trim(), updatedAt:now, changedBy:window.Cloud.email() };
+        const upd = { id:j.id, date:e.date, time:String(e.time || '').trim(), customer:String(e.customer || '').trim(), card:String(e.card || '').trim(), contact:String(e.contact || '').trim(), email:String(e.email || '').trim().toLowerCase(), order:String(e.order || '').trim(), site:String(e.site || '').trim(), notes:String(e.notes || '').trim(), updatedAt:now, changedBy:window.Cloud.email() };
         if (j.status !== 'busy') upd.tech = tech;
         if (isNew && !S.jobs.some(x => x.id === j.id)) Object.assign(upd, { status:'planned', createdAt:now, loadedBy:window.Cloud.email() });
         await window.Cloud.putJobs([upd]); toast(isNew ? 'Job scheduled' : 'Job changed'); S.editJob = null; await refreshJobs();

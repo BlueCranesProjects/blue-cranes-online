@@ -598,6 +598,9 @@ function modal(html){$("modalBox").innerHTML=html;$("modal").classList.add("show
 function closeModal(){$("modal").classList.remove("show");}
 function toast(t){const e=$("toast");e.textContent=t;e.classList.add("show");clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove("show"),2200);}
 // ---- report numbers: job card C7101 → CR7101.1, CR7101.2 … (the number of the item on the client's inventory when opened from there) ----
+// the job's site: the client's inventory "Site" once it is filled in, otherwise the site the office put on the job
+function siteForJob(){if(!ACTIVE)return "";try{const jc=jobCore(ACTIVE.card||"");const eq=JSON.parse(load("bco-equipment")||"{}")||{};const ls=Object.values(eq).filter(v=>v&&v.location&&jc&&jobCore(v.job||"")===jc);
+  const l=ls.find(v=>v.date===ACTIVE.date)||ls[0];if(l)return l.location;}catch(e){}return ACTIVE.site||"";}
 function jobCore(j){return String(j||"").trim().replace(/\s+/g,"").replace(/^C(?=\d)/i,"");}
 function jobsMap(){try{return JSON.parse(load(JOBKEY)||"{}")}catch(e){return{}}}
 function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec(String(d||"").trim().replace(/^CR(?=.+\.\d+$)/i,""));return m?{job:jobCore(m[1]),n:+m[2]}:null;}
@@ -953,7 +956,7 @@ const HANDOFF=(()=>{try{const h=JSON.parse(load("bco-open-report")||"null");if(h
 const jobKey=f=>String((f&&(f.jobno||f.customer))||"").trim().toLowerCase();
 function fresh(){keepDraftNow();state=blank();state.f.date=(ACTIVE&&ACTIVE.edit&&ACTIVE.date)||today();state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);
   state.f.engName=PROFILE?PROFILE.name||"":"";state.sig.sigEng=PROFILE?PROFILE.signature||null:null;
-  if(ACTIVE){state.f.customer=ACTIVE.customer||"";state.f.jobno=ACTIVE.card||"";state.f.custName=ACTIVE.contact||"";state.f.docno=ACTIVE.card?nextDoc(ACTIVE.card):"";}}
+  if(ACTIVE){state.f.customer=ACTIVE.customer||"";state.f.jobno=ACTIVE.card||"";state.f.custName=ACTIVE.contact||"";state.f.site=siteForJob();state.f.docno=ACTIVE.card?nextDoc(ACTIVE.card):"";}}
 {const saved=load(KEY);if(saved){try{useState(JSON.parse(saved));}catch(e){fresh();}}else fresh();}
 applyState();syncDoc();checkSession();save();updRepCount();
 function showGate(){modal(`<h3>No job started</h3><p>Crane and hoist inspections and load tests open from the job you are busy with.</p><p>On the time sheet, tap <b>Start job</b>, open the <b>Client's inventory</b> and tap <b>Inspection</b> or <b>Load test</b> on the crane or hoist.</p><button class="secondary" id="gRep" style="width:100%;padding:13px;border-radius:10px;border:0;font-weight:800;font-size:15px;margin-bottom:8px">View saved reports</button><div class="btns"><a class="primary" href="../timesheet/" style="flex:1;padding:12px;border-radius:10px;font-weight:700;text-align:center;text-decoration:none;color:#13224f;background:#f5c400">Go to time sheet</a></div>`);$("gRep").onclick=()=>{closeModal();$("repPanel").classList.add("show");showReports();};}
@@ -961,6 +964,7 @@ if(!EMBED){if(WANT_REPORTS){$("repPanel").classList.add("show");showReports();}e
 const goBackTs=()=>{let r=null;try{r=document.referrer?new URL(document.referrer):null;}catch(e){}if(r&&r.origin===location.origin&&r.pathname!==location.pathname&&history.length>1)history.back();else location.href="../timesheet/";};
 $("repClose").onclick=()=>{if(WANT_REPORTS&&!EMBED){goBackTs();return;}$("repPanel").classList.remove("show");if(!ACTIVE&&!EMBED)showGate();};
 if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
+if(ACTIVE&&!EMBED&&!state.f.site&&siteForJob()){state.f.site=siteForJob();applyState();save();}
 // opened from the job page (Crane / hoist → Inspection or Load test): use that report type
 {const wt=new URLSearchParams(location.search).get("type");let it=null;try{it=JSON.parse(load("bco-cr-item")||"null");}catch(e){}
   if(ACTIVE&&!EMBED&&!it&&(wt==="INSPECTION"||wt==="LOAD TEST")&&state.type!==wt){state.type=wt;applyState();save();}}
