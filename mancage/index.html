@@ -686,19 +686,14 @@ function fillQuote(id){const b=$("qb-"+id);if(!b)return;b.dataset.on="1";const q
     <label>Parts needed</label>
     ${parts.map((p,k)=>`<div class="qpart"><input data-qp="${k}" data-qk="q" inputmode="numeric" placeholder="Qty" value="${esc(p.q||"")}" aria-label="Quantity"><input data-qp="${k}" data-qk="d" placeholder="Part / description" value="${esc(p.d||"")}" aria-label="Part description"><input data-qp="${k}" data-qk="n" placeholder="Part / model no" value="${esc(p.n||"")}" aria-label="Part or model number"><button type="button" data-qdel="${k}" aria-label="Remove part">✕</button></div>`).join("")}
     <button type="button" class="qadd" data-qadd>+ Add part</button>
-    <label>Repair notes</label><textarea data-qn placeholder="What is wrong and what must be done">${esc(q.notes||"")}</textarea>
-    <label>Extra equipment</label><div class="qchips">${EXTRAS.map(x=>`<button type="button" data-qx="${esc(x)}" class="${(q.extra||[]).includes(x)?"on":""}">${esc(x)}</button>`).join("")}</div>
-    <input data-qo placeholder="Other equipment / access needed" value="${esc(q.other||"")}">
-    <div class="qn" style="font-size:12.5px;color:var(--muted)">Photos: use the photo box under this item – they print on both copies.</div>`;
+    <label>Repair notes</label><textarea data-qn placeholder="What is wrong and what must be done">${esc(q.notes||"")}</textarea>`;
   b.querySelectorAll("[data-qp]").forEach(inp=>inp.oninput=()=>{const qq=qOf(id,true);qq.parts=qq.parts||[];while(qq.parts.length<=+inp.dataset.qp)qq.parts.push({q:"",d:"",n:""});qq.parts[+inp.dataset.qp][inp.dataset.qk]=inp.value;save();});
   b.querySelector("[data-qadd]").onclick=()=>{const qq=qOf(id,true);qq.parts=(qq.parts&&qq.parts.length?qq.parts:[{q:"",d:"",n:""}]);qq.parts.push({q:"",d:"",n:""});save();fillQuote(id);const ins=b.querySelectorAll('[data-qk="d"]');ins[ins.length-1].focus();};
   b.querySelectorAll("[data-qdel]").forEach(x=>x.onclick=()=>{const qq=qOf(id,true);(qq.parts||[]).splice(+x.dataset.qdel,1);save();fillQuote(id);});
   b.querySelector("[data-qn]").oninput=e=>{qOf(id,true).notes=e.target.value;save();};
-  b.querySelector("[data-qo]").oninput=e=>{qOf(id,true).other=e.target.value;save();};
   b.querySelectorAll("[data-qcam]").forEach(inp=>inp.onchange=async e=>{const fs=[...(e.target.files||[])];if(!fs.length)return;const qq=qOf(id,true);qq.photos=qq.photos||[];
     for(const f of fs){try{qq.photos.push(await photoData(f));}catch(err){upErr(err);}}save();fillQuote(id);toast(fs.length>1?fs.length+" photos added":"Photo added");});
-  b.querySelectorAll("[data-qpdel]").forEach(x=>x.onclick=()=>{const qq=qOf(id,true);(qq.photos||[]).splice(+x.dataset.qpdel,1);save();fillQuote(id);});
-  b.querySelectorAll("[data-qx]").forEach(x=>x.onclick=()=>{const qq=qOf(id,true);qq.extra=qq.extra||[];const k=qq.extra.indexOf(x.dataset.qx);if(k<0)qq.extra.push(x.dataset.qx);else qq.extra.splice(k,1);x.classList.toggle("on",k<0);save();});}
+  b.querySelectorAll("[data-qpdel]").forEach(x=>x.onclick=()=>{const qq=qOf(id,true);(qq.photos||[]).splice(+x.dataset.qpdel,1);save();fillQuote(id);});}
 // the quote page(s) at the back of the technician's report
 function quotePages(doc,st){const f=st.f||{},U=v=>String(v||"").toUpperCase(),L=12,R=198,NV=[19,34,79];
   const items=ROWS.filter(r=>r.kind!=="meas"&&visOf(r,st)&&valsOf(r,st).some(v=>v==="x"||v==="w"));
@@ -715,7 +710,7 @@ function quotePages(doc,st){const f=st.f||{},U=v=>String(v||"").toUpperCase(),L=
   items.forEach(r=>{const q=(st.quote||{})[r.id]||{},vals=valsOf(r,st),isX=vals.includes("x"),parts=(q.parts||[]).filter(p=>p.d||p.n||p.q);
     const where=r.kind==="four"?activeCols(r.n,st).filter(c=>["x","w"].includes(st.res[r.id+"_"+c])).map(c=>COLS[c][1]+" "+st.res[r.id+"_"+c].toUpperCase()).join(", "):"";
     const note=st.note&&st.note[r.id]?String(st.note[r.id]):"";const notes=doc.splitTextToSize(q.notes||"",R-L-36),extra=(q.extra||[]).concat(q.other?[q.other]:[]).join(", "),exl=doc.splitTextToSize(extra,R-L-36);
-    const need=10+(note?5:0)+(parts.length?6+parts.length*5.2:5)+(q.notes?notes.length*4.6+1.5:5)+(extra?exl.length*4.6+1.5:5)+4;
+    const need=10+(note?5:0)+(parts.length?6+parts.length*5.2:5)+(q.notes?notes.length*4.6+1.5:5)+1;
     if(y+need>284)head(true);
     doc.setFillColor(...(isX?[253,236,236]:[255,248,220]));doc.setDrawColor(...(isX?[161,42,31]:[201,162,39]));doc.setLineWidth(0.4);doc.rect(L,y,R-L,need-3,"FD");
     doc.setTextColor(...(isX?[161,42,31]:[107,82,0]));doc.setFont("helvetica","bold");doc.setFontSize(10.5);
@@ -728,7 +723,6 @@ function quotePages(doc,st){const f=st.f||{},U=v=>String(v||"").toUpperCase(),L=
     else{doc.setFont("helvetica","bold");doc.setFontSize(8);doc.text("QTY",L+33,yy);doc.text("DESCRIPTION",L+48,yy);doc.text("PART / MODEL NO",L+128,yy);yy+=5;doc.setFont("helvetica","normal");doc.setFontSize(9);
       parts.forEach(p=>{doc.text(String(p.q||"–"),L+33,yy);doc.text(doc.splitTextToSize(String(p.d||""),78)[0]||"",L+48,yy);doc.text(doc.splitTextToSize(String(p.n||""),R-L-131)[0]||"",L+128,yy);yy+=5.2;allParts.push(p);});yy+=0.8;}
     lab("Repair notes:");if(q.notes){doc.text(notes,L+33,yy);yy+=notes.length*4.6+1.5;}else{doc.setTextColor(140,140,150);doc.text("–",L+33,yy);doc.setTextColor(20,24,40);yy+=5;}
-    lab("Extra equipment:");if(extra){doc.text(exl,L+33,yy);}else{doc.setTextColor(140,140,150);doc.text("none",L+33,yy);doc.setTextColor(20,24,40);}
     if((q.photos||[]).length){doc.setFont("helvetica","italic");doc.setFontSize(8);doc.setTextColor(80,86,100);doc.text(q.photos.length+" repair photo"+(q.photos.length>1?"s":"")+" – see Repair photos",R-3,yy,{align:"right"});doc.setTextColor(20,24,40);doc.setFontSize(9);}
     y+=need;});
   // all parts together, for the quote
