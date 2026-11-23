@@ -972,7 +972,7 @@
     // items that can't be repaired (shackles, round / web slings, eye bolts, eye nuts…) get no further inspections once unsafe;
     // man cages and other equipment keep them, because they can be repaired
     const noMore = unsafe && NOREPAIR.test(r.desc || '');
-    if (kind === 'mc'){ y += 15 * CERT_K; doc.setFontSize(12.5); doc.text('NEXT INSPECTION DUE', L, y); doc.text(monthYear(addMonths(r.at ? String(r.at).slice(0, 10) : l.date, 6)) + '  (6 MONTHS)', L + 64, y); return; }
+    if (kind === 'mc'){ y += 15 * CERT_K; doc.setFontSize(12.5); doc.text('NEXT INSPECTION DUE', L, y); doc.text(monthYear(addMonths(r.at ? String(r.at).slice(0, 10) : l.date, 6)) + '  (6 MONTHS)', L + 64, y); doc.setFontSize(11); }
     if (!noMore) ['1ST', '2ND', '3RD'].forEach((n, k) => { y += (k ? 12 : 15) * CERT_K; doc.text(n + ' INSPECTION', L, y); doc.text('DATE', L + 50, y); dots(L + 62, L + 84, y); doc.text('NAME', L + 87, y); dots(L + 100, L + 124, y); doc.text('SIGNATURE', L + 127, y); dots(L + 150, R, y);
       y += 12 * CERT_K; doc.text('JOB NO', L, y); dots(L + 17, L + 46, y); doc.text('REMARKS', L + 50, y); dots(L + 71, R, y); });
     if (tackle){ y += (noMore ? 22 : 14) * CERT_K; doc.setFontSize(9.5); doc.text('LIFTING MACHINERY ENTITY DEPARTMENT OF LABOUR REGISTRATION NO.: LME 017', L, y); }
