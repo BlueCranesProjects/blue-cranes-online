@@ -804,7 +804,8 @@
         iq.onkeydown = e => { if (e.key === 'Enter') iq.blur(); };
         const x = $('iqX'); if (x) x.onclick = () => { S.q = ''; render(); }; } }
     const ta = $('togAll'); if (ta) ta.onclick = () => { const shown = l.rows.filter(r => !l.curLoc || (l.curLoc === '__none' ? !r.loc : r.loc === l.curLoc)); const o = openSet();
-      if (shown.some(r => !o.has(r.id))) shown.forEach(r => o.add(r.id)); else shown.forEach(r => o.delete(r.id)); keepOpen(); render(); };
+      const F = folds(), gk = r => 'g|' + (itemDone(r) ? 'done' : 'todo') + '|' + groupOf(r);
+      if (shown.some(r => !o.has(r.id))){ shown.forEach(r => { o.add(r.id); F[gk(r)] = true; }); F.todo = F.done = true; } else shown.forEach(r => { o.delete(r.id); F[gk(r)] = false; }); S.focusId = null; keepOpen(); keepFolds(); render(); };
     const addRow = r => { l.rows = l.rows || []; l.rows.push(r); openRow(r.id); S.focusId = r.id; S.q = ''; folds().todo = true; keepFolds(); saveList(l); render(); const i = l.rows.length - 1; const el = document.getElementById('s' + i); if (el){ el.scrollIntoView({ block:'center' }); el.focus(); } };
     const curLoc = () => (l.curLoc && l.curLoc !== '__none') ? l.curLoc : '';
     $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'', loc:curLoc() });
