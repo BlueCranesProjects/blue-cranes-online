@@ -786,6 +786,12 @@
   }
 
   // ---------- PDFs (layout of the paper sheet) ----------
+  // the wide Blue Cranes logo (on white) for the top of the inventory PDF
+  let logoWideData;
+  async function logoWide(){ if (logoWideData !== undefined) return logoWideData; logoWideData = null;
+    try { const b = await (await fetch('../icons/logo-wide.jpg')).blob(); const data = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+      const d = await new Promise(res => { const im = new Image(); im.onload = () => res({ w:im.width, h:im.height }); im.onerror = () => res(null); im.src = data; }); if (d) logoWideData = { data, w:d.w, h:d.h }; } catch(e){}
+    return logoWideData; }
   let logoData = null;
   async function logo(){ if (logoData) return logoData; try { const b = await (await fetch('../icons/logo.png')).blob(); logoData = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); }); } catch(e){} return logoData; }
   function safe(s){ return String(s || '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_'); }
@@ -860,9 +866,18 @@
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
     const L = 15, W = [26, 47, 33, 20, 30, 24], X = W.map((w, k) => L + W.slice(0, k).reduce((a, b) => a + b, 0)), R = L + 180, INK = [0, 0, 0], RED = [220, 0, 0], PH = 287;
     let y = 18;
-    const head = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(...INK);
-      [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach(t => { doc.text(t, 105, y, { align:'center' }); y += 6; });
-      y += 2; colHead(); };
+    // letterhead-style top: the Blue Cranes logo top left, the title centred in the space beside it, a navy rule under both
+    const LOGO = await logoWide();
+    const head = () => { const LW = 50, LH = LOGO ? LW * LOGO.h / LOGO.w : 0, top = 10;
+      if (LOGO) try { doc.addImage(LOGO.data, 'JPEG', L, top, LW, LH, 'bclogo', 'FAST'); } catch(e){}
+      const cx = LOGO ? (L + LW + 4 + R) / 2 : 105, maxW = LOGO ? R - (L + LW + 4) : 180;
+      const lines = [[String(l.customer || '').toUpperCase(), 13], ['CENSUS OF LIFTING EQUIPMENT', 11.5], [monthOf(l.date), 11.5]];
+      const tl = lines.map(([t, fs]) => { doc.setFontSize(fs); return doc.splitTextToSize(t, maxW); }); const n = tl.reduce((a, x) => a + x.length, 0);
+      y = LOGO ? top + LH / 2 - (n * 6) / 2 + 4.2 : 18;
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(...INK);
+      lines.forEach(([t, fs], k) => { doc.setFontSize(fs); doc.setTextColor(...(k ? [40, 48, 70] : [11, 53, 117])); tl[k].forEach(s => { doc.text(s, cx, y, { align:'center' }); y += 6; }); });
+      y = Math.max(y - 2, top + LH) + 3; doc.setDrawColor(11, 53, 117); doc.setLineWidth(0.8); doc.line(L, y, R, y); doc.setDrawColor(251, 210, 32); doc.setLineWidth(0.5); doc.line(L, y + 1, R, y + 1); doc.setLineWidth(0.2); doc.setDrawColor(0);
+      y += 6; colHead(); };
     const colHead = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(...INK); doc.setDrawColor(0); doc.setLineWidth(0.2);
       ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { doc.rect(X[k], y, W[k], 7); doc.text(h, X[k] + 1.5, y + 4.8); }); y += 7 + 4; };
     const cell = (vals, color) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color);
