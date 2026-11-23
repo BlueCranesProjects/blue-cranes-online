@@ -360,8 +360,9 @@
       ${g.total ? B('data-invpdf', '⬇ Inventory PDF') + B('data-cen', '⬇ Excel') + B('data-certs', '⬇ Certificates') : ''}
       ${nfl ? B('data-flpdf', `⬇ Forklift reports (${nfl})`) : ''}
       ${(g.cr || []).length ? B('data-crpdf', `⬇ Crane / hoist reports (${g.cr.length})`) : ''}
+      ${(g.mc || []).length ? B('data-mcpdf', `⬇ Man cage reports (${g.mc.length})`) : ''}
       ${j.sheetDate || j.status === 'done' || j.status === 'busy' ? B('data-tspdf', '⬇ Time sheet') : ''}
-      ${g.total || nfl || (g.cr || []).length ? B('data-jobpdf', '🖨 Job PDF (print)') + B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
+      ${g.total || nfl || (g.cr || []).length || (g.mc || []).length ? B('data-jobpdf', '🖨 Job PDF (print)') + B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
   // client sign-offs (kept on the technician's inventory): the hidden report tools put the client's name + signature on the client's reports
   window.BC_SIGNOFFS = window.BC_SIGNOFFS || {}; S.signs = S.signs || {};
   const soCore = c => String(c || '').trim().replace(/\s+/g, '').replace(/^C(?=\d)/i, '').toUpperCase();
@@ -370,7 +371,7 @@
     const lk = window.Cloud.listKindOf.bind(window.Cloud); window.Cloud.listKindOf = async (...a) => { const r = await lk(...a); if (a[1] === 'equipment') (r || []).forEach(d => noteSign(d && d.data)); return r; }; })();
   let progBusy = false, progAt = 0;
   async function loadProgress(){
-    if (progBusy || Date.now() - progAt < 20000) return; progBusy = true; progAt = Date.now(); const cache = {}, flc = {}, crc = {}; let changed = false;
+    if (progBusy || Date.now() - progAt < 20000) return; progBusy = true; progAt = Date.now(); const cache = {}, flc = {}, crc = {}, mcc = {}; let changed = false;
     try { if (!S.users.length) await refreshUsers();
       for (const j of S.jobs){ if (!(j.inv || []).length && !j.sheetDate) continue;
         const u = S.users.find(x => x.email === j.tech); if (!u) continue;
@@ -381,10 +382,13 @@
         if (!crc[u.uid]){ try { crc[u.uid] = (await window.Cloud.listKindOf(u.uid, 'crane')).map(d => d.data || {}).filter(r => r && r.state && r.state.f); } catch(e){ crc[u.uid] = []; } }
         const cr = j.card ? crc[u.uid].filter(r => core(r.job || r.state.f.jobno) === core(j.card)) : [];
         if (cr.length){ const o = S.invProg[j.id] || {}; if ((o.cr || []).length !== cr.length) changed = true; S.invProg[j.id] = Object.assign(o, { cr, uid:u.uid }); }
+        if (!mcc[u.uid]){ try { mcc[u.uid] = (await window.Cloud.listKindOf(u.uid, 'mancage')).map(d => d.data || {}).filter(r => r && r.state && r.state.f); } catch(e){ mcc[u.uid] = []; } }
+        const mc = j.card ? mcc[u.uid].filter(r => core(r.job || r.state.f.jobno) === core(j.card)) : [];
+        if (mc.length){ const o = S.invProg[j.id] || {}; if ((o.mc || []).length !== mc.length) changed = true; S.invProg[j.id] = Object.assign(o, { mc, uid:u.uid }); }
         const l = cache[u.uid].find(x => x.sched === 'A_' + j.id) || (j.sheetDate ? cache[u.uid].find(x => x.id === listIdOf(j.sheetDate, j) || (x.also || []).includes(listIdOf(j.sheetDate, j))) : null); if (!l) continue;
         if (l.signoff && l.signoff.sig && !S.signs[j.id]){ S.signs[j.id] = l.signoff; noteSign(l); changed = true; }
         const rows = (l.rows || []).filter(r => r.serial || r.desc); if (!rows.length) continue;
-        const g = { fl:(S.invProg[j.id] || {}).fl || [], cr:(S.invProg[j.id] || {}).cr || [], total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
+        const g = { fl:(S.invProg[j.id] || {}).fl || [], cr:(S.invProg[j.id] || {}).cr || [], mc:(S.invProg[j.id] || {}).mc || [], total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
         const o = S.invProg[j.id]; if (!o || o.done !== g.done || o.total !== g.total || o.unsafe !== g.unsafe) changed = true; S.invProg[j.id] = g; }
     } finally { progBusy = false; }
     if (changed && S.tab === 'jobs') render();
@@ -438,6 +442,10 @@
       try { for (const r of g.fl.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
           const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) }); } }
       finally { t.done(); } }
+    if ((g.mc || []).length){ const t = await hiddenTool('../mancage/?embed=1', w => w.BCM && w.jspdf && w.BCM);
+      try { for (const r of g.mc.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
+          const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) }); } }
+      finally { t.done(); } }
     if ((g.cr || []).length){ const t = await hiddenTool('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
       try { const reps = g.cr.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true })), quote = [];
         for (const r of reps){ const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); const n = a.doc.getNumberOfPages();
@@ -462,7 +470,7 @@
       try { const f = await t.api.sheetPdfOf(sh, prof, set); if (!f) return null;
         return { blob:new Blob([new Uint8Array(await f.blob.arrayBuffer())], { type:'application/pdf' }), name:packName('Time_sheet', { job:(j && (j.card || j.job)) || '', customer:(j && j.customer) || '', date:day }), type:'application/pdf' }; }
       finally { t.done(); } } catch(e){ console.error('time sheet', e); return null; } }
-  // which = 'inv' | 'certs' | 'fl' | 'cr' | 'ts' | 'all' | 'job'
+  // which = 'inv' | 'certs' | 'fl' | 'cr' | 'mc' | 'ts' | 'all' | 'job'
   async function jobFiles(id, which){
     const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return [];
     if (which === 'job'){ const f = await jobPdf(id); return f ? [f] : []; }
@@ -501,6 +509,12 @@
         if (tcp.length) files.push(await onePdf(tcp, packName('TECHNICIAN_Crane_hoist_reports_for_quote', { job:j.card, customer:j.customer, date:j.date }))); }
       finally { t.done(); }
     }
+    if ((g.mc || []).length && (which === 'mc' || which === 'all')){
+      const t = await hiddenTool('../mancage/?embed=1', w => w.BCM && w.jspdf && w.BCM);
+      try { const mcp = []; for (const r of g.mc.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){ const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); mcp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); }
+        if (mcp.length) files.push(await onePdf(mcp, packName('Man_cage_reports', { job:j.card, customer:j.customer, date:j.date }))); }
+      finally { t.done(); }
+    }
     return files;
   }
   // phones (also the installed app): a plain download often goes nowhere, so offer the share menu (open with a PDF viewer, WhatsApp, email, Drive, Files)
@@ -532,6 +546,7 @@
         let lists = [], reps = [], prof = {};
         try { lists = (await window.Cloud.listKindOf(u.uid, 'equipment')).map(d => Object.assign(d.data || {}, { _uid:u.uid })).filter(l => l.date >= from && l.date <= to && (l.rows || []).some(r => r.serial || r.desc)); } catch(e){}
         try { (await window.Cloud.listKindOf(u.uid, 'crane')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to).forEach(r => { r._cr = true; reps.push(r); }); } catch(e){}
+        try { (await window.Cloud.listKindOf(u.uid, 'mancage')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to).forEach(r => { r._mc = true; reps.push(r); }); } catch(e){}
         try { reps = reps.concat((await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to)); } catch(e){}
         if (!lists.length && !reps.length) continue;
         try { const ps = await window.Cloud.listKindOf(u.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
@@ -554,13 +569,14 @@
     const old = btn.textContent; btn.disabled = true; let box = null;
     const say = t => { btn.textContent = t; box = exportBox(`<h2>Exporting…</h2><span class="hint" style="font-size:14px">${esc(t)}<br>Keep this page open.</span>`); try { sessionStorage.setItem('bco-admin-export', from + ' to ' + to + ', ' + t); } catch(e){} };
     const end = () => { try { sessionStorage.removeItem('bco-admin-export'); } catch(e){} };
-    let eq = null, fk = null, cz = null;
+    let eq = null, fk = null, cz = null, mz = null;
     try {
       say('Collecting…'); const groups = pre || await collectGroups(from, to);
       if (!groups.length){ end(); if (box) box.remove(); toast('Nothing found for those dates'); return; }
       say('Loading tools…');
       eq = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
-      if (groups.some(g => g.reps.some(r => !r._cr))) fk = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
+      if (groups.some(g => g.reps.some(r => r._mc))) mz = await hiddenTool('../mancage/?embed=1', w => w.BCM && w.jspdf && w.BCM);
+      if (groups.some(g => g.reps.some(r => !r._cr && !r._mc))) fk = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
       if (groups.some(g => g.reps.some(r => r._cr))) cz = await hiddenTool('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
       for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
       const top = label || `Blue Cranes ${from} to ${to}`, zip = new JSZip(), root = zip; const own = async b => new Uint8Array(await b.arrayBuffer());
@@ -569,10 +585,11 @@
         const g = groups[gi], l = JSON.parse(JSON.stringify(g.l)); say(`Job ${gi + 1} of ${groups.length}…`);
         let dn = BC.zipDir(l.job, l.customer, l.date); if (usedDir[dn]) dn += ' (' + (++usedDir[dn]) + ')'; else usedDir[dn] = 1;
         const dir = root.folder(dn); const usedF = {}; const put = async (f) => { let n = BC.zipFile(f.name); if (usedF[n]) n = n.replace(/(\.\w+)$/, ' (' + (++usedF[n]) + ')$1'); else usedF[n] = 1; dir.file(n, await own(f.blob)); nFiles++; };
-        const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '' }; const parts = [], flp = [], crp = [], tcp = [];
+        const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '' }; const parts = [], flp = [], crp = [], tcp = [], mcp = [];
         try {
           if (l.rows){ await put(await eq.api.listDoc(l)); try { await put(await eq.api.listXlsx(l)); } catch(e){} parts.push(...(await eq.api.itemCertParts(l, tech, await utFor(g.u.uid, l, null)))); }
           for (const r of g.reps.sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
+            if (r._mc){ const a = await mz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); mcp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); continue; }
             if (r._cr){ const a = await cz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); crp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
               if (cz.api.buildTechPdf && cz.api.needsTech(r.state)){ const b = await cz.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); tcp.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), name:b.name }); } continue; }
             const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); flp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
@@ -580,6 +597,7 @@
           if (flp.length) await put(await onePdf(flp, packName('Forklift_reports', l)));
           if (crp.length) await put(await onePdf(crp, packName('Crane_hoist_reports', l)));
           if (tcp.length) await put(await onePdf(tcp, packName('TECHNICIAN_Crane_hoist_reports_for_quote', l)));
+          if (mcp.length) await put(await onePdf(mcp, packName('Man_cage_reports', l)));
           if (parts.length){ const c = await eq.api.mergeCerts(l, parts); if (c) await put(c); }
           if (l.date){ const ts = await sheetFileOf(g.u.uid, l.date, { card:l.job, customer:l.customer }); if (ts) await put(ts); }
         } catch(e){ console.error(e); dir.file('PROBLEM.txt', 'Some files of this job could not be made: ' + (e && e.message || e)); }
@@ -592,7 +610,7 @@
       m.querySelector('#xbSave').onclick = () => { dlFile({ blob, name:top + '.zip' }); toast('Saved to Downloads'); };
       m.querySelector('#xbClose').onclick = () => m.remove();
     } catch(e){ console.error(e); end(); const m = exportBox(`<h2>Export failed</h2><span class="hint" style="font-size:14px">${esc((e && (e.code || e.message)) || String(e))}</span><button class="btn secondary" id="xbClose">Close</button>`); m.querySelector('#xbClose').onclick = () => m.remove(); }
-    finally { if (eq) eq.done(); if (fk) fk.done(); if (cz) cz.done(); btn.disabled = false; btn.textContent = old; }
+    finally { if (eq) eq.done(); if (fk) fk.done(); if (cz) cz.done(); if (mz) mz.done(); btn.disabled = false; btn.textContent = old; }
   }
   async function downloadJob(id, which, btn){
     const j = S.jobs.find(x => x.id === id); const old = btn.textContent; btn.disabled = true; btn.textContent = 'Working…';
@@ -778,6 +796,7 @@
     app.querySelectorAll('[data-certs]').forEach(b => b.onclick = () => downloadJob(b.dataset.certs, 'certs', b));
     app.querySelectorAll('[data-invpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.invpdf, 'inv', b));
     app.querySelectorAll('[data-crpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.crpdf, 'cr', b));
+    app.querySelectorAll('[data-mcpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.mcpdf, 'mc', b));
     app.querySelectorAll('[data-flpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.flpdf, 'fl', b));
     wireDays();
     app.querySelectorAll('[data-jobpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.jobpdf, 'job', b));

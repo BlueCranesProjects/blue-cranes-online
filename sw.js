@@ -7,6 +7,7 @@ const SHELL = [
   './timesheet/', './timesheet/index.html',
   './forklift/', './forklift/index.html',
   './crane/', './crane/index.html',
+  './mancage/', './mancage/index.html',
   './equipment/', './equipment/index.html',
   './admin/', './admin/index.html', './vendor/xlsx.full.min.js',
   './vendor/jspdf.umd.min.js', './vendor/pdf-lib.min.js', './vendor/jszip.min.js', './vendor/exceljs.min.js',

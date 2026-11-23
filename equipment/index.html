@@ -232,7 +232,7 @@
       Object.values(S.lists).forEach(l => { if (!seen[l.id]) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); });
       if (S.cur && S.lists[S.cur.id] && S.lists[S.cur.id] !== S.cur){ S.cur = S.lists[S.cur.id]; lsSave(); render(); return; }
       let fixed = false; const core = j => String(j || '').trim().replace(/\s+/g, '').replace(/^C(?=\d)/i, '');
-      const fixNo = no => { const t = String(no || '').trim(); if (!/\.\d+$/.test(t) || /^CR/i.test(t) || /^S(?=\d)/i.test(t)) return t; return 'F' + core(/^F/i.test(t) ? t.slice(1) : t); };
+      const fixNo = no => { const t = String(no || '').trim(); if (!/\.\d+$/.test(t) || /^(CR|MC)/i.test(t) || /^S(?=\d)/i.test(t)) return t; return 'F' + core(/^F/i.test(t) ? t.slice(1) : t); };
       Object.values(S.lists).forEach(l => { let c = false; (l.rows || []).forEach(x => {
         if (x.report && x.report.no && fixNo(x.report.no) !== x.report.no){ x.report.no = fixNo(x.report.no); c = true; }
         if (x.report && x.report.cert && /^CC(?=\d)/i.test(x.report.cert)){ x.report.cert = 'C' + x.report.cert.slice(2); c = true; }
@@ -290,7 +290,24 @@
     location.href = '../forklift/?type=' + encodeURIComponent(type);
   }
   // cranes, hoists, beams with chain hoists and winches get the crane / hoist inspection and load test report (chain blocks and lever hoists have their own report)
-  const isCrane = r => { const d = r.desc || ''; if (isForklift(r)) return false; if (r.cr) return true;
+  // man cages / work platforms on lift trucks get the man cage inspection report (SANS 583) – no certificate
+  const isManCage = r => !!r.mc || /man\s*-?\s*cage|work(ing)?\s*platform|personnel\s*(basket|cage|carrier)|man\s*basket|\bcradle\b|access\s*cage/i.test(r.desc || '');
+  function openManCage(i){
+    const l = S.cur; const r = l && l.rows[i]; if (!r) return;
+    const st = startedJob();
+    if (!st){
+      const sid = (S.active && S.active.sched) || (l && l.sched) || '';
+      const m = document.createElement('div'); m.className = 'modal-bg';
+      m.innerHTML = `<div class="modal"><div style="font-size:16px;font-weight:700">Start the job first</div>
+        <div class="hint" style="font-size:14px">Man cage inspection reports open once the job is started. Start the job, then come back to this item.</div>
+        <a class="btn primary" href="../timesheet/${sid ? '?job=' + encodeURIComponent(sid) : ''}">Go to the job</a><button class="btn secondary" type="button" id="flNo">Cancel</button></div>`;
+      document.body.appendChild(m); m.querySelector('#flNo').onclick = () => m.remove(); m.onclick = e => { if (e.target === m) m.remove(); }; return; }
+    if (!r.cno) r.cno = certN(l, i);
+    try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:st.k, idx:st.i, card:st.j.card || '', customer:st.j.customer || st.j.desc || '', contact:st.j.contact || '', at:new Date().toISOString() }, st.edit ? { edit:true } : {})));
+      localStorage.setItem('bco-mc-item', JSON.stringify({ row:r.id, list:l.id, serial:r.serial || '', desc:r.desc || '', make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), swl:r.swl || '', loc:r.loc || '', site:l.location || '', no:r.cno, rno:nextRepNo(l, i, 'MC'), type:'INSPECTION', at:Date.now() })); saveList(l, true); } catch(e){}
+    location.href = '../mancage/?type=INSPECTION';
+  }
+  const isCrane = r => { const d = r.desc || ''; if (isForklift(r) || isManCage(r)) return false; if (r.cr) return true;
     return /crane|hoist|winch|tirfor|gantry|monorail|runway|beam/i.test(d) && !/clamp|spreader|lifting\s*beam|sling|shackle|harness|lanyard|chain\s*block|lever\s*(hoist|block)|lever\b/i.test(d) && !(/trolley/i.test(d) && !/hoist|crane/i.test(d)); };
   function openCrane(i, type){
     const l = S.cur; const r = l && l.rows[i]; if (!r) return;
@@ -316,15 +333,15 @@
   const isTackle = r => { const d = r.desc || ''; if (isForklift(r) || isHarness(r)) return false; return TACKLE.test(d) && !/hoist|crane|gantry|chain\s*block|lever\s*(block|hoist)|winch|tirfor|monorail|runway/i.test(d); };
   const isInspCert = r => isHarness(r) || isTackle(r);
   const isHarness = r => /harness|lanyard|fall\s*arrest|inertia\s*reel|self[\s-]*retract/i.test(r.desc || '');
-  const isCertItem = r => { const d = r.desc || ''; if (isForklift(r)) return false; if (isInspCert(r)) return true; return MACHINE.test(d); };
+  const isCertItem = r => { const d = r.desc || ''; if (isForklift(r) || isManCage(r)) return false; if (isInspCert(r)) return true; return MACHINE.test(d); };
   // certificate numbers follow the item's place on the inventory (item 1 → C<job>/1); once given, a number stays with its item
   const jobCore = j => String(j || '').trim().replace(/\s+/g, '').replace(/^C(?=\d)/i, '');
   // report numbers run per kind within the job: CR<job>.1, .2, .3… for cranes / hoists, F<job>.1… for forklifts, S<job>.1… for stackers.
   // (the certificate number C<job>/<n> stays the item's own number, so certificates still run in item order)
   function nextRepNo(l, i, pfx){ const r = l.rows[i]; const rx = new RegExp('^' + pfx + '[^.]+\\.(\\d+)$', 'i'), no = x => String(x || '').replace(/\s+/g, '');
-    if (pfx === 'F' && r.report && /^(CR|S)\d/i.test(no(r.report.no))) { /* another kind: new number */ } else { const own = r.report && rx.exec(no(r.report.no)); if (own) return Number(own[1]); }
+    if (pfx === 'F' && r.report && /^(CR|S|MC)\d/i.test(no(r.report.no))) { /* another kind: new number */ } else { const own = r.report && rx.exec(no(r.report.no)); if (own) return Number(own[1]); }
     if (r.rno && r.rno.p === pfx) return r.rno.n;
-    let max = 0; (l.rows || []).forEach(x => { const m = x.report && rx.exec(no(x.report.no)); if (m && !(pfx === 'F' && /^(CR|S)\d/i.test(no(x.report.no)))) max = Math.max(max, +m[1]); if (x.rno && x.rno.p === pfx) max = Math.max(max, x.rno.n); });
+    let max = 0; (l.rows || []).forEach(x => { const m = x.report && rx.exec(no(x.report.no)); if (m && !(pfx === 'F' && /^(CR|S|MC)\d/i.test(no(x.report.no)))) max = Math.max(max, +m[1]); if (x.rno && x.rno.p === pfx) max = Math.max(max, x.rno.n); });
     r.rno = { p:pfx, n:max + 1 }; return r.rno.n; }
   function certN(l, i){ const r = l.rows[i]; if (r.cno) return r.cno; const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let n = i + 1; if (used.has(n)) n = Math.max(...used) + 1; return n; }
   const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
@@ -524,6 +541,7 @@
           ${r.office && !r.status ? `<div class="from" style="background:#FFF3B0;color:var(--navyDeep)"><span>Loaded by the office – check it and mark <b>Safe</b> or <b>Unsafe</b></span></div>` : ''}
           ${r.note ? `<span class="hint"><b>Office note:</b> ${esc(r.note)}</span>` : ''}
           ${isForklift(r) ? `<div class="flbar"><span>${FL} ${isStacker(r) ? 'Stacker' : 'Forklift'} – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
+          ${isManCage(r) ? `<div class="flbar"><span>🧺 Man cage – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-mcopen="${i}">Inspection</button></div></div>` : ''}
           ${isCrane(r) ? `<div class="flbar"><span>🏗 Crane / hoist – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-cropen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-cropen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
           <div class="top"><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
@@ -638,7 +656,7 @@
     const $ = id => document.getElementById(id), d = S.soDraft;
     $('soName').oninput = e => d.name = e.target.value; $('soEmail').oninput = e => d.email = e.target.value.trim();
     (async () => { const jc = jobCore(l.job); const mine = r => r && r.state && r.state.f && jc && jobCore(r.job || r.state.f.jobno) === jc;
-      const [fl, cr] = await Promise.all([idbAll('bc-forklift'), idbAll('bc-crane')]); const all = [...cr.filter(mine), ...fl.filter(mine)];
+      const [fl, cr, mc] = await Promise.all([idbAll('bc-forklift'), idbAll('bc-crane'), idbAll('bc-mancage')]); const all = [...cr.filter(mine), ...fl.filter(mine), ...mc.filter(mine)];
       const n = $('soN'), h = $('soReps'); if (!n) return; n.textContent = all.length;
       h.textContent = all.map(r => (r.state.f.docno || 'Report') + ' ' + (r.state.type === 'LOAD TEST' ? 'Load test' : 'Inspection')).sort((a, b) => a.localeCompare(b, undefined, { numeric:true })).join(' · '); })();
     const c = $('soPad'), x = c.getContext('2d'); const r0 = c.getBoundingClientRect(), dp = window.devicePixelRatio || 1; c.width = r0.width * dp; c.height = r0.height * dp; x.setTransform(dp, 0, 0, dp, 0, 0); x.lineWidth = 2.4; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#13224F';
@@ -705,6 +723,7 @@
       let v = inp.value; if (inp.dataset.df !== 'ratio'){ const c = v.replace(/[^\d.,]/g, ''); if (c !== v){ v = c; inp.value = c; } } else v = Number(v);
       d[inp.dataset.df] = v; saveList(l); const o = document.getElementById('dres' + i); if (o) o.innerHTML = deflLine(d); }; });
     app.querySelectorAll('[data-cropen]').forEach(b => b.onclick = () => openCrane(Number(b.dataset.cropen), b.dataset.type));
+    app.querySelectorAll('[data-mcopen]').forEach(b => b.onclick = () => openManCage(Number(b.dataset.mcopen)));
     app.querySelectorAll('[data-flopen]').forEach(b => b.onclick = () => openForklift(Number(b.dataset.flopen), b.dataset.type));
     app.querySelectorAll('[data-cust]').forEach(b => b.onclick = () => { S.cust = b.dataset.cust; S.view = 'customer'; render(); });
     const q = $('q'); if (q){ q.oninput = () => { S.q = q.value; const pos = q.selectionStart; render(); const n = $('q'); n.focus(); try { n.setSelectionRange(pos, pos); } catch(e){} }; }
@@ -1063,8 +1082,18 @@
             for (let k = 0; k < cr.length; k++){ busy(`Crane / hoist report ${k + 1} of ${cr.length}…`); const a = await ct.buildPdf(JSON.parse(JSON.stringify(cr[k].state))); crPdfs.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); } }
         } catch(e){ console.error(e); toast('Crane / hoist reports could not be added'); }
         finally { if (ct) ct.done(); } }
-      // all forklift reports in one PDF, all crane / hoist reports in one PDF
-      for (const [list, what] of [[flPdfs, 'Forklift_reports'], [crPdfs, 'Crane_hoist_reports']]){ if (!list.length) continue;
+      const mcPdfs = [];
+      { let mt = null;
+        try {
+          const linked = new Set((l.rows || []).map(x => x.mc).filter(Boolean)); const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, '');
+          if (linked.size || l.job){ busy('Finding man cage reports…'); mt = await hiddenPage('../mancage/?embed=1', w => w.BCM && w.jspdf && w.BCM);
+            const mc = (await mt.reports()).filter(r => r && r.state && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))
+              .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
+            for (let k = 0; k < mc.length; k++){ busy(`Man cage report ${k + 1} of ${mc.length}…`); const a = await mt.buildPdf(JSON.parse(JSON.stringify(mc[k].state))); mcPdfs.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); } }
+        } catch(e){ console.error(e); toast('Man cage reports could not be added'); }
+        finally { if (mt) mt.done(); } }
+      // all forklift reports in one PDF, all crane / hoist reports in one PDF, all man cage reports in one PDF
+      for (const [list, what] of [[flPdfs, 'Forklift_reports'], [crPdfs, 'Crane_hoist_reports'], [mcPdfs, 'Man_cage_reports']]){ if (!list.length) continue;
         try { busy(what.replace(/_/g, ' ') + ' – one PDF…'); files.push(await onePdf(list, `${what}_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`)); } catch(e){ console.error(e); files.push(...list); } }
       try { busy('Certificates…'); const c = await mergeCerts(l, (await itemCertParts(l)).concat(flCerts)); if (c) files.splice(Math.min(files.length, 3), 0, c); } catch(e){ console.error(e); toast('Certificates could not be added'); }
       const used = {}; files.forEach(f => { let n = f.name; if (used[n]) n = n.replace(/\.(pdf|xlsx)$/, `_${++used[n]}.$1`); else used[n] = 1; f.name = n; f.type = f.type || 'application/pdf'; });

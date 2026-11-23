@@ -539,7 +539,7 @@ function siteForJob(){if(!ACTIVE)return "";try{const jc=jobCore(ACTIVE.card||"")
 function jobCore(j){return String(j||"").trim().replace(/\s+/g,"").replace(/^C(?=\d)/i,"");}
 // the highest report number of this kind already given out on the job's client's inventory (so job-page reports carry on after them)
 function invMax(core,pfx){let n=0;try{const eq=JSON.parse(load("bco-equipment")||"{}")||{};const rx=new RegExp("^"+pfx+"[^.]+\\.(\\d+)$","i");
-  Object.values(eq).forEach(l=>{if(!l||jobCore(l.job||"")!==core)return;(l.rows||[]).forEach(x=>{const no=String((x.report&&x.report.no)||"").replace(/\s+/g,"");const m=rx.exec(no);if(m&&!(pfx==="F"&&/^(CR|S)\d/i.test(no)))n=Math.max(n,+m[1]);if(x.rno&&x.rno.p===pfx)n=Math.max(n,x.rno.n);});});}catch(e){}return n;}
+  Object.values(eq).forEach(l=>{if(!l||jobCore(l.job||"")!==core)return;(l.rows||[]).forEach(x=>{const no=String((x.report&&x.report.no)||"").replace(/\s+/g,"");const m=rx.exec(no);if(m&&!(pfx==="F"&&/^(CR|S|MC)\d/i.test(no)))n=Math.max(n,+m[1]);if(x.rno&&x.rno.p===pfx)n=Math.max(n,x.rno.n);});});}catch(e){}return n;}
 // report numbers run per kind: F<job>.1, .2… for forklifts and S<job>.1, .2… for stackers
 function nextDoc(job,afterCurrent){const core=jobCore(job),m=jobsMap(),P=PFX();let n=Math.max(P==="S"?(m["S"+core]||0):Math.max(m[core]||0,m[job]||0),invMax(core,P));if(afterCurrent){const cur=parseDoc(state.f.docno);if(cur&&cur.job===core&&String(state.f.docno||"").trim().charAt(0).toUpperCase()===P)n=Math.max(n,cur.n);}return P+core+"."+(n+1);}
 function parseDoc(d){const m=/^(.+)\.(\d+)$/.exec((d||"").trim().replace(/^[FS](?=.+\.\d+$)/,""));return m?{job:jobCore(m[1]),n:+m[2]}:null;}
@@ -869,7 +869,7 @@ function photoPages(doc,list,title){if(!list.length)return;const L=10,cw=92,ch=7
 function photoBlock(list,go){modal(`<h3>Photos needed</h3><p>Every item marked X needs a photo before the report can be saved:</p><ul>${list.map(t=>"<li>"+t.label+"</li>").join("")}</ul><div class="btns"><button class="primary" id="phGo">Take the photo${list.length>1?"s":""}</button></div>`);
   $("phGo").onclick=()=>{closeModal();go(list[0]);};}
 
-function fixNo(no){const t=String(no||"").trim();if(!/\.\d+$/.test(t)||/^CR/i.test(t))return t;if(/^S(?=\d)/i.test(t))return "S"+jobCore(t.slice(1));if(/^F/i.test(t))return "F"+jobCore(t.slice(1));return "F"+jobCore(t);}
+function fixNo(no){const t=String(no||"").trim();if(!/\.\d+$/.test(t)||/^(CR|MC)/i.test(t))return t;if(/^S(?=\d)/i.test(t))return "S"+jobCore(t.slice(1));if(/^F/i.test(t))return "F"+jobCore(t.slice(1));return "F"+jobCore(t);}
 function fixCert(c){return String(c||"").replace(/^CC(?=\d)/i,"C");}
 const needsFix=no=>{const t=String(no||"").trim();return !!t&&fixNo(t)!==t;};
 async function fixEquipmentNos(){let eq={};try{eq=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){return 0;}let n=0;

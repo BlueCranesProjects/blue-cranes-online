@@ -333,6 +333,7 @@
     sheet:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>',
     truck:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
     forklift:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+    mancage:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="1"/><path d="M4 13h16M9 8v11M15 8v11"/><path d="M7 19v2M17 19v2"/><circle cx="12" cy="4" r="1.6"/></svg>',
     crane:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18"/><path d="M6 5v15M18 5v15"/><path d="M12 5v5"/><rect x="10" y="10" width="4" height="3"/><path d="M12 13v3a1.5 1.5 0 1 1-1.5 1.5"/></svg>',
     loadtest:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v8"/><path d="M8 11h8l-1 4H9z"/><path d="M6 21h12"/><path d="M9 15l-1 6M15 15l1 6"/></svg>',
     list:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></svg>',
@@ -932,29 +933,30 @@
     const core = v => String(v || '').trim().toUpperCase().replace(/^C(?=\d)/, '');
     const mineOf = r => r && r.state && r.state.f && (j.card ? core(r.job || r.state.f.jobno) === core(j.card) : norm2(r.state.f.customer) === norm2(j.customer));
     const drafts = key => { try { return Object.values(JSON.parse(localStorage.getItem(key) || '{}') || {}).filter(mineOf); } catch(e){ return []; } };
-    const [fl, cr] = await Promise.all([idbAll('bc-forklift'), idbAll('bc-crane')]);
-    const F = fl.filter(mineOf), C = cr.filter(mineOf);
+    const [fl, cr, mcr] = await Promise.all([idbAll('bc-forklift'), idbAll('bc-crane'), idbAll('bc-mancage')]);
+    const F = fl.filter(mineOf), C = cr.filter(mineOf), M = mcr.filter(mineOf);
     // counts on the Forklift / Crane tiles
     const cnt = (list, a, b, t) => { const ni = list.filter(r => r.state.type !== 'LOAD TEST').length, nl = list.length - ni; const A = document.getElementById(a), B = document.getElementById(b), T = document.getElementById(t);
       if (A && ni) A.textContent = '(' + ni + ')'; if (B && nl) B.textContent = '(' + nl + ')'; if (T && list.length) T.textContent = list.length + ' done'; };
     const isStk = r => r.state.machine === 'STACKER' || /^S\d/i.test(String(r.state.f.docno || ''));
-    cnt(F.filter(r => !isStk(r)), 'cntI', 'cntL', 'cntF'); cnt(F.filter(isStk), 'cntSI', 'cntSL', '_'); cnt(C, 'cntCI', 'cntCL', 'cntC');
+    cnt(F.filter(r => !isStk(r)), 'cntI', 'cntL', 'cntF'); cnt(F.filter(isStk), 'cntSI', 'cntSL', '_'); cnt(C, 'cntCI', 'cntCL', 'cntC'); cnt(M, 'cntMI', '_', 'cntM');
     { const T = document.getElementById('cntF'); if (T && F.length) T.textContent = F.length + ' done'; }
     const docN = r => { const m = String(r.state.f.docno || '').match(/\.(\d+)$/); return m ? Number(m[1]) : 999; };
     const typ = r => r.state.type === 'LOAD TEST' ? 'Load test' : 'Inspection';
-    const what = (r, cranes) => { const f = r.state.f; return [cranes ? f.details : [f.make, f.model].filter(Boolean).join(' '), cranes ? f.make : '', f.serial ? 'Serial ' + f.serial : ''].filter(Boolean).join(' · '); };
-    const ic = c => c ? ICON.crane : ICON.forklift;
+    const what = (r, kd) => { const cranes = kd !== 'fl'; const f = r.state.f; return [cranes ? f.details : [f.make, f.model].filter(Boolean).join(' '), cranes ? f.make : '', f.serial ? 'Serial ' + f.serial : ''].filter(Boolean).join(' · '); };
+    const ic = c => c === 'mc' ? ICON.mancage : c === 'cr' ? ICON.crane : ICON.forklift;
     const row = (icon, title, sub, right, attrs) => `<button type="button" class="jrow" ${attrs}><span class="ic">${icon}</span><span class="t"><b>${esc(title)}</b><span>${esc(sub)}</span></span>${right}</button>`;
     const prog = [].concat(
-      drafts('bc-crane-drafts').map(r => [r, true]), drafts('bc-forklift-drafts').map(r => [r, false]))
+      drafts('bc-crane-drafts').map(r => [r, 'cr']), drafts('bc-forklift-drafts').map(r => [r, 'fl']), drafts('bc-mancage-drafts').map(r => [r, 'mc']))
       .sort((a, b) => (b[0].savedAt || 0) - (a[0].savedAt || 0))
-      .map(([r, c]) => row(ic(c), (r.state.f.docno || (c ? 'Crane report' : 'Forklift report')) + ' · ' + typ(r), [what(r, c), r.state._rid ? 'changes not submitted' : 'not finished'].filter(Boolean).join(' · '), '<span class="go">Continue</span>', `data-jr="${c ? 'cr' : 'fl'}" data-jid="${esc(r.id)}" data-jd="1"`));
+      .map(([r, c]) => row(ic(c), (r.state.f.docno || (c === 'mc' ? 'Man cage report' : c === 'cr' ? 'Crane report' : 'Forklift report')) + ' · ' + typ(r), [what(r, c), r.state._rid ? 'changes not submitted' : 'not finished'].filter(Boolean).join(' · '), '<span class="go">Continue</span>', `data-jr="${c}" data-jid="${esc(r.id)}" data-jd="1"`));
     const PEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3-1 5-4 7-4s1 3 4 3 4-3 7-3"/><path d="M14.5 4.5l3 3L9 16H6v-3z"/></svg>';
     if (!inv.so) prog.push(row(PEN, 'Client sign-off', j.done ? 'Not signed' : 'Not signed yet – the client signs when you finish the job', '<span class="go">Sign now</span>', 'data-jsign="1"'));
     if (inv.open) prog.push(row(ICON.list, "Client's inventory", inv.open + (inv.open === 1 ? ' item' : ' items') + ' still to check', '<span class="go">Open</span>', 'data-jinv="1"'));
-    const done = [].concat(C.map(r => [r, true]), F.map(r => [r, false]))
-      .sort((a, b) => (a[1] === b[1] ? docN(a[0]) - docN(b[0]) : a[1] ? -1 : 1))
-      .map(([r, c]) => row(ic(c), (r.state.f.docno || 'Report') + ' · ' + typ(r), what(r, c), r.state.status === 'UNSAFE' ? '<span class="pill bad">UNSAFE</span>' : r.state.status === 'SAFE' ? '<span class="pill ok">SAFE</span>' : '', `data-jr="${c ? 'cr' : 'fl'}" data-jid="${esc(r.id)}"`));
+    const ORD = { cr:0, fl:1, mc:2 };
+    const done = [].concat(C.map(r => [r, 'cr']), F.map(r => [r, 'fl']), M.map(r => [r, 'mc']))
+      .sort((a, b) => (a[1] === b[1] ? docN(a[0]) - docN(b[0]) : ORD[a[1]] - ORD[b[1]]))
+      .map(([r, c]) => row(ic(c), (r.state.f.docno || 'Report') + ' · ' + typ(r), what(r, c), r.state.status === 'UNSAFE' ? '<span class="pill bad">UNSAFE</span>' : r.state.status === 'SAFE' ? '<span class="pill ok">SAFE</span>' : '', `data-jr="${c}" data-jid="${esc(r.id)}"`));
     if (inv.so){ const t = inv.so.at ? new Date(inv.so.at).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' }) : '';
       done.unshift(row(PEN, 'Client sign-off', 'Signed by ' + inv.so.name + (t ? ' · ' + t : '') + (inv.so.email ? (inv.so.mail === 'sent' ? ' · emailed' : ' · ⏳ email waiting') : ' · no email'), '<span class="pill ok">✓</span>', 'data-jsign="1"')); }
     if (!inv.open && inv.total) done.push(row(ICON.list, "Client's inventory", 'All ' + inv.total + ' items marked', '<span class="pill ok">✓</span>', 'data-jinv="1"'));
@@ -964,7 +966,7 @@
       box.innerHTML = `<h2 style="padding:10px 2px 0">THIS JOB</h2>` + fold('prog', 'prog', '⏳ In progress', prog, 'Nothing in progress.') + fold('done', 'done', '✓ Completed', done, 'Reports move here when you tap Submit report.');
       box.querySelectorAll('[data-jf]').forEach(b => b.onclick = () => { const FO = jobFolds(); FO[b.dataset.jf] = !FO[b.dataset.jf]; try { sessionStorage.setItem(JF, JSON.stringify(FO)); } catch(e){} draw(); });
       box.querySelectorAll('[data-jr]').forEach(b => b.onclick = () => { try { localStorage.setItem('bco-open-report', JSON.stringify({ kind:b.dataset.jr, id:b.dataset.jid, draft:!!b.dataset.jd, at:Date.now() })); } catch(e){}
-        openReport(k, i, b.dataset.jr === 'cr' ? 'CR-OPEN' : 'FL-OPEN', pj); });
+        openReport(k, i, b.dataset.jr === 'mc' ? 'MC-OPEN' : b.dataset.jr === 'cr' ? 'CR-OPEN' : 'FL-OPEN', pj); });
       box.querySelectorAll('[data-jinv]').forEach(b => b.onclick = () => openReport(k, i, 'EQUIPMENT', pj));
       box.querySelectorAll('[data-jsign]').forEach(b => b.onclick = () => openReport(k, i, 'SIGNOFF', pj || j.done)); };
     draw();
@@ -977,13 +979,14 @@
     // the Forklift tab also holds the electric pedestrian stacker (same report, S numbers)
     const row2 = (x, y, t) => `<div style="flex:1 1 100%;display:flex;gap:8px;align-items:center">${t ? `<span style="font-size:12px;font-weight:800;color:var(--label);width:62px">${t}</span>` : ''}${x}${y}</div>`;
     return grp('fl', ICON.forklift, 'Forklift', 'Forklift or electric stacker', 'cntF', row2(sub('INSPECTION', 'Inspection', 'cntI'), sub('LOAD TEST', 'Load test', 'cntL'), 'Forklift'), row2(sub('STACKER-INSPECTION', 'Inspection', 'cntSI'), sub('STACKER-LOAD TEST', 'Load test', 'cntSL'), 'Stacker'))
-      + grp('cr', ICON.crane, 'Crane / hoist', 'Inspection or load test', 'cntC', sub('CRANE-INSPECTION', 'Inspection', 'cntCI'), sub('CRANE-LOAD TEST', 'Load test', 'cntCL'));
+      + grp('cr', ICON.crane, 'Crane / hoist', 'Inspection or load test', 'cntC', sub('CRANE-INSPECTION', 'Inspection', 'cntCI'), sub('CRANE-LOAD TEST', 'Load test', 'cntCL'))
+      + grp('mc', ICON.mancage, 'Man cage', 'Inspection (SANS 583)', 'cntM', sub('MANCAGE-INSPECTION', 'Inspection', 'cntMI'), '');
   }
   function openReport(k, i, type, editPast){
     keepPlace();
     const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j || (j.done && !editPast)) return;
     try { localStorage.setItem('bco-active-job', JSON.stringify(Object.assign({ date:k, idx:i, card:j.card || '', customer:j.customer || j.desc || '', contact:j.contact || '', order:j.order || '', site:j.site || '', at:new Date().toISOString() }, editPast ? { edit:true } : {}))); } catch(e){}
-    location.href = type === 'EQUIPMENT' ? '../equipment/' : type === 'SIGNOFF' ? '../equipment/?signoff=1' : type === 'SIGNOFF-FIN' ? '../equipment/?signoff=fin' : type === 'FL-OPEN' ? '../forklift/' : type === 'CR-OPEN' ? '../crane/' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : /^STACKER-/.test(type || '') ? '../forklift/?type=' + encodeURIComponent(type.slice(8)) + '&machine=STACKER' : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION') + '&machine=FORKLIFT';
+    location.href = type === 'EQUIPMENT' ? '../equipment/' : type === 'SIGNOFF' ? '../equipment/?signoff=1' : type === 'SIGNOFF-FIN' ? '../equipment/?signoff=fin' : type === 'FL-OPEN' ? '../forklift/' : type === 'CR-OPEN' ? '../crane/' : type === 'MC-OPEN' ? '../mancage/' : /^MANCAGE-/.test(type || '') ? '../mancage/?type=INSPECTION' : /^CRANE-/.test(type || '') ? '../crane/?type=' + encodeURIComponent(type.slice(6)) : /^STACKER-/.test(type || '') ? '../forklift/?type=' + encodeURIComponent(type.slice(8)) + '&machine=STACKER' : '../forklift/?type=' + encodeURIComponent(type || 'INSPECTION') + '&machine=FORKLIFT';
   }
   // today's scheduled jobs, shown first so the technician sees the day's work; tap one to open it (and its inventory)
   // scheduled jobs after a day (next 14 days), so tomorrow's jobs and their inventories can be opened already
