@@ -60,3 +60,10 @@ Everything for a person is under `users/{uid}/items/`:
 - Authentication → Settings → Authorized domains → **bluecranesprojects.github.io**
 - Firestore → Rules → contents of `firestore.rules`
 - Firestore → `admins` collection → one document per admin, ID = email in lower case
+
+## Certificates (rule)
+
+- Load test certificate: lifting machinery – cranes, gantries, hoists, chain blocks, lever hoists, winches / Tirfors. With a report: SEE REPORT … under the remarks, no reason.
+- Inspection certificate: lifting tackle, safety harnesses / lanyards, man cages (SANS 583:2015, SEE REPORT MC…, next inspection due, 3 inspection lines) and any other equipment that is not lifting machinery.
+- Forklifts and stackers: their own certificate from the forklift report.
+- Unsafe items that can't be repaired (shackles, round / web / wire rope slings, eye bolts, eye nuts, harnesses, lanyards) get no further inspection lines; repairable items (man cages, chain slings, other equipment) keep them.
