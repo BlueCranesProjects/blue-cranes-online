@@ -426,7 +426,7 @@ function render(){jdRender();subBtn();
       COLS.forEach((_,c)=>{const pr=$("pr-"+r.id+"-"+c);pr.style.display=cs.includes(c)?"":"none";pr.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.v===state.res[r.id+"_"+c]));});}
     else $("mx-"+r.id).style.display="none";
     if(r.kind==="meas"){const inp=d.querySelector("[data-meas]"),v=state.val[r.id]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);d.querySelector(".unit").classList.toggle("isna",na);d.querySelector("[data-measna]").classList.toggle("on",na);}
-    if(r.kind!=="meas"){const qb=$("qb-"+r.id),need=false;qb.style.display=need?"":"none";if(need&&!qb.dataset.on)fillQuote(r.id);if(!need)qb.dataset.on="";mcPhotoBox(r,vals.includes("w")||vals.includes("x"));}
+    if(r.kind!=="meas"){const qb=$("qb-"+r.id),need=vals.includes("w")||vals.includes("x");qb.style.display=need?"":"none";if(need&&!qb.dataset.on)fillQuote(r.id);if(!need)qb.dataset.on="";mcPhotoBox(r,vals.includes("w")||vals.includes("x"));}
     const ni=d.querySelector("[data-note]");if(ni.value!==(state.note[r.id]||""))ni.value=state.note[r.id]||"";if(state.note[r.id])showNote(r.id,true);
   });
   document.querySelectorAll("[data-v2]").forEach(inp=>{const k=inp.dataset.v2,v=state.val[k]||"",na=/^n\/a$/i.test(v);if(inp.value!==v)inp.value=v;inp.readOnly=na;inp.classList.toggle("isna",na);inp.closest(".unit").classList.toggle("isna",na);document.querySelector(`[data-vna="${k}"]`).classList.toggle("on",na);});
@@ -689,9 +689,7 @@ function fillQuote(id){const b=$("qb-"+id);if(!b)return;b.dataset.on="1";const q
     <label>Repair notes</label><textarea data-qn placeholder="What is wrong and what must be done">${esc(q.notes||"")}</textarea>
     <label>Extra equipment</label><div class="qchips">${EXTRAS.map(x=>`<button type="button" data-qx="${esc(x)}" class="${(q.extra||[]).includes(x)?"on":""}">${esc(x)}</button>`).join("")}</div>
     <input data-qo placeholder="Other equipment / access needed" value="${esc(q.other||"")}">
-    <label>Photos for the repair</label>
-    ${(q.photos||[]).length?`<div class="qphotos">${q.photos.map((p,k)=>`<div class="qp"><img src="${p.src}" alt="Repair photo ${k+1}"><button type="button" data-qpdel="${k}" aria-label="Remove photo ${k+1}">✕</button></div>`).join("")}</div>`:""}
-    <div class="qcams"><label class="qcam"><input type="file" accept="image/*" capture="environment" data-qcam aria-label="Take a repair photo with the camera">📷 Take photo</label><label class="qcam"><input type="file" accept="image/*" data-qcam multiple aria-label="Add repair photos from the gallery">🖼 From gallery</label></div>`;
+    <div class="qn" style="font-size:12.5px;color:var(--muted)">Photos: use the photo box under this item – they print on both copies.</div>`;
   b.querySelectorAll("[data-qp]").forEach(inp=>inp.oninput=()=>{const qq=qOf(id,true);qq.parts=qq.parts||[];while(qq.parts.length<=+inp.dataset.qp)qq.parts.push({q:"",d:"",n:""});qq.parts[+inp.dataset.qp][inp.dataset.qk]=inp.value;save();});
   b.querySelector("[data-qadd]").onclick=()=>{const qq=qOf(id,true);qq.parts=(qq.parts&&qq.parts.length?qq.parts:[{q:"",d:"",n:""}]);qq.parts.push({q:"",d:"",n:""});save();fillQuote(id);const ins=b.querySelectorAll('[data-qk="d"]');ins[ins.length-1].focus();};
   b.querySelectorAll("[data-qdel]").forEach(x=>x.onclick=()=>{const qq=qOf(id,true);(qq.parts||[]).splice(+x.dataset.qdel,1);save();fillQuote(id);});
@@ -709,7 +707,7 @@ function quotePages(doc,st){const f=st.f||{},U=v=>String(v||"").toUpperCase(),L=
     doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(13);doc.text("TECHNICIAN'S REPORT – FOR QUOTE"+(cont?" (continued)":""),L,hb+9.8);
     doc.setFontSize(8.5);doc.setFont("helvetica","normal");doc.text("Internal – not for the client",R,hb+9.8,{align:"right"});y=hb+22;};
   head(false);doc.setTextColor(20,24,40);
-  const info=[["Doc No",f.docno],["Job no",f.jobno],["Date",f.date?fmtD(f.date):""],["Customer",U(f.customer)],["Site",U(f.location||f.site)],["Crane / hoist",U(f.details)],["Serial no",U(f.serial)],["SWL",f.swl?U(f.swl)+(/\d$/.test(String(f.swl))?" KG":""):""],["Technician",U(f.engName)]];
+  const info=[["Doc No",f.docno],["Job no",f.jobno],["Date",f.date?fmtD(f.date):""],["Customer",U(f.customer)],["Site",U(f.location||f.site)],["Man cage",U(f.details||"Man cage")],["Serial no",U(f.serial)],["SWL",f.swl?U(f.swl)+(/\d$/.test(String(f.swl))?" KG":""):""],["Technician",U(f.engName)]];
   doc.setFontSize(9.5);info.forEach(([k,v],i)=>{const x=i%2?L+95:L;if(i%2===0&&i)y+=5.6;doc.setFont("helvetica","bold");doc.text(k+":",x,y);doc.setFont("helvetica","normal");doc.text(doc.splitTextToSize(String(v||"–"),62)[0],x+27,y);});
   y+=9;
   if(!items.length){doc.setFont("helvetica","italic");doc.text("No items marked X or W on this report.",L,y);return;}
@@ -836,9 +834,9 @@ async function buildPdf(st,opts){
         doc.setDrawColor(180,184,196);doc.setLineWidth(0.25);doc.rect(x,py+9,cw,chh);});}
     return {doc,end:y+6,ih};}
   let p=draw();p=draw(Math.max(5,Math.min(7,p.ih+(286-p.end)/15)));   // rows sized to fill the page
-  const tech=false;
+  const tech=!!(opts&&opts.tech);if(tech)quotePages(p.doc,st);
   const safe=s=>String(s||"").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"_");
-  const name=`Man_Cage_Inspection_${f.docno?safe(f.docno.replace(".","-"))+"_":""}${safe(f.customer)||"Report"}${f.serial?"_"+safe(f.serial):""}_${f.date||today()}.pdf`;
+  const name=`${tech?"TECHNICIAN_":""}Man_Cage_Inspection_${f.docno?safe(f.docno.replace(".","-"))+"_":""}${safe(f.customer)||"Report"}${f.serial?"_"+safe(f.serial):""}_${f.date||today()}.pdf`;
   return {doc:p.doc,name};}
 async function makePdf(){
   if(!window.jspdf){toast("PDF tool still loading — try again");return;}
@@ -1015,7 +1013,7 @@ if(!state.f.make&&!state.f.details)return;const d=String(state.f.details||"").to
 })();
 window.BCM={async reports(){for(let i=0;i<80&&!window.BCM_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCM_READY;}catch(e){}return RDB.all();},buildPdf:st=>buildPdf(st),buildTechPdf:st=>buildPdf(st,{tech:true}),needsTech:st=>needsTech(st)};
 // a technician's report is worth making when something is marked X or W (or quote info was filled in)
-function needsTech(st){return false&&ROWS.some(r=>r.kind!=="meas"&&visOf(r,st)&&valsOf(r,st).some(v=>v==="x"||v==="w"))||Object.values(st.quote||{}).some(hasQuote);}
+function needsTech(st){return ROWS.some(r=>r.kind!=="meas"&&visOf(r,st)&&valsOf(r,st).some(v=>v==="x"||v==="w"))||Object.values(st.quote||{}).some(hasQuote);}
 if(HANDOFF){try{localStorage.removeItem("bco-open-report");}catch(e){}if(ACTIVE&&!EMBED){$("repPanel").classList.remove("show");if(HANDOFF.draft){if(state._did!==HANDOFF.id)continueDraft(HANDOFF.id);}else RDB.all().then(a=>{const r=(a||[]).find(x=>x&&x.id===HANDOFF.id);if(!r||state._rid===r.id)return;keepDraft();useState(r.state);state._rid=r.id;state._did=null;state._saved=stSig(state);applyState();save();window.scrollTo(0,0);toast("Opened "+(state.f.docno||"report"));});}}
 BC.requireUser().then(w=>{if(w.profile&&w.profile.name){PROFILE=w.profile;checkSession();save();}if(window.Cloud)window.Cloud.onError=()=>toast("Cloud save failed – kept on this phone");window.BCM_READY=syncReports();});
 

@@ -444,7 +444,8 @@
       finally { t.done(); } }
     if ((g.mc || []).length){ const t = await hiddenTool('../mancage/?embed=1', w => w.BCM && w.jspdf && w.BCM);
       try { for (const r of g.mc.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
-          const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) }); } }
+          const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) }); const n = a.doc.getNumberOfPages();
+          if (t.api.needsTech && t.api.needsTech(r.state)){ const b = await t.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); if (b.doc.getNumberOfPages() > n) parts.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), from:n }); } } }
       finally { t.done(); } }
     if ((g.cr || []).length){ const t = await hiddenTool('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
       try { const reps = g.cr.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true })), quote = [];
@@ -511,8 +512,10 @@
     }
     if ((g.mc || []).length && (which === 'mc' || which === 'all')){
       const t = await hiddenTool('../mancage/?embed=1', w => w.BCM && w.jspdf && w.BCM);
-      try { const mcp = []; for (const r of g.mc.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){ const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); mcp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); }
-        if (mcp.length) files.push(await onePdf(mcp, packName('Man_cage_reports', { job:j.card, customer:j.customer, date:j.date }))); }
+      try { const mcp = [], mtp = []; for (const r of g.mc.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){ const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); mcp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
+          if (t.api.needsTech && t.api.needsTech(r.state)){ const b = await t.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); mtp.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), name:b.name }); } }
+        if (mcp.length) files.push(await onePdf(mcp, packName('Man_cage_reports', { job:j.card, customer:j.customer, date:j.date })));
+        if (mtp.length) files.push(await onePdf(mtp, packName('TECHNICIAN_Man_cage_reports_for_quote', { job:j.card, customer:j.customer, date:j.date }))); }
       finally { t.done(); }
     }
     return files;
@@ -585,11 +588,12 @@
         const g = groups[gi], l = JSON.parse(JSON.stringify(g.l)); say(`Job ${gi + 1} of ${groups.length}…`);
         let dn = BC.zipDir(l.job, l.customer, l.date); if (usedDir[dn]) dn += ' (' + (++usedDir[dn]) + ')'; else usedDir[dn] = 1;
         const dir = root.folder(dn); const usedF = {}; const put = async (f) => { let n = BC.zipFile(f.name); if (usedF[n]) n = n.replace(/(\.\w+)$/, ' (' + (++usedF[n]) + ')$1'); else usedF[n] = 1; dir.file(n, await own(f.blob)); nFiles++; };
-        const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '' }; const parts = [], flp = [], crp = [], tcp = [], mcp = [];
+        const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '' }; const parts = [], flp = [], crp = [], tcp = [], mcp = [], mtp = [];
         try {
           if (l.rows){ await put(await eq.api.listDoc(l)); try { await put(await eq.api.listXlsx(l)); } catch(e){} parts.push(...(await eq.api.itemCertParts(l, tech, await utFor(g.u.uid, l, null)))); }
           for (const r of g.reps.sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
-            if (r._mc){ const a = await mz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); mcp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name }); continue; }
+            if (r._mc){ const a = await mz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); mcp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
+              if (mz.api.needsTech && mz.api.needsTech(r.state)){ const b = await mz.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); mtp.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), name:b.name }); } continue; }
             if (r._cr){ const a = await cz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); crp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
               if (cz.api.buildTechPdf && cz.api.needsTech(r.state)){ const b = await cz.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); tcp.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), name:b.name }); } continue; }
             const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); flp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
@@ -598,6 +602,7 @@
           if (crp.length) await put(await onePdf(crp, packName('Crane_hoist_reports', l)));
           if (tcp.length) await put(await onePdf(tcp, packName('TECHNICIAN_Crane_hoist_reports_for_quote', l)));
           if (mcp.length) await put(await onePdf(mcp, packName('Man_cage_reports', l)));
+          if (mtp.length) await put(await onePdf(mtp, packName('TECHNICIAN_Man_cage_reports_for_quote', l)));
           if (parts.length){ const c = await eq.api.mergeCerts(l, parts); if (c) await put(c); }
           if (l.date){ const ts = await sheetFileOf(g.u.uid, l.date, { card:l.job, customer:l.customer }); if (ts) await put(ts); }
         } catch(e){ console.error(e); dir.file('PROBLEM.txt', 'Some files of this job could not be made: ' + (e && e.message || e)); }
