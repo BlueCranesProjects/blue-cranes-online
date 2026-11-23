@@ -254,7 +254,7 @@
     state.loaded = true; render(); settlePlace(place);
     // opened with ?job=<schedule id> (e.g. from a forklift in the inventory): show that job
     const wantJob = new URLSearchParams(location.search).get('job');
-    if (wantJob && state.schedule[wantJob]){ history.replaceState(null, '', location.pathname); state._schedBack = 'today'; go('schedjob', { schedId:wantJob }); }
+    if (wantJob && state.schedule[wantJob]){ history.replaceState(history.state, '', location.pathname); state._schedBack = 'today'; go('schedjob', { schedId:wantJob }); }
   }
 
   async function loadCloud(id, local){
@@ -391,7 +391,7 @@
   function storeLine(){
     if (!state.loaded) return `<div class="status">Loading…</div>`;
     if (state.storeNote) return `<div class="status">${esc(state.storeNote)}</div>`;
-    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 23 Nov (A)</div>`;
+    return `<div class="status">${store==='cloud' ? 'Saved to your account' + (navigator.onLine ? '' : ' · offline, will sync') : 'Saved on this phone only'} · App version 23 Nov (B)</div>`;
   }
 
   const PARTS = ['Tyres','Windows','Water','Oil','Body'];
@@ -1418,16 +1418,32 @@
   }
 
   // ---------- render & wire ----------
+  // every screen is a step in the browser history: the phone's back button and the on-screen ‹ go to the previous screen
+  const NAVKEYS = ['view', 'jobIdx', 'activeDate', 'detailKey', 'schedId', 'schedDate', 'schedWeek', 'pjKey', 'pjIdx', '_finishing', '_schedBack', '_jobBack', 'prefill'];
+  let NAVON = false;
+  const NAV = BC.viewHistory({
+    snap: () => { const o = {}; NAVKEYS.forEach(k => { o[k] = state[k] == null ? null : state[k]; }); return o; },
+    restore: s => { Object.assign(state, s);
+      const sh = state.sheets[curKey()] || {}, jobs = sh.jobs || [];
+      if ((state.view === 'jobpage' || (state.view === 'job' && state.jobIdx != null)) && !jobs[state.jobIdx]) state.view = 'today';
+      if (state.view === 'pastjob' && !(state.pjKey && state.sheets[state.pjKey] && (state.sheets[state.pjKey].jobs || [])[state.pjIdx])) state.view = 'history';
+      if (state.view === 'detail' && !(state.detailKey && state.sheets[state.detailKey])) state.view = 'history';
+      if (state.view === 'schedjob' && !(state.schedId && state.schedule[state.schedId])) state.view = 'schedule';
+      if (state._finishing && jobs[state.jobIdx] && jobs[state.jobIdx].done){ state._finishing = false; state.view = 'jobpage'; } },
+    render: () => render() });
   function render(){
+    if (state.loaded && !NAVON && state.view !== 'signin'){ NAVON = true; NAV.start(); }
     const v = state.view;
     app.innerHTML = v==='signin' ? viewSignIn() : v==='schedule' ? viewSchedule() : v==='schedjob' ? viewSchedJob() : v==='check' ? viewCheck() : v==='job' ? viewJob() : v==='jobpage' ? viewJobPage() : v==='vehicle' ? viewVehicle() : v==='end' ? viewEnd() : v==='history' ? viewHistory() : v==='detail' ? viewDetail() : v==='pastjob' ? viewPastJob() : viewToday();
     wire();
+    if (NAVON) NAV.note();
   }
 
   function wire(){
     // links to the inventories and report lists remember where you were, so coming back opens the same page (e.g. History)
     app.querySelectorAll('a[href^="../equipment/"], a[href^="../forklift/"], a[href^="../crane/"]').forEach(x => x.addEventListener('click', keepPlace));
-    app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { if (state._jobBack){ state.activeDate = null; state._jobBack = null; }   // leaving a job opened from History: back to today's date
+    app.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { if (b.classList.contains('back') && NAV.canBack()){ history.back(); return; }   // ‹ = the previous screen
+      if (state._jobBack){ state.activeDate = null; state._jobBack = null; }   // leaving a job opened from History: back to today's date
       b.dataset.go === 'jobpage' ? go('jobpage', { _finishing:false }) : go(b.dataset.go, { jobIdx:null, prefill:null, schedId:null, _finishing:false, _editDay:false }); });
     app.querySelectorAll('[data-addjob]').forEach(b => b.onclick = () => go('job', { jobIdx:null, prefill:null, _finishing:false }));
     // account, backup, install

@@ -734,7 +734,18 @@
   function vNoAdmin(msg){ return `<header><a href="../?home=1" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a><div><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div></header>
     <main><section class="card"><h2>Admin only</h2><span class="hint" style="font-size:14px">${msg}</span><a class="btn secondary" href="../?home=1">Back</a></section></main>`; }
 
-  function render(){ app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); }
+  // each tab and the job form is a step in the browser history: the back button goes to the previous screen, not out of Admin
+  let NAVON = false;
+  const blankEd = () => ({ date:keyOf(new Date()), time:'', tech:'', customer:'', card:'', contact:'', email:'', order:'', site:'', notes:'' });
+  const NAV = BC.viewHistory({ snap: () => ({ tab:S.tab || 'load', editJob:S.editJob || null }),
+    restore: s => { S.tab = s.tab; try { sessionStorage.setItem('bco-admin-tab', S.tab); } catch(e){}
+      if (!s.editJob) S.editJob = null;
+      else if (s.editJob === '__new'){ if (S.editJob !== '__new') S.ed = blankEd(); S.editJob = '__new'; }
+      else { const j = (S.jobs || []).find(x => x.id === s.editJob); if (j){ if (S.editJob !== j.id) S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', email:j.email || '', order:j.order || '', site:j.site || '', notes:j.notes || '' }; S.editJob = j.id; } else S.editJob = null; }
+      if ((S.tab === 'jobs' || S.tab === 'inv') && !(S.jobs || []).length) refreshJobs().then(() => render()).catch(() => {}); },
+    render: () => render() });
+  function render(){ if (!NAVON && !S.noAdmin && window.Cloud && window.Cloud.email && window.Cloud.email()){ NAVON = true; NAV.start(); }
+    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
   function wire(){
     const $ = id => document.getElementById(id);
     app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; try { sessionStorage.setItem('bco-admin-tab', S.tab); } catch(e){} if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); if ((S.tab === 'inv' || S.tab === 'export') && !S.users.length) await refreshUsers(); render(); });
@@ -799,7 +810,9 @@
       m.innerHTML = '<div class="card" style="max-width:380px;width:100%;gap:12px"><h2>Sign out?</h2><div class="row"><button class="btn primary" id="soYes" style="flex:1">Sign out</button><button class="btn secondary" id="soNo" style="flex:1">Cancel</button></div></div>'; document.body.appendChild(m);
       m.querySelector('#soNo').onclick = () => m.remove(); m.querySelector('#soYes').onclick = async () => { BC.cacheProfile(null); try { await window.Cloud.signOut(); } catch(e){} location.href = '../'; }; };
     const nb = $('newJob'); if (nb) nb.onclick = async () => { if (!S.users.length) await refreshUsers(); S.editJob = '__new'; S.ed = { date:keyOf(new Date()), time:'', tech:'', customer:'', card:'', contact:'', email:'', order:'', site:'', notes:'' }; render(); window.scrollTo(0, 0); };
-    const edc = $('edCancel'); if (edc) edc.onclick = () => { S.editJob = null; render(); };
+    // closing the job form = a step back (so the phone's back button doesn't reopen it)
+    const closeForm = () => { const h = history.state; if (NAV.canBack() && h && h.bcv && h.bcv.editJob) history.back(); else { S.editJob = null; render(); } };
+    const edc = $('edCancel'); if (edc) edc.onclick = closeForm;
     const es = $('edSave'); if (es) es.onclick = async () => {
       const isNew = S.editJob === '__new'; const j = isNew ? { status:'planned' } : S.jobs.find(x => x.id === S.editJob); if (!j) return; const e = S.ed;
       const tech = String(e.tech || '').trim().toLowerCase();
@@ -812,7 +825,8 @@
         const upd = { id:j.id, date:e.date, time:String(e.time || '').trim(), customer:String(e.customer || '').trim(), card:String(e.card || '').trim(), contact:String(e.contact || '').trim(), email:String(e.email || '').trim().toLowerCase(), order:String(e.order || '').trim(), site:String(e.site || '').trim(), notes:String(e.notes || '').trim(), updatedAt:now, changedBy:window.Cloud.email() };
         if (j.status !== 'busy') upd.tech = tech;
         if (isNew && !S.jobs.some(x => x.id === j.id)) Object.assign(upd, { status:'planned', createdAt:now, loadedBy:window.Cloud.email() });
-        await window.Cloud.putJobs([upd]); toast(isNew ? 'Job scheduled' : 'Job changed'); S.editJob = null; await refreshJobs();
+        await window.Cloud.putJobs([upd]); toast(isNew ? 'Job scheduled' : 'Job changed'); await refreshJobs(); S.busy = false;
+        { const h = history.state; if (NAV.canBack() && h && h.bcv && h.bcv.editJob){ history.back(); return; } } S.editJob = null;   // saved: a step back to the list
       } catch(err){ console.error(err); toast('Saving failed' + (err && err.code ? ' (' + err.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => removeJobs([b.dataset.del]));

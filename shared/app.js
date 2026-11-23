@@ -62,6 +62,23 @@
     const m = /^(.+?)_((?:CR|C|F)\d[\w.-]*?)(?=_|$)/.exec(b);
     if (m) return (m[1].replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase().replace(/^./, c => c.toUpperCase()) + ' ' + m[2]).slice(0, 60) + ext;
     return b.replace(/_/g, ' ').slice(0, 50).trim() + ext; };
+  // In-page screens (time sheet views, Admin tabs and job forms, inventory screens, report lists) get their own steps in the browser history,
+  // so the phone's back button and the on-screen ‹ go to the previous screen instead of leaving the page.
+  // BC.viewHistory({ snap:() => {…where am I…}, restore:s => {…go there…}, render }) → { note(), canBack(), back(fallback) }; call note() after every render.
+  BC.viewHistory = ({ snap, restore, render }) => {
+    let restoring = false; const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const api = {
+      start(){ try { const h = history.state; if (h && h.bcv){ restoring = true; try { restore(h.bcv); } finally { restoring = false; } } else history.replaceState({ bcv:snap(), d:0, y:0 }, ''); } catch(e){} },
+      note(){ if (restoring) return; let s; try { s = snap(); } catch(e){ return; } const h = history.state; if (h && h.bcv && same(h.bcv, s)) return;
+        try { if (h && h.bcv) history.replaceState(Object.assign({}, h, { y:window.scrollY }), ''); history.pushState({ bcv:s, d:((h && h.d) || 0) + 1, y:0 }, ''); } catch(e){} },
+      canBack: () => !!(history.state && history.state.bcv && history.state.d > 0),
+      back(fallback){ if (api.canBack()) history.back(); else if (fallback) fallback(); }
+    };
+    window.addEventListener('popstate', e => { const h = e.state; if (!h || !h.bcv) return; restoring = true; try { restore(h.bcv); render(); } catch(err){ console.error(err); } finally { restoring = false; }
+      const y = h.y || 0; setTimeout(() => window.scrollTo(0, y), 30); });
+    return api;
+  };
+
   // a job's folder: "C124699 PERDEBERG CELLARS" (+ the date in front for exports of many jobs)
   BC.zipDir = (job, customer, date) => [date || '', String(job || 'no nr').replace(/\s+/g, ''), String(customer || '').trim().slice(0, 24).trim()]
     .filter(Boolean).join(' ').replace(/[\\/:*?"<>|]+/g, '-');

@@ -672,13 +672,20 @@
   let lastView = null, posT;
   window.addEventListener('scroll', () => { clearTimeout(posT); posT = setTimeout(savePos, 150); }, { passive:true });
   window.addEventListener('pagehide', savePos);
+  // each screen (job's inventory, all client inventories, one customer, sign-off) is a step in the browser history: back = the previous screen
+  let NAVON = false;
+  const NAV = BC.viewHistory({ snap: () => ({ view:S.view || '', cust:S.cust || '' }),
+    restore: s => { S.view = s.view; S.cust = s.cust; if ((S.view === 'signoff' || S.view === 'list') && !S.cur) S.view = S.active ? 'list' : 'gate'; if (S.view === 'customer' && !S.cust) S.view = 'inventory'; },
+    render: () => render() });
   function render(){
+    if (!NAVON && S.view){ NAVON = true; NAV.start(); }
     const same = lastView === S.view, y = window.scrollY;
     if (!same) savePos();
     app.innerHTML = S.view === 'signoff' && S.cur ? vSignoff(S.cur) : S.view === 'inventory' ? vInventory() : S.view === 'customer' ? vCustomer() : S.view === 'gate' ? vGate() : vList();
     let to = 0;
     if (same) to = y; else { try { to = Number(sessionStorage.getItem(posKey(S.view))) || 0; } catch(e){} }
     lastView = S.view; window.scrollTo(0, to); wire();
+    if (NAVON) NAV.note();
     if (!same && to > 0) [150, 500].forEach(ms => setTimeout(() => { if (lastView === S.view && Math.abs(window.scrollY - to) > 40) window.scrollTo(0, to); }, ms));
   }
   function wire(){

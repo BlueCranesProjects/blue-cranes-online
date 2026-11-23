@@ -1040,6 +1040,12 @@ if(ACTIVE&&!EMBED&&!HANDOFF){setTimeout(async()=>{await syncDrafts();const jc=jo
 if(ACTIVE&&ACTIVE.edit&&!EMBED&&!HANDOFF&&!load("bco-fl-item")){if(!state.f.serial&&!state.f.make&&ACTIVE.date&&state.f.date!==ACTIVE.date){state.f.date=ACTIVE.date;state.f.nextInsp=addMonths(state.f.date,6);state.f.nextLoad=addMonths(state.f.date,12);applyState();save();}repScope="all";$("repSearch").value=ACTIVE.customer||"";$("repPanel").classList.add("show");showReports();toast("Tap Open on a report to change it, or close this list to add a new one");}
 const goBackTs=()=>{let r=null;try{r=document.referrer?new URL(document.referrer):null;}catch(e){}if(r&&r.origin===location.origin&&r.pathname!==location.pathname&&history.length>1)history.back();else location.href="../timesheet/";};
 $("repClose").onclick=()=>{if(WANT_REPORTS){goBackTs();return;}$("repPanel").classList.remove("show");if(!ACTIVE)showGate();};
+// the saved-reports list counts as its own screen: the phone's back button closes it (instead of leaving the report)
+(function(){const P=$("repPanel");if(!P||EMBED)return;let popping=false;
+  new MutationObserver(()=>{const open=P.classList.contains("show"),h=history.state&&history.state.bcp;
+    if(open&&!h&&!WANT_REPORTS){try{history.pushState({bcp:1},"");}catch(e){}}else if(!open&&h&&!popping){try{history.back();}catch(e){}}}).observe(P,{attributes:true,attributeFilter:["class"]});
+  window.addEventListener("popstate",()=>{if(P.classList.contains("show")&&!WANT_REPORTS&&!(history.state&&history.state.bcp)){popping=true;P.classList.remove("show");setTimeout(()=>{popping=false;},0);}});})();
+
 if(ACTIVE&&!EMBED&&jobKey(state.f)!==jobKey({jobno:ACTIVE.card,customer:ACTIVE.customer})){recordDoc();const t=state.type;fresh();state.type=t;applyState();save();toast("Job "+(ACTIVE.card||ACTIVE.customer));}
 if(ACTIVE&&!EMBED&&!state.f.site&&siteForJob()){state.f.site=siteForJob();applyState();save();}
 {const wt=new URLSearchParams(location.search).get("type");let it=null;try{it=JSON.parse(load("bco-fl-item")||"null");}catch(e){}
