@@ -958,11 +958,10 @@
     y += 13 * CERT_K; const VX = L + 68, W = R - VX;
     const row = (a, v, color) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); if (color) doc.setTextColor(...color);
       const lines = doc.splitTextToSize(String(v || ''), W).slice(0, 4); doc.text(lines, VX, y); doc.setTextColor(...INK); y += 7.9 * CERT_K + (Math.max(1, lines.length) - 1) * 5; };
-    row('CERTIFICATE No', no); row('CUSTOMER NAME', U(l.customer)); row('SITE ADDRESS', U(l.location)); row('ITEM LOCATION', U(r.loc)); row('ITEM No', U(r.serial));
+    row('CERTIFICATE No', no); if (r.report && r.report.no && (kind === 'mc' || r.mc)) row('REPORT No', U(r.report.no)); row('CUSTOMER NAME', U(l.customer)); row('SITE ADDRESS', U(l.location)); row('ITEM LOCATION', U(r.loc)); row('ITEM No', U(r.serial));
     const tons = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').replace(/\s/g, '').replace(',', '.'); const n = Number(t); return t && !isNaN(n) ? String(Math.round(n / 10) / 100).replace('.', ',') + ' TON' : U(v); };
     row('DESCRIPTION OF ITEM', U(r.desc)); row('SAFE WORKING LOAD', tackle ? tons(r.swl) : kgText(r.swl)); row('MANUFACTURED BY', tackle ? (U(r.make) || 'UNKNOWN') : /^unknown$/i.test(r.make || '') ? '' : U(r.make));
     if (kind === 'h') row('DATE OF MANUFACTURE', U(r.dom));
-    if (kind === 'mc' && r.report && r.report.no) row('INSPECTION REPORT', U(r.report.no));
     // same grid as the load test certificates: REMARKS is the last row, then the same gaps and columns below it
     row('REMARKS', unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' + (r.reason ? ' – ' + U(r.reason) : '') : 'SAFE FOR USE AT TIME OF INSPECTION', unsafe ? RED : GREEN);
     y += (22 - 7.9) * CERT_K; doc.setFontSize(12.5);
