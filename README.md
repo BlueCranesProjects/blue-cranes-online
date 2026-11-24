@@ -94,3 +94,8 @@ Everything for a person is under `users/{uid}/items/`:
 - The sign-off is the Technicians Report and Time Card, like the paper card: customer, job no, site, order no, technician, report to, date, type of work (Inspection / Service / Load test), equipment, work done, materials used, file updated / new file needed, time record (from the time sheet, changeable), customer's certificate with print name and signature, email.
 - A job with an order nr from the office (Admin) is a quoted job: the time record starts switched off (the technician can switch it on).
 - The PDF (Report_and_time_card_…) is laid out like the paper card; it is in the job zip / whole-job PDF on the phone and in Admin (own button, Job PDF, All files).
+
+## Backup (rule)
+
+- Admin shows a reminder bar when there is no backup or the last one is 7+ days old. Export jobs → Weekly backup → Back up now makes one zip of every job since a day before the last backup (first time: from 1 Jan 2026); it counts once the zip is saved. The last backup is kept per admin (users/{uid}/items/backup). Save the zip to Google Drive / OneDrive.
+- When the project is on the Blaze plan: also switch on Firestore daily backups and point-in-time recovery.
