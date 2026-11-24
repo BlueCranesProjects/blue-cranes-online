@@ -80,3 +80,4 @@ Everything for a person is under `users/{uid}/items/`:
 
 - New accounts get a "confirm your email" link; until it is opened the app shows the Confirm your email screen (existing accounts get their link once, by themselves). Jobs and Admin need a confirmed email – in the app and in firestore.rules (verified()).
 - Signing out empties the phone / tablet (inventories, reports, drafts, photos, time sheet); everything stays in the account. If another account signs in on a device holding someone else's work, that work is cleared first (bco-owner).
+- After a device was emptied, the next sign-in brings the person's inventories, saved reports and unfinished reports back from the account by themselves (BC.restoreDevice, flag bco-restore).
