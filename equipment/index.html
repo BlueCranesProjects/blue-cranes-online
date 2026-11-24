@@ -1202,7 +1202,7 @@
   }
   async function listDoc(l){
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-    const L = 15, W = [9, 21, 37, 28, 19, 16, 28, 22], X = W.map((w, k) => L + W.slice(0, k).reduce((a, b) => a + b, 0)), R = L + 180, INK = [0, 0, 0], RED = [220, 0, 0], PH = 287;
+    const L = 15, W = [22, 40, 30, 19, 16, 30, 23], X = W.map((w, k) => L + W.slice(0, k).reduce((a, b) => a + b, 0)), R = L + 180, INK = [0, 0, 0], RED = [220, 0, 0], PH = 287;
     let y = 18;
     // letterhead-style top: the Blue Cranes logo top left, the title centred in the space beside it, a navy rule under both
     const LOGO = await logoWide();
@@ -1217,18 +1217,18 @@
       y = Math.max(y - 2, top + LH) + 3; doc.setDrawColor(11, 53, 117); doc.setLineWidth(0.8); doc.line(L, y, R, y); doc.setDrawColor(251, 210, 32); doc.setLineWidth(0.5); doc.line(L, y + 1, R, y + 1); doc.setLineWidth(0.2); doc.setDrawColor(0);
       y += 6; colHead(); };
     const colHead = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(8.3); doc.setTextColor(...INK); doc.setDrawColor(0); doc.setLineWidth(0.2);
-      ['NO:', 'ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'LENGTH:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { doc.rect(X[k], y, W[k], 7); doc.text(h, X[k] + 1.2, y + 4.8); }); y += 7 + 4; };
+      ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'LENGTH:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { doc.rect(X[k], y, W[k], 7); doc.text(h, X[k] + 1.5, y + 4.8); }); y += 7 + 4; };
     const cell = (vals, color) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color);
       const lines = vals.map((v, k) => doc.splitTextToSize(String(v || ''), W[k] - 3)); const h = Math.max(6, ...lines.map(x => x.length * 4 + 2));
       if (y + h > PH - 12){ doc.addPage(); y = 15; colHead(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color); }
-      lines.forEach((ls, k) => { doc.setDrawColor(0); doc.rect(X[k], y, W[k], h); doc.text(ls, X[k] + 1.2, y + 4.2); }); y += h; };
+      lines.forEach((ls, k) => { doc.setDrawColor(0); doc.rect(X[k], y, W[k], h); doc.text(ls, X[k] + 1.5, y + 4.2); }); y += h; };
     head();
     censusItems(l).forEach((grp, gi) => { if (gi) y += 4;
       // group heading: navy band across the table, e.g. "EYE BOLTS · 10"
       if (y + 7 + 6 > PH - 12){ doc.addPage(); y = 15; colHead(); }
       doc.setFillColor(227, 234, 245); doc.setDrawColor(0); doc.rect(L, y, 180, 7, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(11, 53, 117);
       doc.text(grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'), L + 1.5, y + 4.8); y += 7;
-      grp.forEach(it => { cell([it.no, it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report], it.unsafe ? RED : it.refurb ? [11, 53, 117] : INK); }); });
+      grp.forEach(it => { cell([it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report], it.unsafe ? RED : it.refurb ? [11, 53, 117] : INK); }); });
     y += 8; if (y > PH - 12){ doc.addPage(); y = 20; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...RED); doc.text('RED = UNSAFE FOR USE', L, y);
     // client sign-off (once the client has signed the job): name, date and signature under the list
     const so = l.signoff; if (so && so.sig){ const BH = 20; y += 8; if (y + BH > PH - 8){ doc.addPage(); y = 20; }
@@ -1247,14 +1247,14 @@
   async function listXlsx(l){
     const EX = await excelJS(); const wb = new EX.Workbook(); wb.creator = 'Blue Cranes Online';
     const ws = wb.addWorksheet(String(l.customer || 'Inventory').toUpperCase().replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 28) || 'INVENTORY', { pageSetup:{ paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0 } });
-    ws.columns = [{ width:6 }, { width:20 }, { width:42 }, { width:20 }, { width:12 }, { width:10 }, { width:24 }, { width:18 }];
+    ws.columns = [{ width:20 }, { width:42 }, { width:20 }, { width:12 }, { width:10 }, { width:24 }, { width:18 }];
     const red = { argb:'FFFF0000' }, line = { style:'thin', color:{ argb:'FF000000' } }, box = { top:line, left:line, bottom:line, right:line };
-    [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 8); const c = ws.getCell(k + 1, 1); c.value = t; c.font = { name:'Arial', bold:true, size:12 }; c.alignment = { horizontal:'center' }; });
-    ['NO:', 'ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'LENGTH:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { const c = ws.getCell(4, k + 1); c.value = h; c.font = { name:'Arial', bold:true }; c.border = box; });
+    [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 7); const c = ws.getCell(k + 1, 1); c.value = t; c.font = { name:'Arial', bold:true, size:12 }; c.alignment = { horizontal:'center' }; });
+    ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'LENGTH:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { const c = ws.getCell(4, k + 1); c.value = h; c.font = { name:'Arial', bold:true }; c.border = box; });
     let r = 6;
     censusItems(l).forEach((grp, gi) => { if (gi) r++;
-      { ws.mergeCells(r, 1, r, 8); const c = ws.getCell(r, 1); c.value = grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'); c.font = { name:'Arial', bold:true, color:{ argb:'FF0B3575' } }; c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE3EAF5' } }; c.border = box; r++; }
-      grp.forEach(it => { [it.no, it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : it.refurb ? { name:'Arial', color:{ argb:'FF0B3575' } } : { name:'Arial' }; c.border = box; }); r++; }); });
+      { ws.mergeCells(r, 1, r, 7); const c = ws.getCell(r, 1); c.value = grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'); c.font = { name:'Arial', bold:true, color:{ argb:'FF0B3575' } }; c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE3EAF5' } }; c.border = box; r++; }
+      grp.forEach(it => { [it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : it.refurb ? { name:'Arial', color:{ argb:'FF0B3575' } } : { name:'Arial' }; c.border = box; }); r++; }); });
     r++; const f = ws.getCell(r, 1); f.value = 'RED = UNSAFE FOR USE'; f.font = { name:'Arial', bold:true, color:red };
     const buf = await wb.xlsx.writeBuffer();
     return { blob:new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name:`Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.xlsx`, type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
