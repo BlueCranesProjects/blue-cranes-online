@@ -7,6 +7,13 @@ let resolveReady;
 const ready = new Promise(r => { resolveReady = r; });
 const listeners = [];
 let current;            // undefined = not known yet, null = signed out
+// whose work is on this phone / tablet
+const OWNER = 'bco-owner';
+const WIPE = /^(dts-|bco|bc-|bc_)/;
+async function wipeDevice(){
+  try { Object.keys(localStorage).filter(k => WIPE.test(k) && k !== OWNER).forEach(k => localStorage.removeItem(k)); } catch(e){}
+  await Promise.all(['bc-forklift', 'bc-crane', 'bc-mancage'].map(n => new Promise(r => { try { const q = indexedDB.deleteDatabase(n); q.onsuccess = q.onerror = q.onblocked = () => r(); setTimeout(r, 1500); } catch(e){ r(); } })));
+}
 const api = {
   ready,
   user: () => current || null,
@@ -98,11 +105,25 @@ window.Cloud = api;
     api.getItemOf = async (uid, id) => { const s = await F.getDoc(F.doc(fs, 'users', uid, 'items', id)); return s.exists() ? s.data() : null; };
     api.listKindOf = async (uid, kind) => (await F.getDocs(F.query(F.collection(fs, 'users', uid, 'items'), F.where('kind', '==', kind)))).docs.map(d => ({ id: d.id, data: d.data() }));
     api.signIn = (email, pw) => A.signInWithEmailAndPassword(auth, email, pw);
-    api.signUp = (email, pw) => A.createUserWithEmailAndPassword(auth, email, pw);
+    // a new account gets a "confirm your email" link: only confirmed emails can open jobs or Admin
+    api.signUp = async (email, pw) => { const c = await A.createUserWithEmailAndPassword(auth, email, pw); try { localStorage.setItem('bco-vsent-' + c.user.uid, String(Date.now())); await A.sendEmailVerification(c.user); } catch(e){} return c; };
+    api.sendVerify = () => auth.currentUser ? A.sendEmailVerification(auth.currentUser) : Promise.reject(new Error('Not signed in'));
+    // after the person opened the link: refresh the account (and its sign-in token, which the security rules check)
+    api.checkVerified = async () => { const u = auth.currentUser; if (!u) return false; await u.reload(); if (!u.emailVerified) return false;
+      await u.getIdToken(true); current = { uid: u.uid, email: u.email, verified: true }; return true; };
     api.resetPassword = email => A.sendPasswordResetEmail(auth, email);
-    api.signOut = () => A.signOut(auth);
-    A.onAuthStateChanged(auth, u => {
-      current = u ? { uid: u.uid, email: u.email } : null;
+    // signing out empties this phone / tablet (inventories, reports, drafts, photos): everything stays in the account
+    api.signOut = async () => {
+      try { await Promise.race([F.waitForPendingWrites(fs), new Promise(r => setTimeout(r, 6000))]); } catch(e){}
+      await wipeDevice(); try { localStorage.removeItem(OWNER); } catch(e){}
+      return A.signOut(auth);
+    };
+    A.onAuthStateChanged(auth, async u => {
+      // another person signing in on this phone / tablet: clear what the last person left here first
+      if (u){ let o = null; try { o = localStorage.getItem(OWNER); } catch(e){}
+        if (o && o !== u.uid){ await wipeDevice(); try { localStorage.setItem(OWNER, u.uid); } catch(e){} location.reload(); return; }
+        if (!o) try { localStorage.setItem(OWNER, u.uid); } catch(e){} }
+      current = u ? { uid: u.uid, email: u.email, verified: !!u.emailVerified } : null;
       listeners.forEach(cb => { try { cb(current); } catch (e) { console.error(e); } });
     });
     resolveReady(true);

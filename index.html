@@ -89,6 +89,17 @@
   const big = (t) => `<header class="big"><img class="logo" src="icons/logo.png" alt="Blue Cranes"><div class="sub">Blue Cranes</div><h1>${t}</h1></header>`;
 
   // ---------- views ----------
+  function vVerify(){
+    return big('Online') + `<main><div class="card">
+      <h2>Confirm your email</h2>
+      <p style="margin:0;line-height:1.5">We sent a link to <b>${esc((S.user && S.user.email) || '')}</b>. Open that email on this phone and tap the link – it keeps your jobs and the office's data safe.</p>
+      <span class="hint">Not in your inbox? Look in Spam or Junk. It comes from Blue Cranes Online (noreply@blue-cranes-timesheet.firebaseapp.com).</span>
+      <div id="err" class="warn" role="alert"></div>
+      <button class="btn primary" type="button" id="vDone">I've confirmed my email</button>
+      <button class="btn secondary" type="button" id="vSend">Send the link again</button>
+      <button type="button" class="link" id="vOut">Sign out</button>
+    </div><div class="status">Only needed once per account.</div></main>`;
+  }
   function vAuth(){
     const m = S.mode;
     return big('Online') + `<main><form id="authForm" class="card" onsubmit="return false">
@@ -185,12 +196,20 @@
 
   // ---------- render & wire ----------
   function render(){
-    app.innerHTML = S.view === 'auth' ? vAuth() : S.view === 'setup' ? vProfile(true) : S.view === 'profile' ? vProfile(false) : S.view === 'home' ? vHome() : big('Online') + '<main><div class="status">Loading…</div></main>';
+    app.innerHTML = S.view === 'verify' ? vVerify() : S.view === 'auth' ? vAuth() : S.view === 'setup' ? vProfile(true) : S.view === 'profile' ? vProfile(false) : S.view === 'home' ? vHome() : big('Online') + '<main><div class="status">Loading…</div></main>';
     window.scrollTo(0, 0); wire();
   }
   function wire(){
     app.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { const e = document.getElementById('aEmail'); if (e) S.email = e.value; S.mode = b.dataset.mode; if (S.mode === 'up') S.sig = null; render(); });
     if (document.getElementById('pad')) wirePad();
+    if (S.view === 'verify'){ const err = document.getElementById('err');
+      document.getElementById('vDone').onclick = async e => { const b = e.target; b.disabled = true; err.textContent = '';
+        try { if (await Cloud.checkVerified()){ toast('Email confirmed'); location.reload(); return; } err.textContent = 'Not confirmed yet – open the link in the email first, then tap this again.'; }
+        catch(x){ err.textContent = navigator.onLine ? 'Could not check – try again.' : 'No signal – try again when you are online.'; } b.disabled = false; };
+      document.getElementById('vSend').onclick = async e => { const b = e.target; b.disabled = true; err.textContent = '';
+        try { await Cloud.sendVerify(); toast('Link sent – check your email'); } catch(x){ err.textContent = /too-many/.test(x && x.code || '') ? 'A link was sent a moment ago – wait a minute, then try again.' : 'Could not send – try again.'; } b.disabled = false; };
+      document.getElementById('vOut').onclick = async () => { BC.cacheProfile(null); await Cloud.signOut(); };
+      return; }
     const go = document.getElementById('go'), err = document.getElementById('err');
     const busy = async (fn) => { const old = go.textContent; go.disabled = true; go.textContent = 'Please wait…'; try { await fn(); } catch(e){ err.textContent = authMsg(e); } finally { if (document.body.contains(go)){ go.disabled = false; go.textContent = old; } } };
     if (document.getElementById('authForm')) go.onclick = () => {
@@ -241,6 +260,10 @@
       if (S.pending){ const prof = S.pending; S.pending = null; await saveProfile(prof); p = S.profile; toast('Account created'); }
       else { try { p = await Cloud.getItem('profile'); } catch(e){} if (p){ p.uid = u.uid; BC.cacheProfile(p); } }
       S.profile = p;
+      if (u.verified === false){ S.view = 'verify'; render();
+        // accounts made before email confirming existed: send their link once, by itself
+        try { const k = 'bco-vsent-' + u.uid; if (!localStorage.getItem(k)){ localStorage.setItem(k, String(Date.now())); await Cloud.sendVerify(); } } catch(e){}
+        return; }
       if (!p || !p.name || !p.signature){ S.sig = p && p.signature || null; S.view = 'setup'; render(); return; }
       try { Cloud.saveUser({ email:String(u.email || '').toLowerCase(), name:p.name || '', seen:new Date().toISOString() }); } catch(e){}
       if (!wantHome){ let to = NEXT; if (!/[?&]next=/.test(location.search)){ try { if (await Promise.race([Cloud.isAdmin(), new Promise(r => setTimeout(() => r(false), 4000))])) to = 'admin/'; } catch(e){} } location.replace(to); return; }

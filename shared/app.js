@@ -27,6 +27,7 @@
       if (!u){ BC.cacheProfile(null); const f = location.href.startsWith(BC.home) ? location.href.slice(BC.home.length).split(/[?#]/)[0].replace(/index\.html$/, '') : '';
         BC.goHome(/^[a-z]+\/$/.test(f) ? '?next=' + f.slice(0, -1) : ''); return; }   // come back here after signing in
       if (done) return; done = true;
+      if (u.verified === false && window.Cloud.checkVerified){ BC.goHome(); return; }
       let p = null; try { p = await window.Cloud.getItem('profile'); } catch(e){}
       if (p && p.name){ p.uid = u.uid; BC.cacheProfile(p); }
       else if (cached && cached.uid === u.uid) p = cached;

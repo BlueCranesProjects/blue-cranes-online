@@ -4,11 +4,14 @@ rules_version = '2';
 // - Admins (an "admins" document whose ID is their email, lower case) can read everyone's data
 //   and load jobs for technicians.
 // - A technician can read the jobs loaded for their email and only update the job's progress.
+// - Jobs and Admin need a confirmed email (the link sent when the account is made).
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function myEmail() { return request.auth.token.email.lower(); }
-    function isAdmin() { return signedIn() && request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(myEmail())); }
+    // a confirmed email (the person opened the link sent when the account was made)
+    function verified() { return signedIn() && request.auth.token.email != null && request.auth.token.email_verified == true; }
+    function isAdmin() { return verified() && exists(/databases/$(database)/documents/admins/$(myEmail())); }
 
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
@@ -25,8 +28,8 @@ service cloud.firestore {
 
     match /jobs/{jobId} {
       allow read, write: if isAdmin();
-      allow read: if signedIn() && request.auth.token.email != null && resource.data.tech == myEmail();
-      allow update: if signedIn() && request.auth.token.email != null && resource.data.tech == myEmail()
+      allow read: if verified() && resource.data.tech == myEmail();
+      allow update: if verified() && resource.data.tech == myEmail()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'sheetDate', 'startedAt', 'doneAt', 'updatedAt']);
     }
   }
