@@ -98,6 +98,8 @@
   .folder .fch{font-size:14px}
   .folder > .item, .grp > .item{margin:8px}
   .grp{border-top:1px solid var(--line)}
+  .gbulk{padding:8px 8px 0}.gbulk .btn{width:100%;color:var(--ok);border-color:var(--ok);font-weight:800}
+  main.wide .grp > .gbulk{grid-column:1/-1}
   .grp .gh{display:flex;align-items:center;gap:10px;width:100%;border:0;background:#F4F6FB;padding:12px 14px;font:800 14.5px Inter,Arial,sans-serif;color:var(--navyDeep);cursor:pointer;text-align:left}
   .grp .gh .c{margin-left:auto;font:800 12px Inter,Arial,sans-serif;background:#fff;border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:#4a5370}
   .grp .gh .c.bad{background:var(--bad);border-color:var(--bad);color:#fff}
@@ -158,8 +160,16 @@
   function openSet(){ if (!S.open || S.openFor !== openKey()){ S.openFor = openKey(); try { S.open = new Set(JSON.parse(sessionStorage.getItem(S.openFor) || '[]')); } catch(e){ S.open = new Set(); } } return S.open; }
   function keepOpen(){ try { sessionStorage.setItem(openKey(), JSON.stringify([...openSet()])); } catch(e){} }
   function openRow(id){ if (id){ openSet().add(id); keepOpen(); } }
-  function lsLoad(){ try { S.lists = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ S.lists = {}; } }
-  function lsSave(){ try { localStorage.setItem(LKEY, JSON.stringify(S.lists)); } catch(e){} }
+  function lsLoad(){ try { S.lists = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ S.lists = {}; } Object.values(S.lists).forEach(snapList); }
+  // saved on the phone too; if the phone's storage is full the app says so (BC.lsSet) – the server copy still gets every change
+  function lsSave(){ const v = JSON.stringify(S.lists); if (window.BC && BC.lsSet) BC.lsSet(LKEY, v); else try { localStorage.setItem(LKEY, v); } catch(e){} }
+  // each item remembers when it last changed (t), so copies of the same inventory can be combined item by item
+  const SNAP = {}; const rowSig = r => { const c = Object.assign({}, r); delete c.t; return JSON.stringify(c); };
+  function snapList(l){ if (!l || !l.id) return; const m = {}; (l.rows || []).forEach(r => { if (r && r.id) m[r.id] = rowSig(r); }); SNAP[l.id] = m; }
+  function stampList(l){ const m = SNAP[l.id] || {}, now = Date.now(); (l.rows || []).forEach(r => { if (!r) return; if (!r.id) r.id = rowId(); if (m[r.id] !== rowSig(r)) r.t = now; }); snapList(l); }
+  // combine another copy into ours: the newest result per item wins (never the whole older copy)
+  function mergeIn(other){ if (!other || !other.id) return false; const mine = S.lists[other.id]; const m = mine ? BC.mergeList(mine, other) : other;
+    if (mine && JSON.stringify(m) === JSON.stringify(mine)) return false; S.lists[other.id] = m; snapList(m); return true; }
   let MAKES = (() => { try { return JSON.parse(localStorage.getItem('bco-eq-makes') || '[]'); } catch(e){ return []; } })();
   function saveMakes(){ try { localStorage.setItem('bco-eq-makes', JSON.stringify(MAKES)); } catch(e){} if (cloudOK()) Cloud.putItem('eq-makes', { kind:'eqmakes', list:MAKES }); }
   function makesList(){
@@ -200,12 +210,17 @@
   // uid: the technician whose list it is (Admin downloading a job) – their photos, not the signed-in account's
   function photoGet(pid, uid){
     if (PH[pid]) return Promise.resolve(PH[pid]);
-    try { const v = localStorage.getItem('bco-eqp-' + pid); if (v){ PH[pid] = v; return Promise.resolve(v); } } catch(e){}
-    if (!cloudOK()) return Promise.resolve(null);
-    return (uid && Cloud.getItemOf ? Cloud.getItemOf(uid, 'eqp-' + pid) : Cloud.getItem('eqp-' + pid)).then(d => { if (d && d.data){ PH[pid] = d.data; try { localStorage.setItem('bco-eqp-' + pid, d.data); } catch(e){} return d.data; } return null; }).catch(() => null);
+    return (window.BC && BC.photoStore ? BC.photoStore.get(pid) : Promise.resolve(null)).then(v => {
+      if (v){ PH[pid] = v; return v; }
+      try { const o = localStorage.getItem('bco-eqp-' + pid); if (o){ PH[pid] = o; return o; } } catch(e){}
+      return photoCloud(pid, uid); });
   }
-  function photoPut(pid, data){ PH[pid] = data; try { localStorage.setItem('bco-eqp-' + pid, data); } catch(e){} if (cloudOK()) Cloud.putItem('eqp-' + pid, { kind:'eqphoto', data }); }
-  function photoDel(pid){ delete PH[pid]; try { localStorage.removeItem('bco-eqp-' + pid); } catch(e){} if (cloudOK()) Cloud.deleteItem('eqp-' + pid); }
+  function photoCloud(pid, uid){
+    if (!cloudOK()) return Promise.resolve(null);
+    return (uid && Cloud.getItemOf ? Cloud.getItemOf(uid, 'eqp-' + pid) : Cloud.getItem('eqp-' + pid)).then(d => { if (d && d.data){ PH[pid] = d.data; if (window.BC && BC.photoStore) BC.photoStore.put(pid, d.data); return d.data; } return null; }).catch(() => null);
+  }
+  function photoPut(pid, data){ PH[pid] = data; if (window.BC && BC.photoStore) BC.photoStore.put(pid, data); if (cloudOK()) Cloud.putItem('eqp-' + pid, { kind:'eqphoto', data }); }
+  function photoDel(pid){ delete PH[pid]; if (window.BC && BC.photoStore) BC.photoStore.del(pid); try { localStorage.removeItem('bco-eqp-' + pid); } catch(e){} if (cloudOK()) Cloud.deleteItem('eqp-' + pid); }
   // shrink a camera photo so it saves quickly (about 100–200 KB)
   function shrinkPhoto(file){ return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = () => rej(new Error('read')); fr.onload = () => { const im = new Image(); im.onerror = () => rej(new Error('decode'));
     im.onload = () => { const sc = Math.min(1, 1280 / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * sc); c.height = Math.round(im.height * sc);
@@ -215,7 +230,7 @@
   const docId = id => 'eq-' + String(id).replace(/\//g, '_');
   let saveT;
   function saveList(l, now){
-    l.savedAt = Date.now(); S.lists[l.id] = l; lsSave();
+    stampList(l); l.savedAt = Date.now(); S.lists[l.id] = l; lsSave();
     clearTimeout(saveT); const push = () => { pending = null; if (cloudOK()) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); };
     if (now) push(); else { pending = push; saveT = setTimeout(push, 1200); }
   }
@@ -225,7 +240,7 @@
   // back from a report (page restored from memory): take the newer lists from the phone, e.g. a manufacturer typed on the report
   function pickUpChanges(){
     let disk = {}; try { disk = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ return; }
-    let changed = false; Object.values(disk).forEach(d => { if (!d || !d.id) return; const m = S.lists[d.id]; if (!m || (d.savedAt || 0) > (m.savedAt || 0)){ S.lists[d.id] = d; changed = true; } });
+    let changed = false; Object.values(disk).forEach(d => { if (d && d.id && mergeIn(d)) changed = true; });
     if (!changed) return; if (S.cur && S.lists[S.cur.id]) S.cur = S.lists[S.cur.id]; if (typeof render === 'function' && S.view) render();
   }
   window.addEventListener('pageshow', e => { if (e.persisted) pickUpChanges(); });
@@ -235,8 +250,10 @@
     try {
       try { const mk = await Cloud.getItem('eq-makes'); if (mk && Array.isArray(mk.list)){ const before = MAKES.length; MAKES = [...new Set([...mk.list, ...MAKES])]; try { localStorage.setItem('bco-eq-makes', JSON.stringify(MAKES)); } catch(e){} if (MAKES.length > mk.list.length) saveMakes(); if (MAKES.length !== before && S.view === 'list') render(); } } catch(e){}
       const remote = await Cloud.listKind('equipment'); const seen = {};
-      remote.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; seen[r.id] = 1; const l = S.lists[r.id]; if (!l || (r.savedAt || 0) > (l.savedAt || 0)) S.lists[r.id] = r; });
-      Object.values(S.lists).forEach(l => { if (!seen[l.id]) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); });
+      const ahead = {};
+      remote.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; seen[r.id] = 1; mergeIn(r); if (JSON.stringify(S.lists[r.id]) !== JSON.stringify(Object.assign({}, r, { savedAt:S.lists[r.id].savedAt }))) ahead[r.id] = 1; });
+      // lists only on this phone, or with newer items than the server: send them (the server combines item by item)
+      Object.values(S.lists).forEach(l => { if (!seen[l.id] || ahead[l.id]) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); });
       if (S.cur && S.lists[S.cur.id] && S.lists[S.cur.id] !== S.cur){ S.cur = S.lists[S.cur.id]; lsSave(); render(); return; }
       let fixed = false; const core = j => String(j || '').trim().replace(/\s+/g, '').replace(/^C(?=\d)/i, '');
       const fixNo = no => { const t = String(no || '').trim(); if (!/\.\d+$/.test(t) || /^(CR|MC)/i.test(t) || /^S(?=\d)/i.test(t)) return t; return 'F' + core(/^F/i.test(t) ? t.slice(1) : t); };
@@ -247,6 +264,34 @@
         if (c){ fixed = true; saveList(l, true); } });
       lsSave(); if (fixed || S.view !== 'list') render(); else refreshSuggestions();
     } catch(e){ console.error('Equipment sync failed', e); }
+  }
+  // A saved report always holds its item's result. If an inventory lost it (e.g. an older copy saved over it), put it back from the report.
+  async function repairFromReports(){
+    const l = S.cur; if (!l || !S.active || S.repairing) return; S.repairing = true;
+    try {
+      const jc = j => String(j || '').trim().toUpperCase().replace(/\s+/g, '').replace(/^C(?=\d)/, '');
+      const N = v => String(v || '').trim().toUpperCase().replace(/\s+/g, ' ');
+      const job = jc(l.job || S.active.card); if (!job) return;
+      let fixed = 0;
+      for (const [src, key, link] of [['../crane/?embed=1', 'BCC', 'cr'], ['../forklift/?embed=1', 'BCF', 'fl'], ['../mancage/?embed=1', 'BCM', 'mc']]){
+        // quick look in the phone's saved reports first; the report page is only loaded when something needs putting back
+        const db = src.split('/')[1]; const saved = await new Promise(res => { try { const q = indexedDB.open('bc-' + db, 1); q.onupgradeneeded = () => q.result.createObjectStore('reports', { keyPath:'id' });
+          q.onsuccess = () => { try { const g = q.result.transaction('reports').objectStore('reports').getAll(); g.onsuccess = () => { res(g.result || []); q.result.close(); }; g.onerror = () => { res([]); q.result.close(); }; } catch(e){ res([]); } }; q.onerror = () => res([]); } catch(e){ res([]); } });
+        const missing = rep => { const st = rep.state, rid = st._rid || st.f.docno || rep.id;
+          const row = (st.row && (l.rows || []).find(x => x.id === st.row)) || (l.rows || []).find(x => x[link] && (x[link] === rid || x[link] === rep.id)) || (st.f.serial && (l.rows || []).find(x => N(x.serial) === N(st.f.serial)));
+          return !(row && row.status); };
+        if (!saved.some(r => r && r.state && r.state.f && (r.state.status === 'SAFE' || r.state.status === 'UNSAFE') && jc(r.job || r.state.f.jobno) === job && missing(r))) continue;
+        let t; try { t = await hiddenPage(src, w => w[key] && w[key]); } catch(e){ continue; }
+        try {
+          const reps = ((await t.reports()) || []).filter(r => r && r.state && r.state.f && (r.state.status === 'SAFE' || r.state.status === 'UNSAFE') && jc(r.job || r.state.f.jobno) === job);
+          for (const rep of reps){ const st = rep.state, rid = st._rid || st.f.docno || rep.id;
+            if (!missing(rep) || !t.toInventory) continue;   // the inventory already has a result for this item
+            t.toInventory(Object.assign({}, st, { _rid:rid, list:st.list || l.id })); fixed++; }
+        } finally { t.done(); }
+      }
+      if (fixed){ pickUpChanges(); toast(fixed === 1 ? '1 item put back from its report' : fixed + ' items put back from their reports'); }
+    } catch(e){ console.error('Repair from reports failed', e); }
+    finally { S.repairing = false; }
   }
   // items the office loaded for this job from Excel (Admin → Inventory): added once, the technician marks them Safe / Unsafe
   async function loadOffice(){
@@ -333,6 +378,8 @@
   function groupRows(pairs){ const m = new Map(); pairs.forEach(p => { const g = groupOf(p[0]); if (!m.has(g)) m.set(g, []); m.get(g).push(p); });
     const rank = g => { const k = GORDER.indexOf(g); return k < 0 ? (g === 'New items' ? 9999 : 1000) : k; };
     return [...m.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])); }
+  // can be marked Safe together with its group: small equipment that has no report of its own
+  const canBulk = r => !r.status && !!(r.serial || r.desc) && !isForklift(r) && !isManCage(r) && !MACHINE.test(r.desc || '') && !r.cr && !r.fl && !r.mc;
   const isManCage = r => !!r.mc || /man\s*-?\s*cage|work(ing)?\s*platform|personnel\s*(basket|cage|carrier)|man\s*basket|\bcradle\b|access\s*cage/i.test(r.desc || '');
   function openManCage(i){
     const l = S.cur; const r = l && l.rows[i]; if (!r) return;
@@ -625,10 +672,13 @@
           + (q ? `<div class="hint" style="margin:-2px 4px 6px">${all.length ? all.length + (all.length === 1 ? ' item found' : ' items found') : 'Nothing found for “' + esc(S.q) + '”'}</div>` : '');
         const todo = all.filter(([r]) => !itemDone(r)), done = all.filter(([r]) => itemDone(r));
         // inside each folder the items are grouped by type, each group folds open on its own
+        // tackle, slings, harnesses and other small equipment (no report needed): mark the whole group Safe in one go
+        const bulkBtn = (k, g, rs) => { if (k !== 'todo') return ''; const n = rs.filter(([r]) => canBulk(r)).length; if (n < 2) return '';
+          return `<div class="gbulk"><button type="button" class="btn secondary small" data-allsafe="${esc(g)}">✓ Mark all ${n} Safe</button></div>`; };
         const F = folds(); const grp = (k, list) => groupRows(list).map(([g, rs]) => { const gk = 'g|' + k + '|' + g, nb = rs.filter(([r]) => r.status === 'UNSAFE').length;
             const on = !!q || !!F[gk] || rs.some(([r]) => r.id === S.focusId);
             return `<div class="grp"><button type="button" class="gh" data-fold="${esc(gk)}" aria-expanded="${on}"><span>${esc(g)}</span>${nb ? `<span class="c bad">${nb} unsafe</span>` : ''}<span class="c"${nb ? ' style="margin-left:0"' : ''}>${rs.length}</span><span class="fch">${on ? '▾' : '▸'}</span></button>
-              ${on ? rs.map(([r, i]) => one(r, i)).join('') : ''}</div>`; }).join('');
+              ${on ? bulkBtn(k, g, rs) + rs.map(([r, i]) => one(r, i)).join('') : ''}</div>`; }).join('');
         const box = (k, ttl, list, cls) => { const on = !!q || !!F[k]; return `<div class="folder ${cls}"><button type="button" class="fh" data-fold="${k}" aria-expanded="${on}">${ttl}<span class="c">${list.length}</span><span class="fch">${on ? '▾' : '▸'}</span></button>
           ${on ? (grp(k, list) || `<div class="empty" style="margin:6px 0">${q ? 'No matching items here.' : k === 'todo' ? 'Nothing left to do – every item is marked.' : 'Items move here once they are marked Safe or Unsafe.'}</div>`) : ''}</div>`; };
         return srch + box('todo', '⏳ To do', todo, 'prog') + box('done', '✓ Completed', done, 'done'); })()}
@@ -827,8 +877,14 @@
     const ss = $('selSet'); if (ss) ss.onclick = () => { const n = S.sel.size; askLocation(l, 'Location for ' + n + (n === 1 ? ' item' : ' items'), v => {
       l.rows.forEach(r => { if (S.sel.has(r.id)) r.loc = v; }); if (v) addLoc(l, v); S.sel = null; saveList(l, true); render(); toast(n + (n === 1 ? ' item' : ' items') + (v ? ' moved to ' + v : ' set to no location')); }); };
     if (S.sel) return;
+    app.querySelectorAll('[data-allsafe]').forEach(b => b.onclick = () => { const g = b.dataset.allsafe;
+      const rows = (l.rows || []).filter(r => !itemDone(r) && canBulk(r) && groupOf(r) === g);
+      const m = modal(`<div style="font-size:16px;font-weight:700">Mark all ${rows.length} ${esc(g.toLowerCase())} Safe?</div><div class="hint" style="margin:6px 0 12px">Only do this when you checked every one of them. You can still change a single item afterwards.</div>
+        <button class="btn primary" id="aYes" style="background:var(--ok);color:#fff">✓ Yes, mark all ${rows.length} Safe</button><button class="btn secondary" id="aNo">Cancel</button>`);
+      m.querySelector('#aNo').onclick = () => m.remove();
+      m.querySelector('#aYes').onclick = () => { const at = (S.active && S.active.date) || today(); rows.forEach(r => { r.status = 'SAFE'; r.at = at; }); saveList(l); m.remove(); render(); toast(rows.length + ' ' + g.toLowerCase() + ' → Completed'); }; });
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = Number(b.dataset.del); const r = l.rows[i];
-      const go = () => { l.rows.splice(i, 1); saveList(l); render(); };
+      const go = () => { if (r && r.id){ l.del = l.del || {}; l.del[r.id] = Date.now(); } l.rows.splice(i, 1); saveList(l); render(); };
       if (r.serial || r.desc) confirmBox('Remove item ' + (i + 1) + (r.serial ? ' (' + r.serial + ')' : '') + ' from this list?', 'Remove', go); else go(); });
     app.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { const i = Number(b.dataset.st); const r = l.rows[i]; r.status = r.status === b.dataset.v ? '' : b.dataset.v; if (r.status) r.at = (S.active && S.active.date) || today(); else delete r.at; if (itemDone(r)){ openSet().delete(r.id); keepOpen(); toast('Item ' + (i + 1) + ' → Completed'); } saveList(l); render();
       if (r.status === 'UNSAFE'){ const u = document.getElementById('u' + i); if (u){ u.scrollIntoView({ block:'center' }); if (!u.value) u.focus(); } } });
@@ -1262,6 +1318,7 @@
     if (window.Cloud) Cloud.onError = () => toast('Cloud save failed – kept on this phone');
     await syncCloud();
     loadOffice();
+    repairFromReports();
   })();
 })();
 </script>

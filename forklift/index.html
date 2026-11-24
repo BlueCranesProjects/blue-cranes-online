@@ -328,7 +328,7 @@ const KEY="bc-forklift-draft-v1", ENGKEY="bc-forklift-engineer", JOBKEY="bc-fork
 
 let state=blank();
 function blank(){return{batt:{min:"",max:""},crack:"",type:"INSPECTION",wr:{insp:false,load:false},chain:{ln:"",lm:"",rn:"",rm:""},fork:{lv:"",lh:"",rv:"",rh:"",l2v:"",l2h:"",r2v:"",r2h:""},f:{},res:Array(ITEMS.length).fill(null),val:Array(ITEMS.length).fill(""),note:Array(ITEMS.length).fill(""),status:null,photo:{},sig:{sigEng:null,sigCust:null,sigUt:null}};}
-function store(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function store(k,v){if(window.BC&&BC.lsSet)return BC.lsSet(k,v);try{localStorage.setItem(k,v)}catch(e){}}
 function load(k){try{return localStorage.getItem(k)}catch(e){return null}}
 
 const $=id=>document.getElementById(id);
@@ -822,7 +822,7 @@ function toEquipment(st){
   const xs=vis().filter(i=>st.res[i]==="x").map(i=>itemName(i)+" (X)");
   const auto="See report "+(f.docno||"")+(xs.length?" – "+xs.join(", "):"");
   r.at=f.date||today();   // the day this forklift was tested (certificates use it)
-  Object.assign(r,{fl:rid,auto:added||!!r.auto,serial:String(f.serial||r.serial||"").toUpperCase(),make:f.make||r.make||"",swl:String(f.swl||r.swl||"").replace(/[^\d.]/g,""),
+  Object.assign(r,{t:Date.now(),fl:rid,auto:added||!!r.auto,serial:String(f.serial||r.serial||"").toUpperCase(),make:f.make||r.make||"",swl:String(f.swl||r.swl||"").replace(/[^\d.]/g,""),
     status:st.status==="UNSAFE"?"UNSAFE":st.status==="SAFE"?"SAFE":(r.status||""),
     report:{no:f.docno||"",type:lt?"Load test":"Inspection",cert:lt?certNo(f):""}});
   if(r.auto||!r.desc)r.desc=STK()?"Electric pedestrian stacker":"Forklift";
@@ -842,7 +842,7 @@ function makeToInventory(){
   for(const l of lists){const rows=l.rows||[];
     const r=(state.row&&rows.find(x=>x.id===state.row))||(rid&&rows.find(x=>x.fl===rid||x.cr===rid))||(f.serial&&rows.find(x=>N(x.serial)===N(f.serial)));
     if(!r)continue;if(r.make===mk)return;
-    r.make=mk;l.savedAt=Date.now();all[l.id]=l;store("bco-equipment",JSON.stringify(all));
+    r.make=mk;r.t=Date.now();l.savedAt=Date.now();all[l.id]=l;store("bco-equipment",JSON.stringify(all));
     if(cloudOK())window.Cloud.putItem("eq-"+String(l.id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));return;}
 }
 {let mkT;const mi=$("make");if(mi){mi.addEventListener("input",()=>{clearTimeout(mkT);mkT=setTimeout(makeToInventory,800);});mi.addEventListener("change",()=>{clearTimeout(mkT);makeToInventory();});}}
@@ -873,10 +873,10 @@ function fixNo(no){const t=String(no||"").trim();if(!/\.\d+$/.test(t)||/^(CR|MC)
 function fixCert(c){return String(c||"").replace(/^CC(?=\d)/i,"C");}
 const needsFix=no=>{const t=String(no||"").trim();return !!t&&fixNo(t)!==t;};
 async function fixEquipmentNos(){let eq={};try{eq=JSON.parse(load("bco-equipment")||"{}")||{};}catch(e){return 0;}let n=0;
-  if(cloudOK()){try{(await window.Cloud.listKind("equipment")).forEach(d=>{const r=d.data;if(!r||!r.id)return;delete r.kind;const l=eq[r.id];if(!l||(r.savedAt||0)>(l.savedAt||0))eq[r.id]=r;});}catch(e){}}
-  Object.values(eq).forEach(l=>{let c=false;(l.rows||[]).forEach(x=>{if(x.report&&x.report.no&&needsFix(x.report.no)){x.report.no=fixNo(x.report.no);c=true;}
+  if(cloudOK()){try{(await window.Cloud.listKind("equipment")).forEach(d=>{const r=d.data;if(!r||!r.id)return;delete r.kind;eq[r.id]=window.BC&&BC.mergeList?BC.mergeList(eq[r.id],r):r;});}catch(e){}}
+  Object.values(eq).forEach(l=>{let c=false;(l.rows||[]).forEach(x=>{const was=JSON.stringify(x);if(x.report&&x.report.no&&needsFix(x.report.no)){x.report.no=fixNo(x.report.no);c=true;}
     if(x.report&&x.report.cert&&fixCert(x.report.cert)!==x.report.cert){x.report.cert=fixCert(x.report.cert);c=true;}
-    if(x.reason){const nr=x.reason.replace(/^See report (\S+)/,(m,no)=>"See report "+fixNo(no));if(nr!==x.reason){x.reason=nr;c=true;}}});
+    if(x.reason){const nr=x.reason.replace(/^See report (\S+)/,(m,no)=>"See report "+fixNo(no));if(nr!==x.reason){x.reason=nr;c=true;}}if(JSON.stringify(x)!==was)x.t=Date.now();});
     if(c){n++;l.savedAt=Date.now();if(cloudOK())window.Cloud.putItem("eq-"+String(l.id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));}});
   store("bco-equipment",JSON.stringify(eq));return n;}
 async function renumberOld(){let n=0;
@@ -884,7 +884,7 @@ async function renumberOld(){let n=0;
   const cur=String(state.f.docno||"").trim();if(cur&&needsFix(cur)){state.f.docno=fixNo(cur);applyState();save();}
   await fixEquipmentNos();if(n){updRepCount();if($("repPanel").classList.contains("show"))showReports();toast(n+" report number"+(n>1?"s":"")+" updated");}}
 // used by the equipment list to put every report of a job in one folder
-window.BCF={async reports(){for(let i=0;i<80&&!window.BCF_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCF_READY;}catch(e){}return RDB.all();},
+window.BCF={toInventory:st=>{const keep=state;state=JSON.parse(JSON.stringify(st));try{toEquipment(state);}finally{state=keep;}},async reports(){for(let i=0;i<80&&!window.BCF_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCF_READY;}catch(e){}return RDB.all();},
   buildPdf:st=>{if(st&&st.f&&st.f.docno)st.f.docno=fixNo(st.f.docno);return buildPdf(st);},buildCert:st=>{if(st&&st.f&&st.f.docno)st.f.docno=fixNo(st.f.docno);return buildCert(st);}};
 async function saveReport(st){if(!st._rid)st._rid=st.f.docno||("r"+Date.now());const snap=JSON.parse(JSON.stringify(st));
   await RDB.put({id:st._rid,savedAt:Date.now(),date:st.f.date||today(),job:(st.f.jobno||"").trim(),state:snap});if(st===state){state._saved=stSig(state);if(state._did)dropDraft(state._did);}save();updRepCount();}

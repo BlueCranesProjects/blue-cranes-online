@@ -49,8 +49,8 @@
       const newer = (a, b) => !b || (a.savedAt || 0) > (b.savedAt || 0);
       // inventories
       const eq = await window.Cloud.listKind('equipment'); let lists = {}; try { lists = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; } catch(e){}
-      eq.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; if (newer(r, lists[r.id])){ lists[r.id] = r; n++; } });
-      try { localStorage.setItem('bco-equipment', JSON.stringify(lists)); } catch(e){}
+      eq.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; const was = JSON.stringify(lists[r.id] || null); lists[r.id] = BC.mergeList(lists[r.id], r); if (JSON.stringify(lists[r.id]) !== was) n++; });
+      BC.lsSet('bco-equipment', JSON.stringify(lists));
       // unfinished reports
       for (const [kind, key] of [['crane-draft', 'bc-crane-drafts'], ['forklift-draft', 'bc-forklift-drafts'], ['mancage-draft', 'bc-mancage-drafts']]){
         const rem = await window.Cloud.listKind(kind); let d = {}; try { d = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch(e){}
@@ -197,6 +197,89 @@
     new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) tuneAll(n); }))).observe(document.documentElement, { childList:true, subtree:true });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startSpell, { once:true }); else startSpell();
+
+  // ---------- inventories: never let an older copy undo newer work ----------
+  // Every item (row) carries t = when it was last changed. Two copies of the same inventory are combined item by item:
+  // the newer item wins, items only in one copy are kept, items deleted (l.del[id] = time) stay deleted.
+  BC.mergeList = (a, b) => {
+    if (!a || !a.rows) return b; if (!b || !b.rows) return a;
+    const [nw, od] = (b.savedAt || 0) >= (a.savedAt || 0) ? [b, a] : [a, b];
+    const out = Object.assign({}, od, nw);
+    const del = Object.assign({}, od.del || {}); Object.entries(nw.del || {}).forEach(([k, v]) => { if (!del[k] || v > del[k]) del[k] = v; });
+    const byO = new Map((od.rows || []).filter(r => r && r.id).map(r => [r.id, r])), inN = new Set();
+    const rows = [];
+    (nw.rows || []).forEach(r => { if (!r) return; if (!r.id){ rows.push(r); return; } inN.add(r.id); const o = byO.get(r.id); rows.push(o && (o.t || 0) > (r.t || 0) ? o : r); });
+    (od.rows || []).forEach(r => { if (r && r.id && !inN.has(r.id)) rows.push(r); });
+    out.rows = rows.filter(r => !(r.id && del[r.id] && del[r.id] >= (r.t || 0)));
+    if (Object.keys(del).length) out.del = del;
+    ['locs', 'pre', 'also'].forEach(k => { const u = [...new Set([...(od[k] || []), ...(nw[k] || [])])]; if (u.length) out[k] = u; });
+    out.savedAt = Math.max(a.savedAt || 0, b.savedAt || 0);
+    return out;
+  };
+
+  // ---------- the phone's own storage: never fail without saying so ----------
+  // Photos live in the large photo store (IndexedDB), not in the small 5 MB storage the inventories and time sheets use.
+  const PDB = () => BC._pdb || (BC._pdb = new Promise((res, rej) => { const q = indexedDB.open('bc-photos', 1); q.onupgradeneeded = () => q.result.createObjectStore('p'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
+  BC.photoStore = {
+    get: async k => { try { const db = await PDB(); return await new Promise(r => { const g = db.transaction('p').objectStore('p').get(k); g.onsuccess = () => r(g.result || null); g.onerror = () => r(null); }); } catch(e){ return null; } },
+    put: async (k, v) => { try { const db = await PDB(); await new Promise(r => { const t = db.transaction('p', 'readwrite'); t.objectStore('p').put(v, k); t.oncomplete = t.onerror = t.onabort = () => r(); }); return true; } catch(e){ return false; } },
+    del: async k => { try { const db = await PDB(); await new Promise(r => { const t = db.transaction('p', 'readwrite'); t.objectStore('p').delete(k); t.oncomplete = t.onerror = t.onabort = () => r(); }); } catch(e){} }
+  };
+  // move photos an older version kept in the small storage over to the photo store (frees the space)
+  BC.freeSpace = async () => {
+    let keys = []; try { keys = Object.keys(localStorage).filter(k => /^bco-eqp-/.test(k)); } catch(e){ return 0; }
+    let n = 0; for (const k of keys){ const v = localStorage.getItem(k); if (v != null && await BC.photoStore.put(k.slice(8), v)){ try { localStorage.removeItem(k); n++; } catch(e){} } }
+    return n;
+  };
+  // save to the phone's storage; if it is full: free space and try again, and if that still fails say so loudly
+  const failed = {};
+  BC.lsSet = (k, v) => {
+    try { localStorage.setItem(k, v); delete failed[k]; if (!Object.keys(failed).length && document.getElementById('bcStoreWarn')) BC.storageWarn(false); return true; } catch(e){
+      failed[k] = v; BC.freeSpace().then(() => { Object.keys(failed).forEach(x => { try { localStorage.setItem(x, failed[x]); delete failed[x]; } catch(_){} }); if (Object.keys(failed).length) BC.storageWarn(); else BC.storageWarn(false); });
+      return false; }
+  };
+  BC.storageWarn = (on = true) => {
+    let b = document.getElementById('bcStoreWarn');
+    if (!on){ if (b) b.remove(); return; }
+    if (!document.body) return; if (!b){ b = document.createElement('div'); b.id = 'bcStoreWarn'; b.setAttribute('role', 'alert');
+      b.style.cssText = 'position:fixed;left:8px;right:8px;top:8px;z-index:99999;background:#A12A1F;color:#fff;border-radius:12px;padding:12px 14px;font:600 14px/1.4 Inter,Arial,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.3)';
+      document.body.appendChild(b); }
+    b.innerHTML = '⚠ <b>This phone\'s storage is full.</b> Your latest changes are being saved to the server only – keep the app open with signal until the ☁ icon shows <b>Saved</b>. Then free space on the phone (old photos, apps) or ask the office for help. <button type="button" style="margin-left:6px;border:0;background:#fff;color:#A12A1F;border-radius:8px;padding:4px 10px;font-weight:800">OK</button>';
+    b.querySelector('button').onclick = () => b.remove();
+  };
+  // start: move old photos out of the small storage (in the background)
+  setTimeout(() => { BC.freeSpace().catch(() => {}); }, 1500);
+
+  // ---------- save icon: is everything on the server? ----------
+  // Cloud reports { pending, error, online }: ☁✓ Saved · ☁… Saving · ☁ Waiting for signal (kept on this phone) · ⚠ Not saved
+  BC.saveIcon = () => {
+    if (/[?&]embed=1/.test(location.search) || document.getElementById('bcSave')) return;
+    const el = document.createElement('button'); el.type = 'button'; el.id = 'bcSave';
+    el.style.cssText = 'position:fixed;left:8px;z-index:40;display:none;align-items:center;gap:5px;border:1px solid #D9E0EA;border-radius:999px;padding:4px 9px 4px 7px;font:700 11.5px Inter,Arial,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer;background:#fff';
+    document.body.appendChild(el);
+    let st = { pending:0, error:null, online:navigator.onLine, last:0 }, shown = '';
+    const cloud = d => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 0 0 0-9h-1.3A7 7 0 1 0 4 15.3"/>${d}</svg>`;
+    const view = () => {
+      const s = st.error ? 'err' : st.pending && !st.online ? 'wait' : st.pending ? 'busy' : 'ok';
+      const t = { ok:['#15703D', cloud('<path d="M8 17l2.5 2.5L16 14"/>'), 'Saved'], busy:['#7a5600', cloud('<path d="M8 18h.01M12 18h.01M16 18h.01"/>'), 'Saving…'],
+        wait:['#7a5600', cloud('<path d="M9 15l6 6M15 15l-6 6"/>'), 'No signal'], err:['#A12A1F', cloud('<path d="M12 14v3M12 20h.01"/>'), 'Not saved'] }[s];
+      el.style.color = t[0]; el.style.borderColor = s === 'ok' ? '#b9dcc5' : s === 'err' ? '#e3a59f' : '#f0dc8a'; el.style.background = s === 'ok' ? '#F2FAF4' : s === 'err' ? '#FDEDEC' : '#FFF8E1';
+      el.innerHTML = t[1] + '<span>' + t[2] + '</span>'; el.setAttribute('aria-label', t[2]); shown = s; el.style.display = 'inline-flex'; place(); };
+    // sit just above the bottom bar of the page (tabs, Submit report…)
+    const place = () => { let h = 0; document.querySelectorAll('body *').forEach(n => { if (n === el) return; const cs = getComputedStyle(n); if (cs.position === 'fixed' && cs.bottom === '0px' && n.offsetHeight < 220 && n.offsetHeight > 0) h = Math.max(h, n.offsetHeight); });
+      el.style.bottom = 'calc(' + (h + 8) + 'px + env(safe-area-inset-bottom, 0px))'; };
+    el.onclick = () => { const m = { ok:'Everything is saved on the server' + (st.last ? ' (last save ' + new Date(st.last).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' }) + ')' : '') + '.',
+        busy:'Saving to the server…', wait:'No signal: your work is kept on this phone and goes to the server by itself as soon as there is signal. Don\'t sign out until it shows Saved.',
+        err:'The last change could not be saved to the server' + (st.error ? ' (' + st.error + ')' : '') + '. It is kept on this phone – keep the app open with signal, or tell the office.' }[shown];
+      let tip = document.getElementById('bcSaveTip'); if (!tip){ tip = document.createElement('div'); tip.id = 'bcSaveTip'; tip.setAttribute('role', 'status');
+        tip.style.cssText = 'position:fixed;left:8px;right:8px;z-index:9001;background:#0B3575;color:#fff;border-radius:12px;padding:11px 14px;font:500 13.5px/1.45 Inter,Arial,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25)'; document.body.appendChild(tip); }
+      tip.textContent = m; tip.style.bottom = 'calc(' + (parseFloat(el.style.bottom) || 8) + 'px + 40px)'; clearTimeout(BC._tipT); BC._tipT = setTimeout(() => tip.remove(), 5000); };
+    window.addEventListener('resize', place); window.addEventListener('online', () => { st.online = true; view(); }); window.addEventListener('offline', () => { st.online = false; view(); });
+    const hook = () => { if (window.Cloud && window.Cloud.onSync){ window.Cloud.onSync(s => { st = Object.assign(st, s, { online:navigator.onLine }); view(); }); return true; } return false; };
+    if (!hook()){ const iv = setInterval(() => { if (hook()) clearInterval(iv); }, 300); setTimeout(() => clearInterval(iv), 15000); }
+    setInterval(place, 3000);
+  };
+  { const go = () => { if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey) BC.saveIcon(); }; if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go, { once:true }); else go(); }
 
   // Offline support for the whole app
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register(BC.home + 'sw.js', { scope: BC.home }).catch(() => {});

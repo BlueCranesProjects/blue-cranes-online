@@ -351,7 +351,7 @@ const FIELDS=["customer","date","jobno","details","make","model","serial","swl",
 const KEY="bc-crane-draft-v1",JOBKEY="bc-crane-jobs",LMIKEY="bc-crane-lmi",DKEY="bc-crane-drafts";
 function blank(){return{type:"INSPECTION",f:{},parts:{lt:true,ct:true,h:true,ah:false},res:{},val:{F:"",G:"",H:""},note:{},status:null,wr:{insp:false,load:false},photo:{},quote:{},sig:{sigEng:null,sigCust:null,sigUt:null},row:null,list:null};}
 let state=blank();
-function store(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function store(k,v){if(window.BC&&BC.lsSet)return BC.lsSet(k,v);try{localStorage.setItem(k,v)}catch(e){}}
 function load(k){try{return localStorage.getItem(k)}catch(e){return null}}
 const $=id=>document.getElementById(id);
 const itemsEl=$("items");
@@ -861,7 +861,7 @@ function toEquipment(st){
   if(d&&!r.cno&&String(d.n)!=="")r.cno=d.n;
   const xs=ROWS.filter(x=>rowVals(x).includes("x")).map(x=>rname(x,st)+" (X)");
   const auto="See report "+(f.docno||"")+(xs.length?" – "+xs.join(", "):"");
-  Object.assign(r,{cr:rid,serial:String(f.serial||r.serial||"").toUpperCase(),make:f.make||r.make||"",swl:r.swl||String(f.swl||"").replace(/[^\d.,]/g,""),
+  Object.assign(r,{t:Date.now(),cr:rid,serial:String(f.serial||r.serial||"").toUpperCase(),make:f.make||r.make||"",swl:r.swl||String(f.swl||"").replace(/[^\d.,]/g,""),
     status:st.status==="UNSAFE"?"UNSAFE":st.status==="SAFE"?"SAFE":(r.status||""),
     report:{no:f.docno||"",type:(lt?"Load test":"Inspection")+" (crane / hoist)",cert:d?`C${d.job}/${r.cno||d.n}`:""}});
   r.at=f.date||today();   // the day this item was tested (certificates use it)
@@ -886,7 +886,7 @@ function makeToInventory(){
   for(const l of lists){const rows=l.rows||[];
     const r=(state.row&&rows.find(x=>x.id===state.row))||(rid&&rows.find(x=>x.fl===rid||x.cr===rid))||(f.serial&&rows.find(x=>N(x.serial)===N(f.serial)));
     if(!r)continue;if(r.make===mk)return;
-    r.make=mk;l.savedAt=Date.now();all[l.id]=l;store("bco-equipment",JSON.stringify(all));
+    r.make=mk;r.t=Date.now();l.savedAt=Date.now();all[l.id]=l;store("bco-equipment",JSON.stringify(all));
     if(cloudOK())window.Cloud.putItem("eq-"+String(l.id).replace(/\//g,"_"),Object.assign({kind:"equipment"},JSON.parse(JSON.stringify(l))));return;}
 }
 {let mkT;const mi=$("make");if(mi){mi.addEventListener("input",()=>{clearTimeout(mkT);mkT=setTimeout(makeToInventory,800);});mi.addEventListener("change",()=>{clearTimeout(mkT);makeToInventory();});}}
@@ -1003,7 +1003,7 @@ if(ACTIVE&&!EMBED&&!state.f.site&&siteForJob()){state.f.site=siteForJob();applyS
       $("mOpen").onclick=()=>{closeModal();keepDraft();useState(rep.state);state._rid=rep.id;state._did=null;state._saved=stSig(state);if(it.type)state.type=it.type;applyState();save();};$("mNew").onclick=()=>{closeModal();startNew();};return;}
     startNew();});
 })();
-window.BCC={async reports(){for(let i=0;i<80&&!window.BCC_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCC_READY;}catch(e){}return RDB.all();},buildPdf:st=>buildPdf(st),buildTechPdf:st=>buildPdf(st,{tech:true}),needsTech:st=>needsTech(st)};
+window.BCC={toInventory:st=>{const keep=state;state=JSON.parse(JSON.stringify(st));try{toEquipment(state);}finally{state=keep;}},async reports(){for(let i=0;i<80&&!window.BCC_READY;i++)await new Promise(r=>setTimeout(r,100));try{await window.BCC_READY;}catch(e){}return RDB.all();},buildPdf:st=>buildPdf(st),buildTechPdf:st=>buildPdf(st,{tech:true}),needsTech:st=>needsTech(st)};
 // a technician's report is worth making when something is marked X or W (or quote info was filled in)
 function needsTech(st){return ROWS.some(r=>r.kind!=="meas"&&visOf(r,st)&&valsOf(r,st).some(v=>v==="x"||v==="w"))||Object.values(st.quote||{}).some(hasQuote);}
 if(HANDOFF){try{localStorage.removeItem("bco-open-report");}catch(e){}if(ACTIVE&&!EMBED){$("repPanel").classList.remove("show");if(HANDOFF.draft){if(state._did!==HANDOFF.id)continueDraft(HANDOFF.id);}else RDB.all().then(a=>{const r=(a||[]).find(x=>x&&x.id===HANDOFF.id);if(!r||state._rid===r.id)return;keepDraft();useState(r.state);state._rid=r.id;state._did=null;state._saved=stSig(state);applyState();save();window.scrollTo(0,0);toast("Opened "+(state.f.docno||"report"));});}}

@@ -12,7 +12,7 @@ const OWNER = 'bco-owner';
 const WIPE = /^(dts-|bco|bc-|bc_)/;
 async function wipeDevice(){
   try { Object.keys(localStorage).filter(k => WIPE.test(k) && k !== OWNER).forEach(k => localStorage.removeItem(k)); } catch(e){}
-  await Promise.all(['bc-forklift', 'bc-crane', 'bc-mancage'].map(n => new Promise(r => { try { const q = indexedDB.deleteDatabase(n); q.onsuccess = q.onerror = q.onblocked = () => r(); setTimeout(r, 1500); } catch(e){ r(); } })));
+  await Promise.all(['bc-forklift', 'bc-crane', 'bc-mancage', 'bc-photos'].map(n => new Promise(r => { try { const q = indexedDB.deleteDatabase(n); q.onsuccess = q.onerror = q.onblocked = () => r(); setTimeout(r, 1500); } catch(e){ r(); } })));
 }
 const api = {
   ready,
@@ -41,6 +41,21 @@ window.Cloud = api;
     try { fs = F.initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }); }
     catch (e) { fs = F.getFirestore(app); }
     const report = e => { console.error('Cloud save failed', e); if (api.onError) api.onError(e); };
+    // the save icon: how many changes are still on their way to the server, and the last problem
+    const sync = { pending:0, error:null, last:0 }, syncL = [];
+    const emit = () => syncL.forEach(cb => { try { cb(Object.assign({}, sync)); } catch(e){} });
+    api.onSync = cb => { syncL.push(cb); cb(Object.assign({}, sync)); };
+    // a write counts as saved once the server has it (with no signal it stays "on its way" and is kept on the phone)
+    const track = p => { sync.pending++; emit(); return p.then(v => { sync.pending--; sync.error = null; sync.last = Date.now(); emit(); return v; },
+      e => { sync.pending--; sync.error = (e && (e.code || e.message)) || 'error'; emit(); throw e; }); };
+    // inventories: combine with the copy already there (newest result per item), so an older copy can never undo newer work
+    const chains = {};
+    const putList = (ref, key, data) => { const run = async () => {
+        let cur = null; try { const c = await F.getDocFromCache(ref); if (c.exists()) cur = c.data(); } catch(e){}
+        if (!cur){ try { const c = await Promise.race([F.getDoc(ref), new Promise((_, rj) => setTimeout(() => rj(new Error('slow')), 5000))]); if (c.exists()) cur = c.data(); } catch(e){} }
+        const merged = cur && window.BC && window.BC.mergeList ? Object.assign(window.BC.mergeList(cur, data), { kind:data.kind }) : data;
+        return track(F.setDoc(ref, JSON.parse(JSON.stringify(merged)))); };
+      const p = (chains[key] || Promise.resolve()).then(run, run); chains[key] = p.catch(() => {}); return p; };
 
     // Same shape the app already uses: collection().doc(id).set/delete and collection().get()
     api.collection = () => {
@@ -50,8 +65,8 @@ window.Cloud = api;
         // Writes land in the phone's offline cache straight away and sync when there is signal.
         // We don't wait for the server, otherwise saves would stall with no signal.
         doc: id => ({
-          set: data => { F.setDoc(F.doc(col, id), data).catch(report); return Promise.resolve(); },
-          delete: () => { F.deleteDoc(F.doc(col, id)).catch(report); return Promise.resolve(); }
+          set: data => { track(F.setDoc(F.doc(col, id), data)).catch(report); return Promise.resolve(); },
+          delete: () => { track(F.deleteDoc(F.doc(col, id))).catch(report); return Promise.resolve(); }
         }),
         get: async () => {
           let snap;
@@ -69,11 +84,12 @@ window.Cloud = api;
     };
     // wait for the server for important saves (profile); falls back to "saved on phone" after a few seconds
     api.setItem = (id, data) => {
-      const p = F.setDoc(F.doc(itemsCol(), id), data);
+      const p = track(F.setDoc(F.doc(itemsCol(), id), data));
       return Promise.race([p, new Promise(r => setTimeout(r, 6000))]);
     };
-    api.deleteItem = id => { F.deleteDoc(F.doc(itemsCol(), id)).catch(report); return Promise.resolve(); };
-    api.putItem = (id, data) => { F.setDoc(F.doc(itemsCol(), id), data).catch(report); return Promise.resolve(); };
+    api.deleteItem = id => { track(F.deleteDoc(F.doc(itemsCol(), id))).catch(report); return Promise.resolve(); };
+    api.putItem = (id, data) => { const ref = F.doc(itemsCol(), id);
+      (data && data.kind === 'equipment' && Array.isArray(data.rows) ? putList(ref, auth.currentUser.uid + '/' + id, data) : track(F.setDoc(ref, data))).catch(report); return Promise.resolve(); };
     // all documents of one kind, e.g. 'forklift'
     api.listKind = async kind => {
       const q = F.query(itemsCol(), F.where('kind', '==', kind)); let s;
@@ -90,13 +106,13 @@ window.Cloud = api;
       try { s = await F.getDocs(q); } catch (e) { try { s = await F.getDocsFromCache(q); } catch (_) { return null; } }
       return s.docs.map(d => Object.assign({ id: d.id }, d.data()));
     };
-    api.updateJob = (id, fields) => { F.updateDoc(F.doc(fs, 'jobs', id), fields).catch(report); return Promise.resolve(); };
+    api.updateJob = (id, fields) => { track(F.updateDoc(F.doc(fs, 'jobs', id), fields)).catch(report); return Promise.resolve(); };
     // admin only
     api.allJobs = async () => (await F.getDocs(F.collection(fs, 'jobs'))).docs.map(d => Object.assign({ id: d.id }, d.data()));
     api.putJobs = async list => {
       for (let i = 0; i < list.length; i += 400){
         const b = F.writeBatch(fs); list.slice(i, i + 400).forEach(j => { const { id, ...data } = j; b.set(F.doc(fs, 'jobs', id), data, { merge:true }); });
-        await b.commit();
+        await track(b.commit());
       }
     };
     api.deleteJob = id => F.deleteDoc(F.doc(fs, 'jobs', id));
@@ -125,6 +141,7 @@ window.Cloud = api;
         // first sign-in on this phone / tablet (or after signing out): bring the person's work back from the account
         if (!o) try { localStorage.setItem(OWNER, u.uid); if (!localStorage.getItem('bco-equipment')) localStorage.setItem('bco-restore', '1'); } catch(e){} }
       current = u ? { uid: u.uid, email: u.email, verified: !!u.emailVerified } : null;
+      if (u) track(F.waitForPendingWrites(fs)).catch(() => {});
       listeners.forEach(cb => { try { cb(current); } catch (e) { console.error(e); } });
     });
     resolveReady(true);
