@@ -442,7 +442,7 @@
   const isTackle = r => { const d = r.desc || ''; if (isForklift(r) || isHarness(r)) return false; return TACKLE.test(d) && !/hoist|crane|gantry|chain\s*block|lever\s*(block|hoist)|winch|tirfor|monorail|runway/i.test(d); };
   // inspection certificate: safety gear, lifting tackle, man cages and any other equipment that is not lifting machinery
   // (cranes, hoists, chain blocks, lever hoists, winches… get a load test certificate; forklifts and stackers have their own)
-  const NOREPAIR = /shackle|\bbow\b|eye\s*-?\s*bolt|eye\s*-?\s*nut|round\s*sling|endless|web\s*-?\s*sling|webbing|flat\s*sling|wire\s*rope\s*sling|^(?!.*chain).*\bslings?\b|harness|lanyard/i;
+  const NOREPAIR = /shackle|\bbow\b|eye\s*-?\s*bolt|eye\s*-?\s*nut|round\s*sling|endless|web\s*-?\s*sling|webbing|flat\s*sling|wire\s*rope\s*sling|^(?!.*chain).*\bslings?\b|harness|lanyard|fall\s*arrest|inertia|retract|\bsrl\b|lifeline|rescue\s*(device|winch)/i;
   const isInspCert = r => !isForklift(r) && (isManCage(r) || isHarness(r) || isTackle(r) || !MACHINE.test(r.desc || ''));
   const isHarness = r => /harness|lanyard|fall\s*arrest|inertia\s*reel|self[\s-]*retract/i.test(r.desc || '');
   const isCertItem = r => !isForklift(r) && !!(r.desc || r.serial) && (isInspCert(r) || MACHINE.test(r.desc || ''));
