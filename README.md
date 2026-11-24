@@ -73,6 +73,7 @@ Everything for a person is under `users/{uid}/items/`:
 - Search box above the items (item number, description, make, location, report number).
 - Item number in bold, the description underneath.
 - Inside To do / Completed the items are grouped by type (man cages, cranes, chain blocks, lever hoists, hoists, shackles, eye bolts, eye nuts, round / web / chain / wire rope slings, harnesses, lanyards …); anything else is grouped by its description. The census PDF and Excel use the same groups, each with a heading.
+- Groups can be renamed per job (l.gnames, shown in the app, search, PDF and Excel) and an item can be moved to another or a new group (r.grp; the automatic group still decides slings / certificates).
 - Slings (web, endless round, chain, steel wire rope) have a length in metres: in the app, a LENGTH column on the census and a LENGTH line on the certificate (the description on the certificate leaves the length out).
 - Man cages: W / X items have a For quote box (parts, repair notes); the technician's copy adds the quote page(s) (TECHNICIAN_Man_cage_reports_for_quote in Admin).
 
