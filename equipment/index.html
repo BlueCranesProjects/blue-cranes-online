@@ -692,8 +692,7 @@
           <div class="field"><span style="font-size:12.5px;font-weight:600;color:var(--label)" id="stl${i}">Condition</span>
             <div class="row" role="group" aria-labelledby="stl${i}">
               <button type="button" class="st${r.status === 'SAFE' ? ' on-safe' : ''}" data-st="${i}" data-v="SAFE" aria-pressed="${r.status === 'SAFE'}">✓ Safe</button>
-              <button type="button" class="st${r.status === 'UNSAFE' ? ' on-unsafe' : ''}" data-st="${i}" data-v="UNSAFE" aria-pressed="${r.status === 'UNSAFE'}">✕ Unsafe</button>
-              ${canRefurb(r) || r.status === 'REFURB' ? `<button type="button" class="st${r.status === 'REFURB' ? ' on-rf' : ''}" data-st="${i}" data-v="REFURB" aria-pressed="${r.status === 'REFURB'}">♻ Refurbish</button>` : ''}</div></div>
+              <button type="button" class="st${r.status === 'UNSAFE' ? ' on-unsafe' : ''}" data-st="${i}" data-v="UNSAFE" aria-pressed="${r.status === 'UNSAFE'}">✕ Unsafe</button></div></div>
           ${r.status === 'REFURB' ? '<span class="hint" style="margin-top:-4px">Goes for refurbishment – no certificate (N/A). Mark it Safe after the refurbishment and test.</span>' : ''}
           ${r.status === 'UNSAFE' ? `<div class="field"><label for="u${i}" style="color:var(--bad)">Why is it unsafe? (required)</label><textarea id="u${i}" data-f="reason" rows="2" placeholder="e.g. Hook latch missing, chain stretched">${esc(r.reason)}</textarea></div>
             ${r.photo ? `<img class="photo" id="ph${i}" data-pid="${esc(r.photo)}" alt="Photo of the defect on item ${i+1}">` : ''}
@@ -1319,6 +1318,8 @@
   // safety harnesses and lanyards: inspection certificate (Construction Regulation 10(d)), no understudy
   // certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
   const CERT_TOP = 70, CERT_K = 0.82;
+  // cranes / hoists and man cages: "Refurbished by" and the year from their report, only when filled in
+  const refurbText = r => { const by = String(r.refurbBy || '').trim().toUpperCase(), yr = String(r.refurbYear || '').trim(); return by && yr ? by + ' (' + yr + ')' : by || (yr ? 'YEAR ' + yr : ''); };
   // unsafe items that can't be repaired are condemned: a big red CONDEMNED / REMOVED FROM SITE across the certificate, like a watermark
   const isCondemned = r => r.status === 'UNSAFE' && NOREPAIR.test(r.desc || '');
   function condemnedStamp(doc){
@@ -1346,6 +1347,7 @@
     row('CERTIFICATE No', no); row('CUSTOMER NAME', U(l.customer)); row('SITE ADDRESS', U(l.location)); row('ITEM LOCATION', U(r.loc)); row('ITEM No', U(r.serial));
     const tons = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').replace(/\s/g, '').replace(',', '.'); const n = Number(t); return t && !isNaN(n) ? String(Math.round(n / 10) / 100).replace('.', ',') + ' TON' : U(v); };
     row('DESCRIPTION OF ITEM', U(isSling(r) && r.len ? String(r.desc || '').replace(/\s*\b\d+([.,]\d+)?\s*m(tr|trs|eter|eters|etre|etres)?\b\.?/gi, '').replace(/\s+/g, ' ').trim() : r.desc)); row('SAFE WORKING LOAD', tackle ? tons(r.swl) : kgText(r.swl)); row('MANUFACTURED BY', tackle ? (U(r.make) || 'UNKNOWN') : /^unknown$/i.test(r.make || '') ? '' : U(r.make));
+    if (refurbText(r)) row('REFURBISHED BY', refurbText(r));
     if (isSling(r) && r.len) row('LENGTH', lenText(r.len));
     if (isFallArrest(r) && r.hol) row('HEIGHT OF LIFT', lenText(r.hol));
     if (kind === 'h') row('DATE OF MANUFACTURE', U(r.dom));
@@ -1391,6 +1393,7 @@
         ['SAFE WORKING LOAD', kgText(r.swl)], ['OVERLOAD APPLIED', '10%'], ['TEST LOAD', swl ? kgText(String(Math.round(swl * 1.1 * 100) / 100)) : '']];
       if (isBeam(r) && r.defl){ const x = deflResult(r.defl); rows.push(['SPAN', mmText(r.defl.span)], ['DEFLECTION MEASURED', mmText(r.defl.meas)], ['ALLOWED DEFLECTION', x ? mmText(x.max) : '']); }
       rows.push(['MANUFACTURED BY', /^unknown$/i.test(r.make || '') ? '' : U(r.make)]);
+      if (refurbText(r)) rows.push(['REFURBISHED BY', refurbText(r)]);
       rows.forEach(([a, v]) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); doc.text(doc.splitTextToSize(String(v || ''), R - VX)[0] || '', VX, y); y += 7.9 * CERT_K; });
       doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN)); doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF TEST' : 'SAFE FOR USE AT TIME OF TEST', VX, y);
       const crNo = r.cr && r.report && r.report.no ? String(r.report.no) : '';

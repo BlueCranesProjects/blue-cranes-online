@@ -110,5 +110,5 @@ Everything for a person is under `users/{uid}/items/`:
 
 ## Refurbish (rule)
 
-- Cranes / hoists and man cages have a third condition on the inventory: ♻ Refurbish (status REFURB). It counts as done, gets no certificate (N/A), shows REFURBISH in blue on the census PDF / Excel and "Refurbish (certificate N/A)" in Admin's full list. Mark it Safe after the refurbishment and test to get the certificate.
-- Man cage and crane / hoist reports have "Refurbished by" (Blue Cranes offered) and "Year refurbished" under the manufacturer; printed on the report when filled in.
+- No Refurbish condition button any more (only Safe / Unsafe); items marked Refurbish before 24 Nov (K) still show it and get no certificate until marked Safe or Unsafe.
+- Man cage and crane / hoist reports have "Refurbished by" (Blue Cranes offered) and "Year refurbished" under the manufacturer; printed on the report and, via the inventory row (refurbBy / refurbYear), on the certificate as REFURBISHED BY … (year) – only when filled in.
