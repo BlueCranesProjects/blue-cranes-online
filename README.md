@@ -100,3 +100,8 @@ Everything for a person is under `users/{uid}/items/`:
 
 - Admin shows a reminder bar when there is no backup or the last one is 7+ days old. Export jobs → Weekly backup → Back up now makes one zip of every job since a day before the last backup (first time: from 1 Jan 2026); it counts once the zip is saved. The last backup is kept per admin (users/{uid}/items/backup). Save the zip to Google Drive / OneDrive.
 - When the project is on the Blaze plan: also switch on Firestore daily backups and point-in-time recovery.
+
+## Refurbish (rule)
+
+- Cranes / hoists and man cages have a third condition on the inventory: ♻ Refurbish (status REFURB). It counts as done, gets no certificate (N/A), shows REFURBISH in blue on the census PDF / Excel and "Refurbish (certificate N/A)" in Admin's full list. Mark it Safe after the refurbishment and test to get the certificate.
+- Man cage and crane / hoist reports have "Refurbished by" (Blue Cranes offered) and "Year refurbished" under the manufacturer; printed on the report when filled in.
