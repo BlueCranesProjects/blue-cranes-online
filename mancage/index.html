@@ -255,6 +255,8 @@
       <div><label for="jobno">Job no</label><input id="jobno" inputmode="numeric"></div>
       <div class="full"><label for="details">Description</label><input id="details" placeholder="e.g. Work platform – fork mounted"></div>
       <div class="full pair two"><div><label for="make">Manufacturer</label><input id="make" placeholder="e.g. Liftmaster"></div><div><label for="model">Year made</label><input id="model" inputmode="numeric" placeholder="e.g. 2019"></div></div>
+      <div class="full pair two"><div><label for="refurbBy">Refurbished by <span style="font-weight:400">(if refurbished)</span></label><input id="refurbBy" list="refurbList" placeholder="e.g. Blue Cranes" autocomplete="off"><datalist id="refurbList"><option value="Blue Cranes"></option></datalist></div>
+        <div><label for="refurbYear">Year refurbished</label><input id="refurbYear" inputmode="numeric" placeholder="e.g. 2026"></div></div>
       <div class="full"><label for="serial">Serial no</label><input id="serial"></div>
       <div class="full pair two"><div><label for="swl">SWL <span style="font-weight:400">(people + tools)</span></label><div class="unit"><input id="swl" inputmode="decimal" placeholder="250"><span>kg</span></div></div>
         <div><label for="persons">Max persons</label><input id="persons" inputmode="numeric" placeholder="2"></div></div>
@@ -345,7 +347,7 @@ const COLS=[["lt","L/T","Long travel"],["ct","C/T","Cross travel"],["h","H","Hoi
 const GREY={};
 const ROWS=MC_ITEMS.map(([sec,t],k)=>({id:"q"+(k+1),n:k+1,no:String(k+1),name:t,kind:"one",sec}));
 const RV={ok:"✓",w:"W",x:"X",na:"N/A"};
-const FIELDS=["customer","date","jobno","details","make","model","serial","swl","persons","location","site","docno","prevLoad","nextInsp","nextLoad","remarks","engName","custName"];
+const FIELDS=["customer","date","jobno","details","make","model","refurbBy","refurbYear","serial","swl","persons","location","site","docno","prevLoad","nextInsp","nextLoad","remarks","engName","custName"];
 const KEY="bc-mancage-draft-v1",JOBKEY="bc-mancage-jobs",LMIKEY="bc-crane-lmi",DKEY="bc-mancage-drafts";
 function blank(){return{type:"INSPECTION",f:{},parts:{lt:true,ct:true,h:true,ah:false},res:{},val:{F:"",G:"",H:""},note:{},status:null,wr:{insp:false,load:false},photo:{},quote:{},sig:{sigEng:null,sigCust:null,sigUt:null},row:null,list:null};}
 let state=blank();
@@ -775,6 +777,8 @@ async function buildPdf(st,opts){
     cell(L,y,150,"CUSTOMER :",U(f.customer));cell(L+150,y,W-150,"DATE :",fmt(f.date));y+=rh;
     cell(L,y,98,"DESCRIPTION :",U(f.details));cell(L+98,y,52,"MANUFACTURER :",U(f.make));cell(L+150,y,W-150,"JOB NO :",f.jobno);y+=rh;
     cell(L,y,58,"SERIAL NO :",U(f.serial));cell(L+58,y,40,"SWL :",sw?kgT(sw)+" KG":U(f.swl));cell(L+98,y,52,"MAX PERSONS :",f.persons||"");cell(L+150,y,W-150,"YEAR :",f.model||"");y+=rh;
+    // refurbished: by whom and when
+    if(String(f.refurbBy||"").trim()||String(f.refurbYear||"").trim()){cell(L,y,130,"REFURBISHED BY :",U(f.refurbBy));cell(L+130,y,W-130,"YEAR REFURBISHED :",f.refurbYear||"");y+=rh;}
     cell(L,y,98,"LOCATION :",U(f.location));cell(L+98,y,W-98,"SITE :",U(f.site));y+=rh+2;
     doc.setFillColor(215,219,228);doc.setDrawColor(60,66,80);doc.rect(L,y,W,rh,"FD");doc.setFont("helvetica","bold");doc.setFontSize(9);doc.setTextColor(30,34,51);doc.text("THE EQUIPMENT HAS BEEN FOUND",L+2,y+4.8);
     [["SAFE",88,20],["UNSAFE",108,24]].forEach(([s,x,w])=>{if(st.status===s){doc.setFillColor(...(s==="SAFE"?[29,138,74]:[198,40,40]));doc.rect(x,y,w,rh,"F");doc.setTextColor(255,255,255);}else doc.setTextColor(150,150,150);doc.setDrawColor(60,66,80);doc.rect(x,y,w,rh);doc.text(s,x+w/2,y+4.8,{align:"center"});});
