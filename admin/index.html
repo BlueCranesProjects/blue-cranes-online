@@ -568,9 +568,9 @@
   // search text: client's name, technician or job number
   function matchGroups(groups, q){ const t = String(q || '').trim().toLowerCase(); if (!t) return groups; const core = c => String(c || '').toLowerCase().replace(/\s+/g, '').replace(/^c(?=\d)/, '');
     return groups.filter(g => String(g.l.customer || '').toLowerCase().includes(t) || String(g.u.name || '').toLowerCase().includes(t) || String(g.u.email || '').toLowerCase().includes(t) || (core(g.l.job) && core(g.l.job).includes(core(t)))); }
-  async function exportEverything(btn, pre, label){
-    const $ = id => document.getElementById(id);
-    const from = S.xaFrom || ($('xaFrom') || {}).value, to = S.xaTo || ($('xaTo') || {}).value;
+  async function exportEverything(btn, pre, label, opts){
+    const $ = id => document.getElementById(id); opts = opts || {};
+    const from = opts.from || S.xaFrom || ($('xaFrom') || {}).value, to = opts.to || S.xaTo || ($('xaTo') || {}).value;
     if (!from || !to || from > to){ toast('Choose the From and To dates'); return; }
     const old = btn.textContent; btn.disabled = true; let box = null;
     const say = t => { btn.textContent = t; box = exportBox(`<h2>Exporting…</h2><span class="hint" style="font-size:14px">${esc(t)}<br>Keep this page open.</span>`); try { sessionStorage.setItem('bco-admin-export', from + ' to ' + to + ', ' + t); } catch(e){} };
@@ -615,7 +615,9 @@
       // a fresh tap saves the file, so the browser never blocks it or leaves the page
       const m = exportBox(`<h2>Export ready</h2><div style="font-size:14px;line-height:1.5"><b>${groups.length} ${groups.length === 1 ? 'job' : 'jobs'}, ${nFiles} files</b><br>${esc(top)}.zip · ${(blob.size / 1048576).toFixed(1)} MB</div>
         <button class="btn primary" id="xbSave">⬇ Save the zip folder</button><button class="btn secondary" id="xbClose">Close</button>`);
-      m.querySelector('#xbSave').onclick = () => { dlFile({ blob, name:top + '.zip' }); toast('Saved to Downloads'); };
+      m.querySelector('#xbSave').onclick = () => { dlFile({ blob, name:top + '.zip' }); toast('Saved to Downloads');
+        // a backup counts once the zip is saved
+        if (opts.backup){ S.backup = { kind:'backup', at:Date.now(), from, to, jobs:groups.length, by:window.Cloud.email() }; try { window.Cloud.putItem('backup', S.backup); } catch(e){} render(); } };
       m.querySelector('#xbClose').onclick = () => m.remove();
     } catch(e){ console.error(e); end(); const m = exportBox(`<h2>Export failed</h2><span class="hint" style="font-size:14px">${esc((e && (e.code || e.message)) || String(e))}</span><button class="btn secondary" id="xbClose">Close</button>`); m.querySelector('#xbClose').onclick = () => m.remove(); }
     finally { if (eq) eq.done(); if (fk) fk.done(); if (cz) cz.done(); if (mz) mz.done(); btn.disabled = false; btn.textContent = old; }
@@ -741,9 +743,22 @@
           <td><button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-xone="${i}">⬇ Export</button></td></tr>`; }).join('')}
       </tbody></table></div>`;
   }
+  // ---------- weekly backup: a dated copy of every job, saved by the office (e.g. to Google Drive) ----------
+  const backupDays = () => S.backup && S.backup.at ? Math.floor((Date.now() - S.backup.at) / 86400000) : null;
+  const backupFrom = () => { if (S.backup && S.backup.to){ const d = new Date(S.backup.to + 'T12:00:00'); d.setDate(d.getDate() - 1); return keyOf(d); } return '2026-01-01'; };
+  function backupBar(){ if (S.tab === 'export') return ''; const n = backupDays(); if (n != null && n < 7) return '';
+    return `<div role="status" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#FFF4CC;border:1px solid #f0dc8a;border-radius:12px;padding:10px 14px;margin:12px auto 0;max-width:1100px;color:#6B5200;font-size:14px">
+      <span style="font-size:20px">🗂</span><span style="flex:1;min-width:200px"><b>${n == null ? 'No backup yet' : 'Last backup ' + n + ' days ago'}</b> – save a copy of every job (e.g. to Google Drive) once a week.</span>
+      <button class="btn navy" id="bkGo" style="width:auto">Back up now</button></div>`; }
+  function backupCard(){ const n = backupDays(), when = S.backup && S.backup.at ? new Date(S.backup.at).toLocaleDateString('en-ZA', { weekday:'short', day:'numeric', month:'short', year:'numeric' }) : '';
+    const due = n == null || n >= 7;
+    return `<section class="card wide" id="bkCard" style="border-color:${due ? '#f0dc8a' : 'var(--line)'};background:${due ? '#FFFBEA' : '#fff'}"><h2>Weekly backup</h2>
+      <div style="font-size:15px;line-height:1.5">${n == null ? '<b>No backup yet.</b>' : `Last backup: <b>${esc(when)}</b> (${n === 0 ? 'today' : n === 1 ? 'yesterday' : n + ' days ago'}) – jobs from ${esc(S.backup.from)} to ${esc(S.backup.to)}.`}</div>
+      <button class="btn ${due ? 'primary' : 'secondary'}" id="bkNow" style="width:auto">⬇ Back up now – jobs from ${esc(backupFrom())} to today</button>
+      <span class="hint">Every job, report, certificate, inventory and time sheet in one zip folder. Save it to the company's Google Drive or OneDrive. It starts one day before the last backup, so nothing is missed. The reminder comes back after 7 days.</span></section>`; }
   function vExport(){
     const d = new Date(); const first = keyOf(new Date(d.getFullYear(), d.getMonth(), 1));
-    return `<main><div class="steps">
+    return `<main><div class="steps">${backupCard()}
       <section class="card wide"><h2>Find jobs to export</h2>
         <div class="row"><div class="field"><label for="xaFrom">From</label><input type="date" id="xaFrom" value="${esc(S.xaFrom || first)}"></div><div class="field"><label for="xaTo">To</label><input type="date" id="xaTo" value="${esc(S.xaTo || keyOf(d))}"></div>
           <div class="field" style="flex:2"><label for="xaQ">Search – client's name, technician or job number</label><input id="xaQ" type="search" value="${esc(S.xaQ || '')}" placeholder="e.g. Goosebumps, Tiaan or 124688 (empty = everything)"></div>
@@ -771,7 +786,7 @@
       if ((S.tab === 'jobs' || S.tab === 'inv') && !(S.jobs || []).length) refreshJobs().then(() => render()).catch(() => {}); },
     render: () => render() });
   function render(){ if (!NAVON && !S.noAdmin && window.Cloud && window.Cloud.email && window.Cloud.email()){ NAVON = true; NAV.start(); }
-    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
+    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + backupBar() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
   function wire(){
     const $ = id => document.getElementById(id);
     app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; try { sessionStorage.setItem('bco-admin-tab', S.tab); } catch(e){} if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); if ((S.tab === 'inv' || S.tab === 'export') && !S.users.length) await refreshUsers(); render(); });
@@ -874,6 +889,8 @@
       try { S.xg = { from, to, at:Date.now(), groups:await collectGroups(from, to) }; } catch(e){ console.error(e); S.xg = null; toast('Search failed – check the Firebase rules'); }
       render(); };
     if (xq){ xq.onkeydown = e => { if (e.key === 'Enter') doSearch(); }; $('xaSearch').onclick = doSearch; }
+    { const g = $('bkGo'); if (g) g.onclick = () => { S.tab = 'export'; render(); const c = $('bkCard'); if (c) c.scrollIntoView({ block:'start' }); }; }
+    { const b = $('bkNow'); if (b) b.onclick = () => { const to = keyOf(new Date()), from = backupFrom(); exportEverything(b, null, 'Blue Cranes backup ' + to, { from, to, backup:true }); }; }
     const ea = $('expAll'); if (ea) ea.onclick = () => exportEverything(ea, S.xfound, `Blue Cranes ${S.xg.from} to ${S.xg.to}${S.xaQ ? ' - ' + S.xaQ.replace(/[\\/:*?"<>|]+/g, '-') : ''}`);
     app.querySelectorAll('[data-xone]').forEach(b => b.onclick = () => { const g = (S.xfound || [])[Number(b.dataset.xone)]; if (g) exportEverything(b, [g], `Blue Cranes ${g.l.date} - Job ${String(g.l.job || 'no nr').replace(/[\\/:*?"<>|]+/g, '-')} - ${String(g.l.customer || 'Customer').replace(/[\\/:*?"<>|]+/g, '-')}`); });
     const ic = $('icen'); if (ic) ic.onclick = () => censusFromUpload(ic);
@@ -986,6 +1003,7 @@
     const w = await BC.requireUser();
     if (!w.user){ S.noAdmin = 'Cloud saving must be set up to use the admin page.'; render(); return; }
     if (!(await window.Cloud.isAdmin())){ S.noAdmin = `This page is for the office. Your account (${esc(window.Cloud.email())}) is not an admin.<br><br>To make an account an admin: in Firebase → Firestore → start a collection called <b>admins</b> and add a document whose ID is the email address (lower case).`; render(); return; }
+    try { S.backup = await window.Cloud.getItem('backup'); } catch(e){ S.backup = null; }
     await refreshUsers(); await refreshJobs(); render();
     try { const x = sessionStorage.getItem('bco-admin-export'); if (x){ sessionStorage.removeItem('bco-admin-export');
       exportBox(`<h2>The export stopped</h2><span class="hint" style="font-size:14px">The page restarted while the export was busy (${esc(x)}). This happens when a phone runs out of memory. Try a shorter period or one technician, or do the export on the computer.</span><button class="btn secondary" id="xbClose">Close</button>`).querySelector('#xbClose').onclick = e => e.target.closest('.xbox').remove(); } } catch(e){}
