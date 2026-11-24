@@ -192,7 +192,7 @@
   }
   function addMake(v){ v = String(v || '').trim(); if (!v) return ''; const hit = makesList().find(x => x.toLowerCase() === v.toLowerCase()); if (hit) return hit; MAKES.push(v); saveMakes(); return v; }
   const FL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
-  const repText = r => r && r.report && r.report.no ? r.report.no + (r.report.cert ? ' / ' + r.report.cert : '') : '';
+  const repText = r => r && r.report && r.report.no ? r.report.no : '';
   // ---- locations inside a site (Workshop, Cellar 2, Yard…) ----
   function locsOf(l){ const out = []; (l.locs || []).concat((l.rows || []).map(r => r.loc)).forEach(v => { v = String(v || '').trim(); if (v && !out.includes(v)) out.push(v); }); return out; }
   function addLoc(l, v){ v = String(v || '').trim(); if (!v) return ''; const hit = locsOf(l).find(x => x.toLowerCase() === v.toLowerCase()); if (hit) return hit; l.locs = (l.locs || []).concat(v); return v; }
@@ -395,7 +395,12 @@
   const isFallArrest = r => !isSling(r) && /fall\s*arrest|inertia|retract|\bsrl\b|lifeline|rescue\s*(device|winch)/i.test(r.desc || '');
   const lenText = v => { const t = String(v == null ? '' : v).trim().replace('.', ','); return t ? t + ' M' : ''; };
   // [[group name, [[row, index]…]]…] in a fixed order: machinery, tackle, safety gear, then everything else A–Z
+  // SWL in kg for sorting ("1000", "1 000 kg", "1,5 t" → 1500); no SWL → last
+  const swlKg = v => { const t = String(v == null ? '' : v).trim().toLowerCase().replace(/\s/g, '').replace(',', '.'); const m = /^(\d+(?:\.\d+)?)(kg|t|ton|tons)?$/.exec(t);
+    return m ? Number(m[1]) * (m[2] && m[2] !== 'kg' ? 1000 : 1) : Infinity; };
+  // inside a group: lowest to highest SWL; the same SWL keeps the order the items were listed in (new items at the bottom of their SWL)
   function groupRows(pairs){ const m = new Map(); pairs.forEach(p => { const g = groupOf(p[0]); if (!m.has(g)) m.set(g, []); m.get(g).push(p); });
+    m.forEach(list => { const k = list.map((p, n) => [swlKg(p[0].swl), n, p]); k.sort((a, b) => a[0] - b[0] || a[1] - b[1]); k.forEach((x, n) => { list[n] = x[2]; }); });
     const rank = g => { const k = GORDER.indexOf(g); return k < 0 ? (g === 'New items' ? 9999 : 1000) : k; };
     return [...m.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])); }
   // can be marked Safe together with its group: small equipment that has no report of its own
@@ -455,7 +460,16 @@
     if (r.rno && r.rno.p === pfx) return r.rno.n;
     let max = 0; (l.rows || []).forEach(x => { const m = x.report && rx.exec(no(x.report.no)); if (m && !(pfx === 'F' && /^(CR|S|MC)\d/i.test(no(x.report.no)))) max = Math.max(max, +m[1]); if (x.rno && x.rno.p === pfx) max = Math.max(max, x.rno.n); });
     r.rno = { p:pfx, n:max + 1 }; return r.rno.n; }
-  function certN(l, i){ const r = l.rows[i]; if (r.cno) return r.cno; const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let n = i + 1; if (used.has(n)) n = Math.max(...used) + 1; return n; }
+  // the certificate number is the item's line number on the client's inventory list (census PDF / Excel order: by group, then as listed),
+  // so certificate C<job>/5 is line 5 of the list; worked out every time, so adding, moving or regrouping items renumbers them
+  function lineNos(l){ const m = new Map(); let n = 0;
+    groupRows((l.rows || []).filter(r => r.serial || r.desc).map(r => [r, 0])).forEach(([, rs]) => rs.forEach(([r]) => m.set(r.id || r, ++n))); return m; }
+  function certN(l, i){ const r = l.rows[i]; const n = lineNos(l).get(r.id || r); if (n) return n;
+    const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let k = i + 1; if (used.has(k)) k = Math.max(...used) + 1; return k; }
+  // a forklift / stacker report's certificate gets the number of its line on the inventory
+  function flCertNo(l, st){ if (!l || !st || !st.f) return null; const rid = st._rid || st.f.docno || '';
+    const r = (st.row && (l.rows || []).find(x => x.id === st.row)) || (l.rows || []).find(x => x.fl && x.fl === rid); return r ? lineNos(l).get(r.id || r) || null : null; }
+  const withFlNo = (l, st) => { const n = flCertNo(l, st); if (n) st.f.cno = n; return st; };
   const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
   const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
   function certLine(l, r, i){
@@ -658,7 +672,7 @@
           ${isForklift(r) ? `<div class="flbar"><span>${FL} ${isStacker(r) ? 'Stacker' : 'Forklift'} – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${isManCage(r) ? `<div class="flbar"><span>🧺 Man cage – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-mcopen="${i}">Inspection</button></div></div>` : ''}
           ${isCrane(r) ? `<div class="flbar"><span>🏗 Crane / hoist – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-cropen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-cropen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
-          ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
+          ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(certNoOf(l, i)) : ''}</span></div>` : ''}
           <div class="top"><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
           ${dupes[k] > 1 ? '<span class="warn">This serial nr is on the list more than once.</span>' : ''}
@@ -683,14 +697,13 @@
           <div class="field"><span style="font-size:12.5px;font-weight:600;color:var(--label)" id="stl${i}">Condition</span>
             <div class="row" role="group" aria-labelledby="stl${i}">
               <button type="button" class="st${r.status === 'SAFE' ? ' on-safe' : ''}" data-st="${i}" data-v="SAFE" aria-pressed="${r.status === 'SAFE'}">✓ Safe</button>
-              <button type="button" class="st${r.status === 'UNSAFE' ? ' on-unsafe' : ''}" data-st="${i}" data-v="UNSAFE" aria-pressed="${r.status === 'UNSAFE'}">✕ Unsafe</button>
-              ${canRefurb(r) || r.status === 'REFURB' ? `<button type="button" class="st${r.status === 'REFURB' ? ' on-rf' : ''}" data-st="${i}" data-v="REFURB" aria-pressed="${r.status === 'REFURB'}">♻ Refurbish</button>` : ''}</div></div>
+              <button type="button" class="st${r.status === 'UNSAFE' ? ' on-unsafe' : ''}" data-st="${i}" data-v="UNSAFE" aria-pressed="${r.status === 'UNSAFE'}">✕ Unsafe</button></div></div>
           ${r.status === 'REFURB' ? '<span class="hint" style="margin-top:-4px">Goes for refurbishment – no certificate (N/A). Mark it Safe after the refurbishment and test.</span>' : ''}
           ${r.status === 'UNSAFE' ? `<div class="field"><label for="u${i}" style="color:var(--bad)">Why is it unsafe? (required)</label><textarea id="u${i}" data-f="reason" rows="2" placeholder="e.g. Hook latch missing, chain stretched">${esc(r.reason)}</textarea></div>
             ${r.photo ? `<img class="photo" id="ph${i}" data-pid="${esc(r.photo)}" alt="Photo of the defect on item ${i+1}">` : ''}
             <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label><label class="btn secondary small" style="flex:1;cursor:pointer">🖼 From gallery<input type="file" accept="image/*" data-photo="${i}" style="display:none"></label>
               ${r.photo ? `<button type="button" class="btn secondary small" data-nophoto="${i}" style="color:var(--bad);border-color:var(--bad)">Remove photo</button>` : ''}</div>` : ''}
-          ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
+          ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(certNoOf(l, i)) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
           </div>`; };
         // To do / Completed: an item is completed once it is marked Safe, or Unsafe with a reason
         const all0 = (l.rows || []).map((r, i) => [r, i]).filter(([r]) => show(r)); if (!all0.length) return '<div class="empty">No items yet. Tap <b>Add item</b> for each piece of equipment.</div>';
@@ -1084,7 +1097,7 @@
       try { const parts = await itemCertParts(l); let tools = null;
         try { tools = await forkliftTools(); const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
           for (const r of (await tools.api.reports()).filter(r => r && r.state && r.state.type === 'LOAD TEST' && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))){
-            const c = await tools.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + (r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
+            const c = await tools.api.buildCert(withFlNo(l, JSON.parse(JSON.stringify(r.state)))); parts.push({ no:'/' + (flCertNo(l, r.state) || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
         catch(e){ console.error(e); } finally { if (tools) tools.done(); }
         if (!parts.length){ toast('No certificates yet – mark the items Safe or Unsafe first'); return; }
         const idx = parts; const f = await mergeCerts(l, parts); const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -1185,7 +1198,7 @@
     const items = rows.map(r => { const make = String(r.make || '').trim(); const desc = String(r.desc || '').trim();
       return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), make:make && !/^unknown$/i.test(make) ? make.toUpperCase() : '', ton:tonText(r.swl), len:isSling(r) ? lenText(r.len) : isFallArrest(r) && r.hol ? lenText(r.hol) : '', loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', refurb:r.status === 'REFURB', report:repNo(r) || (r.status === 'REFURB' ? 'REFURBISH' : '') }; });
     // grouped by type (all eye bolts together…), each group with its heading
-    return groupRows(rows.map((r, k) => [r, k])).map(([g, rs]) => Object.assign(rs.map(([, k]) => items[k]), { title:gname(l, g).toUpperCase() }));
+    let n = 0; return groupRows(rows.map((r, k) => [r, k])).map(([g, rs]) => Object.assign(rs.map(([, k]) => Object.assign(items[k], { no:++n })), { title:gname(l, g).toUpperCase() }));
   }
   async function listDoc(l){
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
@@ -1310,6 +1323,8 @@
   // safety harnesses and lanyards: inspection certificate (Construction Regulation 10(d)), no understudy
   // certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
   const CERT_TOP = 70, CERT_K = 0.82;
+  // cranes / hoists and man cages: "Refurbished by" and the year from their report, only when filled in
+  const refurbText = r => { const by = String(r.refurbBy || '').trim().toUpperCase(), yr = String(r.refurbYear || '').trim(); return by && yr ? by + ' (' + yr + ')' : by || (yr ? 'YEAR ' + yr : ''); };
   // unsafe items that can't be repaired are condemned: a big red CONDEMNED / REMOVED FROM SITE across the certificate, like a watermark
   const isCondemned = r => r.status === 'UNSAFE' && NOREPAIR.test(r.desc || '');
   function condemnedStamp(doc){
@@ -1337,6 +1352,7 @@
     row('CERTIFICATE No', no); row('CUSTOMER NAME', U(l.customer)); row('SITE ADDRESS', U(l.location)); row('ITEM LOCATION', U(r.loc)); row('ITEM No', U(r.serial));
     const tons = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').replace(/\s/g, '').replace(',', '.'); const n = Number(t); return t && !isNaN(n) ? String(Math.round(n / 10) / 100).replace('.', ',') + ' TON' : U(v); };
     row('DESCRIPTION OF ITEM', U(isSling(r) && r.len ? String(r.desc || '').replace(/\s*\b\d+([.,]\d+)?\s*m(tr|trs|eter|eters|etre|etres)?\b\.?/gi, '').replace(/\s+/g, ' ').trim() : r.desc)); row('SAFE WORKING LOAD', tackle ? tons(r.swl) : kgText(r.swl)); row('MANUFACTURED BY', tackle ? (U(r.make) || 'UNKNOWN') : /^unknown$/i.test(r.make || '') ? '' : U(r.make));
+    if (refurbText(r)) row('REFURBISHED BY', refurbText(r));
     if (isSling(r) && r.len) row('LENGTH', lenText(r.len));
     if (isFallArrest(r) && r.hol) row('HEIGHT OF LIFT', lenText(r.hol));
     if (kind === 'h') row('DATE OF MANUFACTURE', U(r.dom));
@@ -1382,6 +1398,7 @@
         ['SAFE WORKING LOAD', kgText(r.swl)], ['OVERLOAD APPLIED', '10%'], ['TEST LOAD', swl ? kgText(String(Math.round(swl * 1.1 * 100) / 100)) : '']];
       if (isBeam(r) && r.defl){ const x = deflResult(r.defl); rows.push(['SPAN', mmText(r.defl.span)], ['DEFLECTION MEASURED', mmText(r.defl.meas)], ['ALLOWED DEFLECTION', x ? mmText(x.max) : '']); }
       rows.push(['MANUFACTURED BY', /^unknown$/i.test(r.make || '') ? '' : U(r.make)]);
+      if (refurbText(r)) rows.push(['REFURBISHED BY', refurbText(r)]);
       rows.forEach(([a, v]) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); doc.text(doc.splitTextToSize(String(v || ''), R - VX)[0] || '', VX, y); y += 7.9 * CERT_K; });
       doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN)); doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF TEST' : 'SAFE FOR USE AT TIME OF TEST', VX, y);
       const crNo = r.cr && r.report && r.report.no ? String(r.report.no) : '';
@@ -1461,7 +1478,7 @@
         for (let k = 0; k < reps.length; k++){
           const st = reps[k].state; busy(`Forklift report ${k + 1} of ${reps.length} (${st.f.docno || ''})…`);
           const a = await tools.api.buildPdf(JSON.parse(JSON.stringify(st))); flPdfs.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
-          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(JSON.parse(JSON.stringify(st))); flCerts.push({ no:'/' + (st.f.cno || (/\.(\d+)$/.exec(st.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); }
+          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(withFlNo(l, JSON.parse(JSON.stringify(st)))); flCerts.push({ no:'/' + (flCertNo(l, st) || st.f.cno || (/\.(\d+)$/.exec(st.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); }
         }
       } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
       finally { if (tools) tools.done(); }
@@ -1537,7 +1554,7 @@
   if (new URLSearchParams(location.search).get('embed') === '1'){
     window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; }),
       certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), quoteDoc: (l, techName) => quoteDoc(l, { techName }), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
-      itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
+      flCertNo: (l, st) => flCertNo(l, st), itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
   (async function start(){
     lsLoad(); S.profile = BC.cachedProfile();

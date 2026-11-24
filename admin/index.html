@@ -494,7 +494,7 @@
           let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
           const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, await utFor(g.uid, l, null));
           if ((g.fl || []).some(r => r.state.type === 'LOAD TEST')){ const ft = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
-            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const c = await ft.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + (r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
+            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const st = JSON.parse(JSON.stringify(r.state)), fn = t.api.flCertNo && t.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await ft.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
           const f = await t.api.mergeCerts(l, parts); if (f) files.push(f); }
         // copy the files into this page before the hidden page is closed
         for (const f of files) f.blob = new Blob([new Uint8Array(await f.blob.arrayBuffer())], { type:f.type || f.blob.type || 'application/pdf' });
@@ -604,7 +604,7 @@
             if (r._cr){ const a = await cz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); crp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
               if (cz.api.buildTechPdf && cz.api.needsTech(r.state)){ const b = await cz.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); tcp.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), name:b.name }); } continue; }
             const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); flp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
-            if (r.state.type === 'LOAD TEST'){ const c = await fk.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + (r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
+            if (r.state.type === 'LOAD TEST'){ const st = JSON.parse(JSON.stringify(r.state)), fn = l.rows && eq.api.flCertNo && eq.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await fk.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
           if (flp.length) await put(await onePdf(flp, packName('Forklift_reports', l)));
           if (crp.length) await put(await onePdf(crp, packName('Crane_hoist_reports', l)));
           if (tcp.length) await put(await onePdf(tcp, packName('TECHNICIAN_Crane_hoist_reports_for_quote', l)));
@@ -991,7 +991,7 @@
       lists.sort((a, b) => String(a.l.date + a.l.savedAt).localeCompare(String(b.l.date + b.l.savedAt)));
       lists.forEach(({ u, l }) => (l.rows || []).forEach(r => { if (!r.serial && !r.desc) return;
         const cust = String(l.customer || '').trim(); const key = cust.toUpperCase() + '|' + (String(r.serial || '').trim().toUpperCase() || ('#' + l.id + r.desc));
-        const rep = r.report && r.report.no ? r.report.no + (r.report.cert ? ' / ' + r.report.cert : '') : '';
+        const rep = r.report && r.report.no ? r.report.no : '';
         reg.set(key, { Customer:cust, Site:l.location || '', Location:r.loc || '', 'Serial nr':r.serial || '', Description:r.desc || '', Manufacturer:r.make || '', 'SWL (kg)':/^\d+(\.\d+)?$/.test(String(r.swl || '').trim()) ? Number(r.swl) : (r.swl || ''),
           Condition:r.status === 'SAFE' ? 'Safe' : r.status === 'UNSAFE' ? 'Unsafe' : r.status === 'REFURB' ? 'Refurbish (certificate N/A)' : '', 'Unsafe reason':r.status === 'UNSAFE' ? (r.reason || '') : '', 'Deflection':deflText(r.defl), 'Report nr':rep, 'Job nr':l.job || '', 'Last listed':l.date || '', Technician:l.tech || u.name || u.email }); }));
       const rows = [...reg.values()].sort((a, b) => (a.Customer + a.Location + a.Description + a['Serial nr']).localeCompare(b.Customer + b.Location + b.Description + b['Serial nr']));

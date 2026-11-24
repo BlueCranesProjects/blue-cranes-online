@@ -870,6 +870,7 @@ function toEquipment(st){
   const xs=ROWS.filter(x=>rowVals(x).includes("x")).map(x=>rname(x,st)+" (X)");
   const auto="See report "+(f.docno||"")+(xs.length?" – "+xs.join(", "):"");
   Object.assign(r,{t:Date.now(),mc:rid,serial:String(f.serial||r.serial||"").toUpperCase(),make:f.make||r.make||"",swl:r.swl||String(f.swl||"").replace(/[^\d.,]/g,""),
+    refurbBy:String(f.refurbBy||"").trim(),refurbYear:String(f.refurbYear||"").trim(),
     status:st.status==="UNSAFE"?"UNSAFE":st.status==="SAFE"?"SAFE":(r.status||""),
     report:{no:f.docno||"",type:"Inspection (man cage)",cert:""}});
   r.at=f.date||today();   // the day this item was tested (certificates use it)
