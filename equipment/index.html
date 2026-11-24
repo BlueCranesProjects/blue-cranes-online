@@ -391,6 +391,8 @@
   const GORDER = GROUPS.map(g => g[0]);
   // slings (web, endless round, chain, steel wire rope) also get their length in metres
   const isSling = r => !isForklift(r) && !isManCage(r) && (/sling/i.test(r.desc || '') || ['Endless round slings', 'Web slings', 'Chain slings', 'Wire rope slings'].includes(groupAuto(r)));
+  // fall arrestors (inertia reels, self-retracting lifelines) get their height of lift in metres
+  const isFallArrest = r => !isSling(r) && /fall\s*arrest|inertia|retract|\bsrl\b|lifeline|rescue\s*(device|winch)/i.test(r.desc || '');
   const lenText = v => { const t = String(v == null ? '' : v).trim().replace('.', ','); return t ? t + ' M' : ''; };
   // [[group name, [[row, index]…]]…] in a fixed order: machinery, tackle, safety gear, then everything else A–Z
   function groupRows(pairs){ const m = new Map(); pairs.forEach(p => { const g = groupOf(p[0]); if (!m.has(g)) m.set(g, []); m.get(g).push(p); });
@@ -643,7 +645,7 @@
       ${(() => { const one = (r, i) => { const k = norm(r.serial); if (r.make && !MK.includes(r.make)) MK.push(r.make); const seen = k && known[k] && known[k].job !== l.job;
         const ro = r.auto ? 'readonly' : ''; const rep = r.report && r.report.no ? r.report : null;
         const on = sel && sel.has(r.id); const isOpen = !sel && OPEN.has(r.id);
-        const sub = [r.serial ? r.desc : '', isSling(r) && r.len ? String(r.len).replace('.', ',') + ' m' : '', r.make && !/^unknown$/i.test(r.make) ? r.make : '', r.loc ? '📍 ' + r.loc : '', rep ? '📄 ' + rep.no : ''].filter(Boolean).join(' · ');
+        const sub = [r.serial ? r.desc : '', isSling(r) && r.len ? String(r.len).replace('.', ',') + ' m' : '', isFallArrest(r) && r.hol ? 'HOL ' + String(r.hol).replace('.', ',') + ' m' : '', r.make && !/^unknown$/i.test(r.make) ? r.make : '', r.loc ? '📍 ' + r.loc : '', rep ? '📄 ' + rep.no : ''].filter(Boolean).join(' · ');
         const chip = r.status === 'SAFE' ? '<span class="pill ok">✓ Safe</span>' : r.status === 'UNSAFE' ? '<span class="pill bad">✕ Unsafe</span>' : r.status === 'REFURB' ? '<span class="pill rf">♻ Refurbish</span>' : '<span class="pill todo">Not done</span>';
         const summary = `<button type="button" class="isum" data-tog="${esc(r.id)}" aria-expanded="${isOpen}"><span class="num">${i+1}</span>
             <span class="it"><b>${esc(r.serial || r.desc || 'New item')}</b><span class="hint">${esc(sub) || 'Tap to fill in'}</span></span>${chip}${sel ? '' : '<span class="chev" aria-hidden="true">▾</span>'}</button>`;
@@ -674,6 +676,7 @@
             return `<div class="field"><label for="gs${i}">Group</label><select id="gs${i}" data-grpsel="${i}" style="height:46px;border-radius:10px;border:1.5px solid #c9d2e3;background:#fff;padding:0 10px;font:inherit;font-size:16px;width:100%">
               <option value="__auto" ${!r.grp ? 'selected' : ''}>Automatic – ${esc(gname(l, auto))}</option>${keys.filter(k => k !== auto).map(k => `<option value="${esc(k)}" ${r.grp === k ? 'selected' : ''}>${esc(gname(l, k))}</option>`).join('')}
               <option value="__new">+ New group…</option></select></div>`; })() : ''}
+          ${isFallArrest(r) ? `<div class="grid2"><div class="field"><label for="hol${i}">Height of lift (m)</label><div style="position:relative"><input id="hol${i}" data-f="hol" value="${esc(r.hol || '')}" inputmode="decimal" placeholder="e.g. 10" style="padding-right:36px"><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">m</span></div></div><div></div></div>` : ''}
           ${isSling(r) ? `<div class="grid2"><div class="field"><label for="ln${i}">Length (m)</label><div style="position:relative"><input id="ln${i}" data-f="len" value="${esc(r.len || '')}" inputmode="decimal" placeholder="e.g. 3" style="padding-right:36px"><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-weight:700;color:var(--muted);pointer-events:none">m</span></div></div><div></div></div>` : ''}
           ${isBeam(r) ? deflBox(r, i) : ''}
           ${certLine(l, r, i)}
@@ -1004,10 +1007,10 @@
     wireUt(l);
     app.querySelectorAll('.item [data-f]').forEach(inp => {
       inp.oninput = () => { const i = Number(inp.closest('.item').dataset.i); let v = inp.value; if (inp.dataset.f === 'serial') v = v.toUpperCase();
-        if (inp.dataset.f === 'swl' || inp.dataset.f === 'len'){ const c = v.replace(/[^\d.,]/g, '').replace(',', '.'); if (c !== v){ v = c; inp.value = c; } }
+        if (inp.dataset.f === 'swl' || inp.dataset.f === 'len' || inp.dataset.f === 'hol'){ const c = v.replace(/[^\d.,]/g, '').replace(',', '.'); if (c !== v){ v = c; inp.value = c; } }
         l.rows[i][inp.dataset.f] = v; saveList(l); };
       // a description that makes it a sling (or no longer one) shows / hides the length box
-      if (inp.dataset.f === 'desc') inp.onchange = () => { const i = Number(inp.closest('.item').dataset.i), r = l.rows[i]; if (!!document.getElementById('ln' + i) !== isSling(r)) render(); };
+      if (inp.dataset.f === 'desc') inp.onchange = () => { const i = Number(inp.closest('.item').dataset.i), r = l.rows[i]; if (!!document.getElementById('ln' + i) !== isSling(r) || !!document.getElementById('hol' + i) !== isFallArrest(r)) render(); };
       if (inp.dataset.f === 'serial') inp.onchange = () => { inp.value = inp.value.toUpperCase(); render(); const n = document.getElementById('d' + inp.closest('.item').dataset.i); if (n && !n.value) n.focus(); };
     });
     app.querySelectorAll('select[data-make]').forEach(sel => sel.onchange = () => { const i = Number(sel.dataset.make); const box = document.getElementById('mn' + i);
@@ -1176,7 +1179,7 @@
   function censusItems(l){
     const rows = (l.rows || []).filter(r => r.serial || r.desc);
     const items = rows.map(r => { const make = String(r.make || '').trim(); const desc = String(r.desc || '').trim();
-      return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), make:make && !/^unknown$/i.test(make) ? make.toUpperCase() : '', ton:tonText(r.swl), len:isSling(r) ? lenText(r.len) : '', loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', refurb:r.status === 'REFURB', report:repNo(r) || (r.status === 'REFURB' ? 'REFURBISH' : '') }; });
+      return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), make:make && !/^unknown$/i.test(make) ? make.toUpperCase() : '', ton:tonText(r.swl), len:isSling(r) ? lenText(r.len) : isFallArrest(r) && r.hol ? lenText(r.hol) : '', loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', refurb:r.status === 'REFURB', report:repNo(r) || (r.status === 'REFURB' ? 'REFURBISH' : '') }; });
     // grouped by type (all eye bolts together…), each group with its heading
     return groupRows(rows.map((r, k) => [r, k])).map(([g, rs]) => Object.assign(rs.map(([, k]) => items[k]), { title:gname(l, g).toUpperCase() }));
   }
@@ -1263,6 +1266,7 @@
     const tons = v => { const t = String(swlText(v) || '').replace(/\s*kg$/i, '').replace(/\s/g, '').replace(',', '.'); const n = Number(t); return t && !isNaN(n) ? String(Math.round(n / 10) / 100).replace('.', ',') + ' TON' : U(v); };
     row('DESCRIPTION OF ITEM', U(isSling(r) && r.len ? String(r.desc || '').replace(/\s*\b\d+([.,]\d+)?\s*m(tr|trs|eter|eters|etre|etres)?\b\.?/gi, '').replace(/\s+/g, ' ').trim() : r.desc)); row('SAFE WORKING LOAD', tackle ? tons(r.swl) : kgText(r.swl)); row('MANUFACTURED BY', tackle ? (U(r.make) || 'UNKNOWN') : /^unknown$/i.test(r.make || '') ? '' : U(r.make));
     if (isSling(r) && r.len) row('LENGTH', lenText(r.len));
+    if (isFallArrest(r) && r.hol) row('HEIGHT OF LIFT', lenText(r.hol));
     if (kind === 'h') row('DATE OF MANUFACTURE', U(r.dom));
     // same grid as the load test certificates: REMARKS is the last row, then the same gaps and columns below it
     // a man cage with its report: SEE REPORT … under the remarks, the same place as on the forklift and crane certificates
