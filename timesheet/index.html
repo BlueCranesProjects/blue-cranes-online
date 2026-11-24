@@ -918,7 +918,7 @@
   function invLeft(k, i){ try { const sh = state.sheets[k]; const j = sh && sh.jobs[i]; if (!j) return {};
       const id = (k + '_' + (j.card || j.customer || j.desc || 'job')).replace(/[^\w\-]+/g, '_');
       const all = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; const l = all[id] || Object.values(all).find(v => v && (v.also || []).includes(id)) || (j.sched ? Object.values(all).find(v => v && v.sched === j.sched) : null); const rows = (l && l.rows || []).filter(r => r.serial || r.desc);
-      return { total:rows.length, open:rows.filter(r => !(r.status === 'SAFE' || (r.status === 'UNSAFE' && String(r.reason || '').trim()))).length, so:(l && l.signoff && l.signoff.sig) ? l.signoff : null, loc:(l && l.location) || '' }; } catch(e){ return {}; } }
+      return { total:rows.length, open:rows.filter(r => !(r.status === 'SAFE' || r.status === 'REFURB' || (r.status === 'UNSAFE' && String(r.reason || '').trim()))).length, so:(l && l.signoff && l.signoff.sig) ? l.signoff : null, loc:(l && l.location) || '' }; } catch(e){ return {}; } }
   // opening an inventory or report remembers where you were (e.g. a day in History), so coming back opens there again
   const PLACE = 'bco-ts-place';
   function keepPlace(){ try { sessionStorage.setItem(PLACE, JSON.stringify({ view:state.view, detailKey:state.detailKey, jobIdx:state.jobIdx, schedId:state.schedId, schedDate:state.schedDate, schedWeek:state.schedWeek, activeDate:state.activeDate, _schedBack:state._schedBack, pjKey:state.pjKey, pjIdx:state.pjIdx, y:window.scrollY, at:Date.now() })); } catch(e){} }

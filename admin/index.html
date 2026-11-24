@@ -654,7 +654,7 @@
   async function censusOfJob(id, btn){ const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return; const l = g.list;
     const old = btn.textContent; btn.disabled = true; btn.textContent = '…';
     try { const items = (l.rows || []).filter(r => r.serial || r.desc).map(r => { const make = String(r.make || '').trim(); let desc = String(r.desc || '').trim();
-        return { serial:r.serial || '', desc, make:make && !/^unknown$/i.test(make) ? make : '', swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', report:repNo(r) }; });
+        return { serial:r.serial || '', desc, make:make && !/^unknown$/i.test(make) ? make : '', swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', report:repNo(r) || (r.status === 'REFURB' ? 'REFURBISH' : '') }; });
       const name = l.customer || j.customer || 'Customer';
       await saveBook(await censusBook([{ name, month:monthText(l.date || j.sheetDate), items }]), name + ' census ' + (l.date || j.sheetDate) + '.xlsx'); }
     catch(e){ console.error(e); toast('Could not make the file'); }
@@ -967,7 +967,7 @@
         (l.rows || []).forEach((r, i) => { if (!r.serial && !r.desc) return; if (l.date > c.last) c.last = l.date;
           const make = String(r.make || '').trim(); let desc = String(r.desc || '').trim();
           const k = up(r.serial) || ('#' + l.id + '#' + i);
-          c.items.set(k, { serial:r.serial || '', desc, make:make && !/^unknown$/i.test(make) ? make : '', swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', report:repNo(r) }); }); });
+          c.items.set(k, { serial:r.serial || '', desc, make:make && !/^unknown$/i.test(make) ? make : '', swl:tonText(r.swl), loc:r.loc || l.location || '', unsafe:r.status === 'UNSAFE', report:repNo(r) || (r.status === 'REFURB' ? 'REFURBISH' : '') }); }); });
       const customers = [...by.values()].filter(c => c.items.size).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ name:c.name, month:monthText(c.last), items:[...c.items.values()] }));
       if (!customers.length){ toast('No client inventories yet'); return; }
       await saveBook(await censusBook(customers), `Blue Cranes client inventories ${today()}.xlsx`);
@@ -988,7 +988,7 @@
         const cust = String(l.customer || '').trim(); const key = cust.toUpperCase() + '|' + (String(r.serial || '').trim().toUpperCase() || ('#' + l.id + r.desc));
         const rep = r.report && r.report.no ? r.report.no + (r.report.cert ? ' / ' + r.report.cert : '') : '';
         reg.set(key, { Customer:cust, Site:l.location || '', Location:r.loc || '', 'Serial nr':r.serial || '', Description:r.desc || '', Manufacturer:r.make || '', 'SWL (kg)':/^\d+(\.\d+)?$/.test(String(r.swl || '').trim()) ? Number(r.swl) : (r.swl || ''),
-          Condition:r.status === 'SAFE' ? 'Safe' : r.status === 'UNSAFE' ? 'Unsafe' : '', 'Unsafe reason':r.status === 'UNSAFE' ? (r.reason || '') : '', 'Deflection':deflText(r.defl), 'Report nr':rep, 'Job nr':l.job || '', 'Last listed':l.date || '', Technician:l.tech || u.name || u.email }); }));
+          Condition:r.status === 'SAFE' ? 'Safe' : r.status === 'UNSAFE' ? 'Unsafe' : r.status === 'REFURB' ? 'Refurbish (certificate N/A)' : '', 'Unsafe reason':r.status === 'UNSAFE' ? (r.reason || '') : '', 'Deflection':deflText(r.defl), 'Report nr':rep, 'Job nr':l.job || '', 'Last listed':l.date || '', Technician:l.tech || u.name || u.email }); }));
       const rows = [...reg.values()].sort((a, b) => (a.Customer + a.Location + a.Description + a['Serial nr']).localeCompare(b.Customer + b.Location + b.Description + b['Serial nr']));
       if (!rows.length){ toast('No client inventories yet'); return; }
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, sheet(rows, [24, 18, 16, 14, 30, 16, 9, 9, 34, 40, 20, 12, 11, 22]), 'Inventory');

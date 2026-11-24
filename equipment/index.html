@@ -60,6 +60,7 @@
   .st{flex:1;height:46px;border-radius:10px;border:2px solid var(--field);background:#fff;color:var(--muted);font-weight:800;font-size:15px;font-family:inherit;cursor:pointer}
   .st.on-safe{background:var(--ok);border-color:var(--ok);color:#fff}
   .st.on-unsafe{background:var(--bad);border-color:var(--bad);color:#fff}
+  .st.on-rf{background:#0B3575;border-color:#0B3575;color:#fff}
   .item.unsafe{border:2px solid var(--bad);background:#FDF3F2}
   .field textarea{border-radius:10px;border:1.5px solid var(--field);background:#fff;padding:10px 12px;font-size:16px;font-family:inherit;color:var(--ink);width:100%;resize:vertical}
   .photo{width:100%;max-height:260px;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#fff}
@@ -67,7 +68,7 @@
   .repno{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px dashed var(--line);padding-top:8px}
   .repno .k{font-size:12px;font-weight:600;color:var(--label)} .repno .rn{font-weight:800;font-size:15px;color:var(--navyDeep)}
   .repno .rt{font-size:11px;font-weight:700;background:var(--yellow);color:var(--navyDeep);border-radius:999px;padding:2px 8px}
-  .pill.bad{background:#F8E1DE;color:var(--bad)} .pill.ok{background:#E3F1E8;color:var(--ok)}
+  .pill.bad{background:#F8E1DE;color:var(--bad)} .pill.ok{background:#E3F1E8;color:var(--ok)} .pill.rf{background:#E3EAF5;color:#0B3575}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .lc{height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--navy);background:#fff;color:var(--navyDeep);font-weight:700;font-size:14px;font-family:inherit;cursor:pointer}
   .lc.on{background:var(--navyDeep);color:#fff;border-color:var(--navyDeep)} .lc.add{border-style:dashed}
@@ -455,6 +456,7 @@
   const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
   function certLine(l, r, i){
     if (!isCertItem(r)) return '';
+    if (r.status === 'REFURB') return `<div class="certbar off"><span>📄 Certificate: <b>N/A</b> – for refurbishment</span></div>`;
     const kind = isInspCert(r) ? 'inspection' : 'load test';
     if (r.noCert) return `<div class="certbar off"><span>📄 No ${kind} certificate for this item</span><button type="button" class="linkbtn" style="color:var(--navy)" data-certon="${i}">Add certificate</button></div>`;
     return `${isHarness(r) ? `<div class="field"><label for="dom${i}">Date of manufacture</label><input id="dom${i}" data-f="dom" value="${esc(r.dom || '')}" placeholder="e.g. 15/12/2022 – O-190"></div>` : ''}<div class="certbar"><span>📄 ${isInspCert(r) ? 'Inspection' : 'Load test'} certificate <b>${esc(certNoOf(l, i))}</b>${r.status ? '' : ' · mark Safe or Unsafe first'}</span><span class="row" style="gap:6px;flex-wrap:nowrap">
@@ -537,7 +539,7 @@
   // inventory items → one part per certificate (so they can be put in number order with the forklift ones)
   async function itemCertParts(l, opts){ const parts = []; opts = opts || {};
     if (opts.ut === undefined){ const u = utOf(l); if (u && (u.name || u.sig)) opts.ut = u; }
-    for (const i of (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; })){
+    for (const i of (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; })){
       const f = await certDoc(l, [i], opts); if (f) parts.push({ no:certNoOf(l, i), blob:f.blob, name:f.name }); }
     return parts; }
   function activeJob(){
@@ -594,7 +596,9 @@
         return `<button class="btn" type="button" data-cont="${esc(v.id)}" style="margin-top:6px;background:var(--navyDeep);color:#fff;height:auto;padding:12px;text-align:left;display:block;width:100%">↻ ${esc(niceDate(v.date))} · Job ${esc(v.job || '–')}<span style="display:block;font-weight:500;font-size:13px;opacity:.85">${n} items · ${d} checked</span></button>`; }).join('')}</section>`;
   }
   // an item counts as completed when it is Safe, or Unsafe with the reason filled in
-  const itemDone = r => r.status === 'SAFE' || (r.status === 'UNSAFE' && !!String(r.reason || '').trim());
+  const itemDone = r => r.status === 'SAFE' || r.status === 'REFURB' || (r.status === 'UNSAFE' && !!String(r.reason || '').trim());
+  // cranes, hoists and man cages can go for refurbishment instead of Safe / Unsafe: no certificate (N/A)
+  const canRefurb = r => isManCage(r) || isCrane(r);
   function folds(){ if (!S.folds){ try { S.folds = JSON.parse(sessionStorage.getItem('bco-inv-folds') || 'null'); } catch(e){} S.folds = S.folds || { todo:true, done:false, jd:null, loc:false }; } return S.folds; }
   const keepFolds = () => { try { sessionStorage.setItem('bco-inv-folds', JSON.stringify(S.folds)); } catch(e){} };
   function vList(){
@@ -638,7 +642,7 @@
         const ro = r.auto ? 'readonly' : ''; const rep = r.report && r.report.no ? r.report : null;
         const on = sel && sel.has(r.id); const isOpen = !sel && OPEN.has(r.id);
         const sub = [r.serial ? r.desc : '', isSling(r) && r.len ? String(r.len).replace('.', ',') + ' m' : '', r.make && !/^unknown$/i.test(r.make) ? r.make : '', r.loc ? '📍 ' + r.loc : '', rep ? '📄 ' + rep.no : ''].filter(Boolean).join(' · ');
-        const chip = r.status === 'SAFE' ? '<span class="pill ok">✓ Safe</span>' : r.status === 'UNSAFE' ? '<span class="pill bad">✕ Unsafe</span>' : '<span class="pill todo">Not done</span>';
+        const chip = r.status === 'SAFE' ? '<span class="pill ok">✓ Safe</span>' : r.status === 'UNSAFE' ? '<span class="pill bad">✕ Unsafe</span>' : r.status === 'REFURB' ? '<span class="pill rf">♻ Refurbish</span>' : '<span class="pill todo">Not done</span>';
         const summary = `<button type="button" class="isum" data-tog="${esc(r.id)}" aria-expanded="${isOpen}"><span class="num">${i+1}</span>
             <span class="it"><b>${esc(r.serial || r.desc || 'New item')}</b><span class="hint">${esc(sub) || 'Tap to fill in'}</span></span>${chip}${sel ? '' : '<span class="chev" aria-hidden="true">▾</span>'}</button>`;
         if (!isOpen) return `<div class="item shut${r.status === 'UNSAFE' ? ' unsafe' : ''}${on ? ' sel' : ''}" data-i="${i}">
@@ -674,7 +678,9 @@
           <div class="field"><span style="font-size:12.5px;font-weight:600;color:var(--label)" id="stl${i}">Condition</span>
             <div class="row" role="group" aria-labelledby="stl${i}">
               <button type="button" class="st${r.status === 'SAFE' ? ' on-safe' : ''}" data-st="${i}" data-v="SAFE" aria-pressed="${r.status === 'SAFE'}">✓ Safe</button>
-              <button type="button" class="st${r.status === 'UNSAFE' ? ' on-unsafe' : ''}" data-st="${i}" data-v="UNSAFE" aria-pressed="${r.status === 'UNSAFE'}">✕ Unsafe</button></div></div>
+              <button type="button" class="st${r.status === 'UNSAFE' ? ' on-unsafe' : ''}" data-st="${i}" data-v="UNSAFE" aria-pressed="${r.status === 'UNSAFE'}">✕ Unsafe</button>
+              ${canRefurb(r) || r.status === 'REFURB' ? `<button type="button" class="st${r.status === 'REFURB' ? ' on-rf' : ''}" data-st="${i}" data-v="REFURB" aria-pressed="${r.status === 'REFURB'}">♻ Refurbish</button>` : ''}</div></div>
+          ${r.status === 'REFURB' ? '<span class="hint" style="margin-top:-4px">Goes for refurbishment – no certificate (N/A). Mark it Safe after the refurbishment and test.</span>' : ''}
           ${r.status === 'UNSAFE' ? `<div class="field"><label for="u${i}" style="color:var(--bad)">Why is it unsafe? (required)</label><textarea id="u${i}" data-f="reason" rows="2" placeholder="e.g. Hook latch missing, chain stretched">${esc(r.reason)}</textarea></div>
             ${r.photo ? `<img class="photo" id="ph${i}" data-pid="${esc(r.photo)}" alt="Photo of the defect on item ${i+1}">` : ''}
             <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label><label class="btn secondary small" style="flex:1;cursor:pointer">🖼 From gallery<input type="file" accept="image/*" data-photo="${i}" style="display:none"></label>
@@ -779,9 +785,9 @@
   }
   function cardEquip(l){ const rows = (l.rows || []).filter(r => r.serial || r.desc); const g = groupRows(rows.map((r, i) => [r, i]));
     return rows.length + (rows.length === 1 ? ' item' : ' items') + (g.length ? ': ' + g.slice(0, 6).map(([n, rs]) => n.toLowerCase() + ' (' + rs.length + ')').join(', ') + (g.length > 6 ? ', …' : '') : ''); }
-  function cardWork(l, type, reps){ const rows = (l.rows || []).filter(r => r.serial || r.desc), safe = rows.filter(r => r.status === 'SAFE').length, uns = rows.filter(r => r.status === 'UNSAFE').length;
+  function cardWork(l, type, reps){ const rows = (l.rows || []).filter(r => r.serial || r.desc), safe = rows.filter(r => r.status === 'SAFE').length, uns = rows.filter(r => r.status === 'UNSAFE').length, rf = rows.filter(r => r.status === 'REFURB').length;
     const verb = { Inspection:'Inspected', Service:'Serviced', 'Load test':'Load tested' }[type] || 'Inspected';
-    return verb + ' ' + rows.length + (rows.length === 1 ? ' item' : ' items') + ' of lifting equipment' + (safe + uns ? ': ' + [safe ? safe + ' safe' : '', uns ? uns + ' unsafe' : ''].filter(Boolean).join(', ') + ' (see the inventory).' : '.') + (reps ? '\nReports: ' + reps + '.' : ''); }
+    return verb + ' ' + rows.length + (rows.length === 1 ? ' item' : ' items') + ' of lifting equipment' + (safe + uns + rf ? ': ' + [safe ? safe + ' safe' : '', uns ? uns + ' unsafe' : '', rf ? rf + ' for refurbishment' : ''].filter(Boolean).join(', ') + ' (see the inventory).' : '.') + (reps ? '\nReports: ' + reps + '.' : ''); }
   function vSignoff(l){
     const so = l.signoff || {}, c0 = so.card || {}, sx = schedOf(l) || {};
     if (!S.soDraft){ try { const k = sessionStorage.getItem('bco-so-draft:' + l.id); if (k) S.soDraft = JSON.parse(k); } catch(e){} }
@@ -1168,7 +1174,7 @@
   function censusItems(l){
     const rows = (l.rows || []).filter(r => r.serial || r.desc);
     const items = rows.map(r => { const make = String(r.make || '').trim(); const desc = String(r.desc || '').trim();
-      return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), make:make && !/^unknown$/i.test(make) ? make.toUpperCase() : '', ton:tonText(r.swl), len:isSling(r) ? lenText(r.len) : '', loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', report:repNo(r) }; });
+      return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), make:make && !/^unknown$/i.test(make) ? make.toUpperCase() : '', ton:tonText(r.swl), len:isSling(r) ? lenText(r.len) : '', loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', refurb:r.status === 'REFURB', report:repNo(r) || (r.status === 'REFURB' ? 'REFURBISH' : '') }; });
     // grouped by type (all eye bolts together…), each group with its heading
     return groupRows(rows.map((r, k) => [r, k])).map(([g, rs]) => Object.assign(rs.map(([, k]) => items[k]), { title:gname(l, g).toUpperCase() }));
   }
@@ -1200,7 +1206,7 @@
       if (y + 7 + 6 > PH - 12){ doc.addPage(); y = 15; colHead(); }
       doc.setFillColor(227, 234, 245); doc.setDrawColor(0); doc.rect(L, y, 180, 7, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(11, 53, 117);
       doc.text(grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'), L + 1.5, y + 4.8); y += 7;
-      grp.forEach(it => { cell([it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report], it.unsafe ? RED : INK); }); });
+      grp.forEach(it => { cell([it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report], it.unsafe ? RED : it.refurb ? [11, 53, 117] : INK); }); });
     y += 8; if (y > PH - 12){ doc.addPage(); y = 20; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...RED); doc.text('RED = UNSAFE FOR USE', L, y);
     // client sign-off (once the client has signed the job): name, date and signature under the list
     const so = l.signoff; if (so && so.sig){ const BH = 20; y += 8; if (y + BH > PH - 8){ doc.addPage(); y = 20; }
@@ -1226,7 +1232,7 @@
     let r = 6;
     censusItems(l).forEach((grp, gi) => { if (gi) r++;
       { ws.mergeCells(r, 1, r, 7); const c = ws.getCell(r, 1); c.value = grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'); c.font = { name:'Arial', bold:true, color:{ argb:'FF0B3575' } }; c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE3EAF5' } }; c.border = box; r++; }
-      grp.forEach(it => { [it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : { name:'Arial' }; c.border = box; }); r++; }); });
+      grp.forEach(it => { [it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : it.refurb ? { name:'Arial', color:{ argb:'FF0B3575' } } : { name:'Arial' }; c.border = box; }); r++; }); });
     r++; const f = ws.getCell(r, 1); f.value = 'RED = UNSAFE FOR USE'; f.font = { name:'Arial', bold:true, color:red };
     const buf = await wb.xlsx.writeBuffer();
     return { blob:new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name:`Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.xlsx`, type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
@@ -1451,7 +1457,7 @@
   // ---------- start ----------
   // opened hidden by the Admin page: only offer the certificate maker
   if (new URLSearchParams(location.search).get('embed') === '1'){
-    window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }),
+    window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; }),
       certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
       itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
