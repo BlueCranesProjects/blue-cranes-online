@@ -90,7 +90,7 @@
   // Short names inside zip folders: Windows can't unzip paths longer than 260 characters, and the folder already says
   // which job it is, so files are just "Inventory.pdf", "Certificates.pdf", "Crane reports.pdf", "Load test certificate C7101-5.pdf" …
   BC.zipFile = n => { n = String(n || 'file'); const ext = (/\.[a-z0-9]{2,4}$/i.exec(n) || [''])[0], b = n.slice(0, n.length - ext.length);
-    const map = [[/^Job_/i, 'Job PDF (print)'], [/^TECHNICIAN_Crane/i, 'Crane reports - technician'], [/^TECHNICIAN_Man_cage/i, 'Man cage reports - technician'], [/^Crane_hoist_reports/i, 'Crane reports'], [/^Man_cage_reports/i, 'Man cage reports'], [/^Man_Cage_Inspection/i, 'Man cage report'], [/^Forklift_reports/i, 'Forklift reports'],
+    const map = [[/^Job_/i, 'Job PDF (print)'], [/^TECHNICIAN_Crane/i, 'Crane reports - technician'], [/^TECHNICIAN_Man_cage/i, 'Man cage reports - technician'], [/^Report_and_time_card/i, 'Report and time card'], [/^Crane_hoist_reports/i, 'Crane reports'], [/^Man_cage_reports/i, 'Man cage reports'], [/^Man_Cage_Inspection/i, 'Man cage report'], [/^Forklift_reports/i, 'Forklift reports'],
       [/^Certificates/i, 'Certificates'], [/^Inventory/i, 'Inventory'], [/^Time.?sheet/i, 'Time sheet']];
     for (const [re, t] of map) if (re.test(b)) return t + ext;
     const m = /^(.+?)_((?:CR|C|F)\d[\w.-]*?)(?=_|$)/.exec(b);

@@ -361,6 +361,7 @@
       ${nfl ? B('data-flpdf', `⬇ Forklift reports (${nfl})`) : ''}
       ${(g.cr || []).length ? B('data-crpdf', `⬇ Crane / hoist reports (${g.cr.length})`) : ''}
       ${(g.mc || []).length ? B('data-mcpdf', `⬇ Man cage reports (${g.mc.length})`) : ''}
+      ${g.list && g.list.signoff && g.list.signoff.card ? B('data-cardpdf', '⬇ Report &amp; time card') : ''}
       ${j.sheetDate || j.status === 'done' || j.status === 'busy' ? B('data-tspdf', '⬇ Time sheet') : ''}
       ${g.total || nfl || (g.cr || []).length || (g.mc || []).length ? B('data-jobpdf', '🖨 Job PDF (print)') + B('data-allpdf', '⬇ All files (zip)') : ''}</div>`; }
   // client sign-offs (kept on the technician's inventory): the hidden report tools put the client's name + signature on the client's reports
@@ -437,7 +438,8 @@
     const parts = [];   // { blob, from } – from = first page to take (quote pages only)
     const own = async b => new Blob([new Uint8Array(await b.arrayBuffer())], { type:'application/pdf' });
     if (g.list){ const t = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
-      try { const f = await t.api.listDoc(JSON.parse(JSON.stringify(g.list))); parts.push({ blob:await own(f.blob) }); } finally { t.done(); } }
+      try { const f = await t.api.listDoc(JSON.parse(JSON.stringify(g.list))); parts.push({ blob:await own(f.blob) });
+        if (t.api.timeCard && g.list.signoff && g.list.signoff.card){ const c = await t.api.timeCard(JSON.parse(JSON.stringify(g.list))); if (c) parts.unshift({ blob:await own(c.blob) }); } } finally { t.done(); } }
     if ((g.fl || []).length){ const t = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
       try { for (const r of g.fl.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
           const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) }); } }
@@ -478,10 +480,11 @@
     const files = [];
     // the day's time sheet: its own download, and in All files (zip)
     if (which === 'ts' || which === 'all'){ const f = await sheetFileOf(g.uid, j.sheetDate || j.date, j); if (f) files.push(f); if (which === 'ts') return files; }
-    if (g.list && (which === 'inv' || which === 'certs' || which === 'all')){
+    if (g.list && (which === 'inv' || which === 'certs' || which === 'card' || which === 'all')){
       const t = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
       try { const l = JSON.parse(JSON.stringify(g.list));
         if (which === 'inv' || which === 'all') files.push(await t.api.listDoc(l));
+        if ((which === 'card' || which === 'all') && t.api.timeCard && l.signoff && l.signoff.card){ const f = await t.api.timeCard(l); if (f) files.push(f); if (which === 'card') return files; }
         if (which === 'all'){ try { files.push(await t.api.listXlsx(l)); } catch(e){} }
         if (which === 'certs' || which === 'all'){
           let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
@@ -802,6 +805,7 @@
     app.querySelectorAll('[data-invpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.invpdf, 'inv', b));
     app.querySelectorAll('[data-crpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.crpdf, 'cr', b));
     app.querySelectorAll('[data-mcpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.mcpdf, 'mc', b));
+    app.querySelectorAll('[data-cardpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.cardpdf, 'card', b));
     app.querySelectorAll('[data-flpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.flpdf, 'fl', b));
     wireDays();
     app.querySelectorAll('[data-jobpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.jobpdf, 'job', b));

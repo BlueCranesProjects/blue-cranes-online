@@ -98,6 +98,18 @@
   .folder .fch{font-size:14px}
   .folder > .item, .grp > .item{margin:8px}
   .grp{border-top:1px solid var(--line)}
+  .socard .sog{display:grid;grid-template-columns:1fr 1fr;gap:10px}.socard input.ro{background:#F4F6FB;border-style:dashed;color:var(--ink)}
+  .socard textarea{width:100%;border:1.5px solid var(--field, #c9d2e3);border-radius:10px;padding:10px;font:inherit;font-size:15px;line-height:1.45;resize:vertical}
+  .socard select{height:46px;border-radius:10px;border:1.5px solid var(--field, #c9d2e3);background:#fff;padding:0 10px;font:inherit;font-size:16px;width:100%}
+  .socard .yn{display:flex;gap:6px}.socard .yn button{flex:1;height:44px;border:1.5px solid #c9d2e3;border-radius:10px;background:#fff;font:800 15px Inter,Arial,sans-serif;color:#4a5370;cursor:pointer}
+  .socard .yn button.on{background:var(--ok);border-color:var(--ok);color:#fff}
+  .socard .socert{font-size:13.5px;line-height:1.5;background:#F4F6FB;border-radius:10px;padding:10px 12px}
+  .sot{width:100%;border-collapse:collapse;font-size:13px}.sot th{font-size:11px;color:#4a5370;text-align:left;padding:4px 2px;border-bottom:1px solid var(--line)}
+  .sot td{padding:5px 2px;border-bottom:1px solid #eef1f6}.sot input{width:100%;max-width:62px;height:36px;border:1.5px solid #c9d2e3;border-radius:8px;padding:0 6px;font:inherit;font-size:14px}
+  .sw{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;cursor:pointer;color:var(--navyDeep)}
+  .sw input{position:absolute;opacity:0;width:1px;height:1px}.sw span{width:46px;height:28px;border-radius:999px;background:#c9d2e3;position:relative;transition:.15s;flex:none}
+  .sw span::after{content:'';position:absolute;left:3px;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.15s}
+  .sw input:checked + span{background:var(--ok)}.sw input:checked + span::after{left:21px}.sw input:focus-visible + span{outline:3px solid var(--yellow)}
   .gbulk{padding:8px 8px 0}.gbulk .btn{width:100%;color:var(--ok);border-color:var(--ok);font-weight:800}
   main.wide .grp > .gbulk{grid-column:1/-1}
   .grp .gh{display:flex;align-items:center;gap:10px;width:100%;border:0;background:#F4F6FB;padding:12px 14px;font:800 14.5px Inter,Arial,sans-serif;color:var(--navyDeep);cursor:pointer;text-align:left}
@@ -737,50 +749,184 @@
   const idbAll = name => new Promise(res => { try { const rq = indexedDB.open(name, 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
       rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => res(g.result || []); g.onerror = () => res([]); } catch(e){ res([]); } }; rq.onerror = () => res([]); } catch(e){ res([]); } });
   const okEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
+  // ---------- client sign-off: the Technician's Report and Time Card (same as the paper card) ----------
+  const CARD_TYPES = ['Inspection', 'Service', 'Load test'];
+  const hm = h => { const t = Math.round((Number(h) || 0) * 60); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+  const hmIn = v => { const m = /^\s*(\d{1,2})(?:[:h.,](\d{1,2}))?\s*$/.exec(String(v || '')); if (!m) return null; const mm = Number(m[2] || 0); return Number(m[1]) + (m[2] && m[2].length === 1 && /[.,]/.test(v) ? mm / 10 : mm / 60); };
+  function schedOf(l){ try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const sid = l.sched || (S.active && S.active.sched); return (sid && ts && ts.schedule && ts.schedule[sid]) || null; } catch(e){ return null; } }
+  // the job's days from the time sheet: travel to the job, time on site (the job still busy today: up to now, in 15-minute steps)
+  function cardTimes(l){
+    let ts = null; try { ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); } catch(e){} if (!ts || !ts.sheets) return [];
+    const jc = jobCore(l.job), mins = s => { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+    const at = (iso, k) => { const t = Date.parse(iso || ''); if (isNaN(t)) return null; const d = new Date(t); const kk = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); return kk === k ? d.getHours() * 60 + d.getMinutes() : null; };
+    const out = [];
+    Object.keys(ts.sheets).sort().forEach(k => { const sh = ts.sheets[k]; let prev = mins(sh.clockIn);
+      (sh.jobs || []).forEach(j => { const a = at(j.startedAt, k); let tr = null;
+        if (j.travel != null && j.travel !== '' && !isNaN(Number(j.travel))) tr = Number(j.travel); else if (prev != null && a != null && a >= prev) tr = (a - prev) / 60;
+        const mine = (l.sched && j.sched === l.sched) || (jc && jobCore(j.card) === jc);
+        if (mine){ let site = Number(j.hrs) || 0; if (!j.done && j.startedAt){ const h = (Date.now() - Date.parse(j.startedAt)) / 3600000; if (h > 0 && h < 24) site = Math.round(h * 4) / 4; }
+          out.push({ date:k, travel:tr || 0, site, work:site }); }
+        prev = j.done ? at(j.doneAt, k) : null; }); });
+    return out;
+  }
+  function cardEquip(l){ const rows = (l.rows || []).filter(r => r.serial || r.desc); const g = groupRows(rows.map((r, i) => [r, i]));
+    return rows.length + (rows.length === 1 ? ' item' : ' items') + (g.length ? ': ' + g.slice(0, 6).map(([n, rs]) => n.toLowerCase() + ' (' + rs.length + ')').join(', ') + (g.length > 6 ? ', …' : '') : ''); }
+  function cardWork(l, type, reps){ const rows = (l.rows || []).filter(r => r.serial || r.desc), safe = rows.filter(r => r.status === 'SAFE').length, uns = rows.filter(r => r.status === 'UNSAFE').length;
+    const verb = { Inspection:'Inspected', Service:'Serviced', 'Load test':'Load tested' }[type] || 'Inspected';
+    return verb + ' ' + rows.length + (rows.length === 1 ? ' item' : ' items') + ' of lifting equipment' + (safe + uns ? ': ' + [safe ? safe + ' safe' : '', uns ? uns + ' unsafe' : ''].filter(Boolean).join(', ') + ' (see the inventory).' : '.') + (reps ? '\nReports: ' + reps + '.' : ''); }
   function vSignoff(l){
-    const so = l.signoff || {}, rows = (l.rows || []).filter(r => r.serial || r.desc), safe = rows.filter(r => r.status === 'SAFE').length, uns = rows.filter(r => r.status === 'UNSAFE').length;
-    const d = S.soDraft = S.soDraft || { name:so.name || '', email:so.email || schedEmail(l), sig:so.sig || '' };
+    const so = l.signoff || {}, c0 = so.card || {}, sx = schedOf(l) || {};
+    if (!S.soDraft){ try { const k = sessionStorage.getItem('bco-so-draft:' + l.id); if (k) S.soDraft = JSON.parse(k); } catch(e){} }
+    const d = S.soDraft = S.soDraft || { name:so.name || '', email:so.email || schedEmail(l), sig:so.sig || '',
+      type:c0.type || 'Inspection', reportTo:c0.reportTo != null ? c0.reportTo : (sx.contact || (S.active && S.active.contact) || ''), order:c0.order || sx.order || (S.active && S.active.order) || '',
+      equip:c0.equipment || cardEquip(l), work:c0.work || '', workAuto:!c0.work, mat:(c0.materials || []).slice(), fileUpd:c0.fileUpd || '', newFile:c0.newFile || '',
+      timeOn:c0.timeOn != null ? c0.timeOn : !(sx.assigned && String(sx.order || '').trim()),   // an order number from the office = a quoted job: no time record
+       time:c0.time ? JSON.parse(JSON.stringify(c0.time)) : cardTimes(l) };
+    if (d.workAuto && !d.work) d.work = cardWork(l, d.type, '');
+    if (!d.mat.length) d.mat.push('');
     const when = so.at ? new Date(so.at).toLocaleString('en-ZA', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
-    return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), 'Client sign-off', `<a class="ib" href="../timesheet/" data-back="match" aria-label="Back">${ICON.back}</a>`) + `<main>
-      ${so.sig ? `<div class="sodone"><b>✓ Signed by ${esc(so.name)}${when ? ' · ' + esc(when) : ''}</b>${so.email ? (so.mail === 'sent' ? 'Emailed to ' : '⏳ To be emailed to ') + esc(so.email) : 'No email address – not emailed'}<br><span>Signing again replaces this signature.</span></div>` : ''}
-      <section class="card"><h2>What was done</h2>
-        <div class="sor"><span>Customer</span><b>${esc(l.customer || '–')}</b></div>
-        <div class="sor"><span>Items checked</span><b>${safe + uns === rows.length ? rows.length : (safe + uns) + ' of ' + rows.length}${safe ? ` · <span class="spill ok">${safe} SAFE</span>` : ''}${uns ? ` <span class="spill bad">${uns} UNSAFE</span>` : ''}</b></div>
-        <div class="sor"><span>Reports</span><b id="soN">…</b></div>
-        <div class="hint" id="soReps"></div></section>
-      <section class="card"><h2>Client</h2>
-        <div class="field"><label for="soName">Client's name</label><input id="soName" autocomplete="off" value="${esc(d.name)}"></div>
-        <div class="field"><label for="soEmail">Email the reports to</label><input id="soEmail" type="email" inputmode="email" autocomplete="off" placeholder="name@company.co.za" value="${esc(d.email)}">
-          <span class="hint">The client's reports and the inventory go to this address. Admin can fill it in on the job.</span></div>
-        <div class="field"><label>Client's signature</label><div style="position:relative;border:1.5px dashed var(--line);border-radius:10px;background:#fff;height:150px"><canvas id="soPad" style="width:100%;height:100%;touch-action:none;display:block"></canvas>
+    const ro = (lab, v) => `<div class="field"><label>${lab}</label><input value="${esc(v || '–')}" readonly class="ro" tabindex="-1"></div>`;
+    const yn = (k, lab) => `<div class="field"><label>${lab}</label><div class="yn">${['yes', 'no'].map(v => `<button type="button" data-yn="${k}" data-v="${v}" class="${d[k] === v ? 'on' : ''}" aria-pressed="${d[k] === v}">${v === 'yes' ? 'Yes' : 'No'}</button>`).join('')}</div></div>`;
+    const day = k => new Date(k + 'T12:00:00').toLocaleDateString('en-ZA', { weekday:'short' });
+    return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Technician's report & time card", `<a class="ib" href="../timesheet/" data-back="match" aria-label="Back">${ICON.back}</a>`) + `<main class="socard">
+      ${so.sig ? `<div class="sodone"><b>✓ Signed by ${esc(so.name)}${when ? ' · ' + esc(when) : ''}</b>${so.email ? (so.mail === 'sent' ? 'Emailed to ' : '⏳ To be emailed to ') + esc(so.email) : 'No email address – not emailed'}<br><span>Signing again replaces this signature.</span>
+        <button type="button" class="btn secondary small" id="soPdf" style="margin-top:8px">⬇ Report &amp; time card (PDF)</button></div>` : ''}
+      <section class="card"><h2>Job</h2><div class="sog">
+        ${ro('Customer', l.customer)}${ro('Job no', l.job)}${ro('Site', l.location || (S.active && S.active.site))}
+        <div class="field"><label for="soOrder">Order no</label><input id="soOrder" value="${esc(d.order)}" autocomplete="off"></div>
+        ${ro('Technician', (S.profile && S.profile.name) || l.tech)}
+        <div class="field"><label for="soTo">Report to</label><input id="soTo" value="${esc(d.reportTo)}" autocomplete="off"></div>
+        ${ro('Date', niceDate(l.date))}
+        <div class="field"><label for="soType">Type of work</label><select id="soType">${CARD_TYPES.map(t => `<option ${t === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
+        <div class="field"><label for="soEq">Equipment</label><textarea id="soEq" rows="3">${esc(d.equip)}</textarea></div></section>
+      <section class="card"><h2>Work done</h2><textarea id="soWork" rows="5">${esc(d.work)}</textarea><span class="hint">Filled in for you – change or add anything.</span></section>
+      <section class="card"><h2>Materials used</h2>
+        ${d.mat.map((m, i) => `<div class="row" style="gap:6px"><input data-mat="${i}" value="${esc(m)}" placeholder="e.g. 1 × hook latch kit" style="flex:1" autocomplete="off">${d.mat.length > 1 ? `<button type="button" class="btn secondary small" data-matx="${i}" aria-label="Remove line" style="width:44px;flex:none">✕</button>` : ''}</div>`).join('')}
+        <button type="button" class="btn secondary small" id="soMatAdd">+ Add a line</button></section>
+      <section class="card"><h2>File</h2><div class="sog">${yn('fileUpd', 'File updated')}${yn('newFile', 'New file needed')}</div></section>
+      <section class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Time record</h2>
+        <label class="sw"><input type="checkbox" id="soTimeOn" ${d.timeOn ? 'checked' : ''}><span></span> Add time record</label></div>
+        ${d.timeOn ? (d.time.length ? `<table class="sot"><tr><th>Day</th><th>Date</th><th>Travel</th><th>Site</th><th>Work</th><th>Total</th></tr>
+          ${d.time.map((t, i) => `<tr><td><b>${esc(day(t.date))}</b></td><td>${esc(new Date(t.date + 'T12:00:00').toLocaleDateString('en-ZA', { day:'numeric', month:'short' }))}</td>
+            ${['travel', 'site', 'work'].map(k => `<td><input data-tm="${i}" data-k="${k}" value="${hm(t[k])}" inputmode="decimal" aria-label="${k} hours"></td>`).join('')}<td><b id="tt${i}">${hm((Number(t.travel) || 0) + (Number(t.site) || 0))}</b></td></tr>`).join('')}</table>
+          <span class="hint">From your time sheet (hours:minutes). Tap a time to change it.</span>` : '<span class="hint">No times on the time sheet for this job yet.</span>')
+          : `<span class="hint">No time record on the card${sx.assigned && String(sx.order || '').trim() ? ' – quoted job (the office gave order nr ' + esc(sx.order) + ')' : ''}. Switch it on to add your times.</span>`}</section>
+      <section class="card"><h2>Customer's certificate</h2>
+        <div class="socert">The above work has been completed / progressed. I have read and confirm this report and time sheet and certify that the work has been done to my satisfaction.</div>
+        <div class="field"><label for="soName">Print name</label><input id="soName" autocomplete="off" value="${esc(d.name)}"></div>
+        <div class="field"><label>Customer's signature</label><div style="position:relative;border:1.5px dashed var(--line);border-radius:10px;background:#fff;height:150px"><canvas id="soPad" style="width:100%;height:100%;touch-action:none;display:block"></canvas>
           ${d.sig ? '' : '<span class="hint" id="soPh" style="position:absolute;left:12px;top:62px;pointer-events:none">Sign here</span>'}</div>
-          <div class="row" style="gap:8px"><button type="button" class="btn secondary small" id="soClr">Clear</button></div></div></section>
+          <div class="row" style="gap:8px"><button type="button" class="btn secondary small" id="soClr">Clear</button></div></div>
+        <div class="field"><label for="soEmail">Email the reports to</label><input id="soEmail" type="email" inputmode="email" autocomplete="off" placeholder="name@company.co.za" value="${esc(d.email)}">
+          <span class="hint">The client's reports, the inventory and this card go to this address. Admin can fill it in on the job.</span></div>
+        <div class="hint" id="soReps"></div></section>
       <button class="btn primary" id="soSign" style="height:58px;font-size:18px">✓ ${SIGN_FIN ? 'Sign &amp; finish job' : 'Save sign-off'}</button>
       ${SIGN_FIN ? '<button class="btn secondary" id="soSkip">Skip – client not here</button>' : ''}
     </main>`;
   }
   function wireSignoff(l){
     const $ = id => document.getElementById(id), d = S.soDraft;
-    $('soName').oninput = e => d.name = e.target.value; $('soEmail').oninput = e => d.email = e.target.value.trim();
+    const keep = () => { try { sessionStorage.setItem('bco-so-draft:' + l.id, JSON.stringify(d)); } catch(e){} };
+    $('soName').oninput = e => { d.name = e.target.value; keep(); }; $('soEmail').oninput = e => { d.email = e.target.value.trim(); keep(); };
+    $('soOrder').oninput = e => { d.order = e.target.value; keep(); }; $('soTo').oninput = e => { d.reportTo = e.target.value; keep(); }; $('soEq').oninput = e => { d.equip = e.target.value; keep(); };
+    $('soWork').oninput = e => { d.work = e.target.value; d.workAuto = false; keep(); };
+    $('soType').onchange = e => { d.type = e.target.value; if (d.workAuto){ d.work = cardWork(l, d.type, S.soReps || ''); $('soWork').value = d.work; } keep(); };
+    app.querySelectorAll('[data-mat]').forEach(x => x.oninput = () => { d.mat[Number(x.dataset.mat)] = x.value; keep(); });
+    app.querySelectorAll('[data-matx]').forEach(x => x.onclick = () => { d.mat.splice(Number(x.dataset.matx), 1); keep(); render(); });
+    $('soMatAdd').onclick = () => { d.mat.push(''); keep(); render(); const ins = app.querySelectorAll('[data-mat]'); if (ins.length) ins[ins.length - 1].focus(); };
+    app.querySelectorAll('[data-yn]').forEach(x => x.onclick = () => { d[x.dataset.yn] = d[x.dataset.yn] === x.dataset.v ? '' : x.dataset.v; keep(); render(); });
+    $('soTimeOn').onchange = e => { d.timeOn = e.target.checked; keep(); render(); };
+    app.querySelectorAll('[data-tm]').forEach(x => x.onchange = () => { const i = Number(x.dataset.tm), v = hmIn(x.value); if (v == null){ x.value = hm(d.time[i][x.dataset.k]); toast('Type the time as hours:minutes, e.g. 1:30'); return; }
+      d.time[i][x.dataset.k] = v; x.value = hm(v); const t = $('tt' + i); if (t) t.textContent = hm((Number(d.time[i].travel) || 0) + (Number(d.time[i].site) || 0)); keep(); });
+    const pp = $('soPdf'); if (pp) pp.onclick = async () => { pp.disabled = true; try { const f = await timeCardDoc(l); await BC.saveFiles([f], f.name); } catch(e){ console.error(e); toast('Could not make the PDF'); } pp.disabled = false; };
     (async () => { const jc = jobCore(l.job); const mine = r => r && r.state && r.state.f && jc && jobCore(r.job || r.state.f.jobno) === jc;
       const [fl, cr, mc] = await Promise.all([idbAll('bc-forklift'), idbAll('bc-crane'), idbAll('bc-mancage')]); const all = [...cr.filter(mine), ...fl.filter(mine), ...mc.filter(mine)];
-      const n = $('soN'), h = $('soReps'); if (!n) return; n.textContent = all.length;
-      h.textContent = all.map(r => (r.state.f.docno || 'Report') + ' ' + (r.state.type === 'LOAD TEST' ? 'Load test' : 'Inspection')).sort((a, b) => a.localeCompare(b, undefined, { numeric:true })).join(' · '); })();
+      const txt = all.map(r => r.state.f.docno).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { numeric:true })).join(', ');
+      S.soReps = txt; const h = $('soReps'); if (h && all.length) h.textContent = all.length + (all.length === 1 ? ' report: ' : ' reports: ') + txt;
+      if (d.workAuto && txt){ d.work = cardWork(l, d.type, txt); const w = $('soWork'); if (w && document.activeElement !== w) w.value = d.work; } })();
     const c = $('soPad'), x = c.getContext('2d'); const r0 = c.getBoundingClientRect(), dp = window.devicePixelRatio || 1; c.width = r0.width * dp; c.height = r0.height * dp; x.setTransform(dp, 0, 0, dp, 0, 0); x.lineWidth = 2.4; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#13224F';
     if (d.sig){ const im = new Image(); im.onload = () => { const k = Math.min(r0.width / im.width, r0.height / im.height) * 0.9, w = im.width * k, h = im.height * k; x.drawImage(im, (r0.width - w) / 2, (r0.height - h) / 2, w, h); }; im.src = d.sig; }
     let on = false; const pt = e => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     c.onpointerdown = e => { on = true; c.setPointerCapture(e.pointerId); const [a, b] = pt(e); x.beginPath(); x.moveTo(a, b); const ph = $('soPh'); if (ph) ph.remove(); };
     c.onpointermove = e => { if (!on) return; const [a, b] = pt(e); x.lineTo(a, b); x.stroke(); };
-    c.onpointerup = c.onpointercancel = () => { if (!on) return; on = false; d.sig = c.toDataURL('image/png'); };
-    $('soClr').onclick = () => { d.sig = ''; render(); };
-    const leave = () => { if (SIGN_FIN && S.active){ try { localStorage.setItem('bco-finish-now', JSON.stringify({ date:S.active.date, idx:S.active.idx, at:Date.now() })); } catch(e){} location.replace('../timesheet/'); } else history.length > 1 ? history.back() : location.replace('../timesheet/'); };
+    c.onpointerup = c.onpointercancel = () => { if (!on) return; on = false; d.sig = c.toDataURL('image/png'); keep(); };
+    $('soClr').onclick = () => { d.sig = ''; keep(); render(); };
+    const leave = () => { try { sessionStorage.removeItem('bco-so-draft:' + l.id); } catch(e){}
+      if (SIGN_FIN && S.active){ try { localStorage.setItem('bco-finish-now', JSON.stringify({ date:S.active.date, idx:S.active.idx, at:Date.now() })); } catch(e){} location.replace('../timesheet/'); } else history.length > 1 ? history.back() : location.replace('../timesheet/'); };
     $('soSign').onclick = () => {
       if (!String(d.name || '').trim()){ toast("Fill in the client's name"); $('soName').focus(); return; }
       if (!d.sig){ toast('The client still has to sign'); return; }
       if (d.email && !okEmail(d.email)){ toast('That email address doesn\'t look right'); $('soEmail').focus(); return; }
-      l.signoff = { name:String(d.name).trim(), email:d.email || '', sig:d.sig, at:new Date().toISOString(), by:(S.profile && S.profile.name) || '', mail:d.email ? 'waiting' : 'none' };
+      const card = { type:d.type, order:String(d.order || '').trim(), reportTo:String(d.reportTo || '').trim(), equipment:String(d.equip || '').trim(), work:String(d.work || '').trim(),
+        materials:d.mat.map(m => String(m || '').trim()).filter(Boolean), fileUpd:d.fileUpd, newFile:d.newFile, timeOn:!!d.timeOn, time:d.timeOn ? d.time : [],
+        site:l.location || (S.active && S.active.site) || '', tech:(S.profile && S.profile.name) || l.tech || '', techSig:(S.profile && S.profile.signature) || '' };
+      l.signoff = { name:String(d.name).trim(), email:d.email || '', sig:d.sig, at:new Date().toISOString(), by:(S.profile && S.profile.name) || '', mail:d.email ? 'waiting' : 'none', card };
       saveList(l, true); S.soDraft = null; toast('Signed by ' + l.signoff.name); setTimeout(leave, 400); };
     const sk = $('soSkip'); if (sk) sk.onclick = leave;
+  }
+  // the signed card as a PDF, laid out like the paper Technicians Report and Time Card
+  async function timeCardDoc(l){
+    await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
+    const so = l.signoff || {}, c = so.card || {}, U = v => String(v || '').toUpperCase(), L = 12, R = 198, W = R - L, INK = [34, 34, 34], NV = [29, 63, 154], VAL = [10, 20, 60];
+    const LOGO = await logoWide();
+    doc.setTextColor(...INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text('TECHNICIANS REPORT', L, 20); doc.text('AND TIME CARD', L, 27.5);
+    if (LOGO){ let lh = 22, lw = lh * LOGO.w / LOGO.h; if (lw > 62){ lw = 62; lh = lw * LOGO.h / LOGO.w; } try { doc.addImage(LOGO.data, 'JPEG', R - lw, 7, lw, lh, 'bclogo', 'FAST'); } catch(e){} }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.text('Reg No CK 1990/024648/23', R - 18, 35, { align:'right' }); doc.text('LME 017', R, 35, { align:'right' });
+    // the job box: 4 rows of 2 fields, the offices on the right
+    let y = 38; const cw = [70, 70, W - 140], rh = 11;
+    doc.setDrawColor(...NV); doc.setLineWidth(0.9); doc.line(L, y, R, y); doc.setDrawColor(40); doc.setLineWidth(0.3); doc.rect(L, y, W, rh * 4);
+    const cell = (x, yy, w, lab, val) => { doc.setLineWidth(0.25); doc.rect(x, yy, w, rh); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...INK); doc.text(lab, x + 1.5, yy + 3.4);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...VAL); let t = doc.splitTextToSize(U(val), w - 3);
+      if (t.length > 1){ doc.setFontSize(7.5); t = doc.splitTextToSize(U(val), w - 3).slice(0, 2); if (doc.splitTextToSize(U(val), w - 3).length > 2) t[1] = t[1].replace(/.{0,2}$/, '…'); doc.text(t, x + 1.5, yy + 6.6); } else doc.text(t[0] || '', x + 1.5, yy + 8.6); };
+    const dd = String(l.date || '').split('-'); const dmy = dd.length === 3 ? dd[2] + '/' + dd[1] + '/' + dd[0] : '';
+    [[['CUSTOMER:', l.customer], ['JOB NO:', l.job]], [['SITE:', c.site || l.location], ['ORDER NO:', c.order]], [['TECHNICIAN:', c.tech || l.tech], ['REPORT TO:', c.reportTo]],
+     [['EQUIPMENT:', (c.type ? c.type + ' – ' : '') + (c.equipment || '')], ['DATE:', dmy]]].forEach((row, k) => { cell(L, y + k * rh, cw[0], ...row[0]); cell(L + cw[0], y + k * rh, cw[1], ...row[1]); });
+    { const x = L + 140; doc.rect(x, y, cw[2], rh * 4); doc.setTextColor(...INK); doc.setFontSize(7.5); let yy = y + 5;
+      [['CAPE TOWN', '021 556 0498'], ['SALDANHA', '022 714 2207'], ['VREDENDAL', '027 217 2217'], ['NAMIBIA', '00264 812 50 6220']].forEach(([t, n]) => { doc.setFont('helvetica', 'bold'); doc.text(t, x + 2, yy); doc.text('TEL: ' + n, x + 2, yy + 3.8); yy += 10; }); }
+    y += rh * 4;
+    // what was done, on the lines
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...VAL);
+    const workLines = String(c.work || '').split('\n').flatMap(t => doc.splitTextToSize(t, W - 4)); const nL = Math.max(8, workLines.length), LH = 7.2;
+    doc.setDrawColor(90); for (let k = 0; k < nL; k++){ doc.setLineWidth(0.2); doc.line(L, y + (k + 1) * LH, R, y + (k + 1) * LH); if (workLines[k]) doc.text(workLines[k], L + 2, y + (k + 1) * LH - 2); }
+    doc.setDrawColor(40); doc.setLineWidth(0.3); doc.rect(L, y, W, nL * LH); y += nL * LH;
+    // file updated / new file needed / technician's signature
+    const fh = 15, box = (x, yy, on) => { doc.setLineWidth(0.3); doc.rect(x, yy - 3.2, 3.6, 3.6); if (on){ doc.setLineWidth(0.5); doc.line(x + 0.6, yy - 1.4, x + 1.5, yy - 0.2); doc.line(x + 1.5, yy - 0.2, x + 3.1, yy - 2.8); } };
+    doc.rect(L, y, 60, fh); doc.rect(L + 60, y, 60, fh); doc.rect(L + 120, y, W - 120, fh); doc.setTextColor(...INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    [['FILE UPDATED:', c.fileUpd, L], ['NEW FILE NEEDED:', c.newFile, L + 60]].forEach(([t, v, x]) => { doc.text(t, x + 14, y + 4.5); box(x + 10, y + 11, v === 'yes'); doc.text('YES', x + 15, y + 11); box(x + 32, y + 11, v === 'no'); doc.text('NO', x + 37, y + 11); });
+    doc.text("TECHNICIAN'S SIGNATURE:", L + 123, y + 4.5); if (c.techSig) try { doc.addImage(c.techSig, 'PNG', L + 126, y + 5.5, 34, 9, undefined, 'FAST'); } catch(e){}
+    y += fh;
+    // the customer's certificate and signature
+    const ch = 27; doc.rect(L, y, W, ch); doc.setFontSize(7.6); doc.text("CUSTOMER'S CERTIFICATE", L + 2, y + 4);
+    doc.text(doc.splitTextToSize('THE ABOVE WORK HAS BEEN COMPLETED/PROGRESSED. I HAVE READ AND CONFIRM THIS REPORT AND TIME SHEET AND CERTIFY THAT THE WORK HAS BEEN DONE TO MY SATISFACTION.', W - 4), L + 2, y + 8);
+    doc.setFontSize(8.5); doc.text("CUSTOMER'S SIGNATURE:", L + 2, y + 24); doc.setLineWidth(0.25); doc.line(L + 42, y + 24.5, L + 104, y + 24.5); doc.text('PRINT NAME:', L + 108, y + 24); doc.line(L + 130, y + 24.5, R - 3, y + 24.5);
+    if (so.sig) try { doc.addImage(so.sig, 'PNG', L + 46, y + 13.5, 44, 11, undefined, 'FAST'); } catch(e){}
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.setTextColor(...VAL); doc.text(U(so.name), L + 132, y + 23.2); doc.setTextColor(...INK); doc.setFont('helvetica', 'bold');
+    y += ch;
+    // time record (Mon–Sun) and materials used – or only the materials on a quoted job
+    const mats = c.materials || [];
+    if (c.timeOn){
+      const tw = 136, cols = [['DAY', 18], ['DATE', 20], ['TRAVELING\nTIME', 25], ['SITE\nHOURS', 24], ['WORK\nHOURS', 24], ['TOTAL\nHOURS', 25]], rH = 7;
+      doc.rect(L, y, tw, 6); doc.setFontSize(8); doc.text('TIME RECORD', L + tw / 2, y + 4.2, { align:'center' }); let x = L;
+      cols.forEach(([t, w]) => { doc.rect(x, y + 6, w, 10); doc.text(t.split('\n'), x + w / 2, y + (t.includes('\n') ? 10 : 12), { align:'center' }); x += w; });
+      const days = ['MON', 'TUES', 'WED', 'THURS', 'FRI', 'SAT', 'SUN'], byDay = {}; (c.time || []).forEach(t => { const wd = (new Date(t.date + 'T12:00:00').getDay() + 6) % 7; byDay[wd] = t; });
+      days.forEach((dn, k) => { let xx = L; const t = byDay[k], yy = y + 16 + k * rH;
+        const v = t ? [dn, t.date.slice(8, 10) + '/' + t.date.slice(5, 7), hm(t.travel), hm(t.site), hm(t.work), hm((Number(t.travel) || 0) + (Number(t.site) || 0))] : [dn, '', '', '', '', ''];
+        cols.forEach(([, w], ci) => { doc.rect(xx, yy, w, rH); doc.setFont('helvetica', ci ? 'normal' : 'bold'); doc.setFontSize(ci ? 9.5 : 8); doc.setTextColor(...(ci ? VAL : INK)); if (v[ci]) doc.text(v[ci], xx + 1.6, yy + 4.9); xx += w; }); });
+      doc.setTextColor(...INK); const mx = L + tw, mw = W - tw, n = 9, mh = (16 + 7 * rH) / (n + 1);
+      doc.setLineWidth(0.3); doc.rect(mx, y, mw, 16 + 7 * rH); doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.text('MATERIALS USED', mx + mw / 2, y + 4.2, { align:'center' });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...VAL);
+      for (let k = 0; k < n; k++){ const yy = y + mh * (k + 1); doc.setLineWidth(0.2); doc.line(mx, yy, R, yy); if (mats[k]) doc.text(doc.splitTextToSize(mats[k], mw - 3)[0], mx + 1.5, yy + mh - 1.8); }
+      y += 16 + 7 * rH;
+    } else {
+      const n = Math.max(5, mats.length), mh = 7; doc.rect(L, y, W, 6 + n * mh); doc.setFontSize(8); doc.text('MATERIALS USED', L + W / 2, y + 4.2, { align:'center' });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(...VAL);
+      for (let k = 0; k < n; k++){ const yy = y + 6 + k * mh; doc.setLineWidth(0.2); doc.line(L, yy, R, yy); if (mats[k]) doc.text(doc.splitTextToSize(mats[k], W - 4)[0], L + 2, yy + 5); }
+      y += 6 + n * mh; doc.setTextColor(...INK); doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.text('QUOTED JOB – NO TIME RECORD', L, y + 5); y += 5;
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(120);
+    if (so.at){ const t = new Date(so.at); doc.text('Signed ' + t.toLocaleDateString('en-GB') + ' ' + t.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' }) + ' · Blue Cranes Online', R, y + 6, { align:'right' }); }
+    const name = 'Report_and_time_card_' + safe(l.job || 'job') + '_' + safe(l.customer || '') + '_' + (l.date || '') + '.pdf';
+    return { blob:doc.output('blob'), name };
   }
   function vGate(){
     return head('Blue Cranes', "Client's inventory", backBtn('../timesheet/', 'Back to the time sheet')) + `<main>
@@ -1193,6 +1339,7 @@
       for (let i = 0; i < 50 && !window.JSZip; i++) await new Promise(r => setTimeout(r, 100));
       if (!window.JSZip) throw new Error('zip tool not loaded');
       busy("Client's inventory…"); const files = [await listDoc(l)];
+      if (l.signoff && l.signoff.card){ try { busy('Report & time card…'); files.push(await timeCardDoc(l)); } catch(e){ console.error(e); } }
       try { busy('Inventory Excel…'); files.push(await listXlsx(l)); } catch(e){ console.error(e); }
       { const sk = sheetDateOf(l); if (sk){ let st = null; try { busy('Time sheet…'); st = await sheetTools(); const f = await st.api.sheetPdf(sk); if (f) files.push(f); } catch(e){ console.error(e); } finally { if (st) st.done(); } } }
       let reps = [], tools = null; const flCerts = [], flPdfs = [], crPdfs = [];
@@ -1279,7 +1426,7 @@
   // opened hidden by the Admin page: only offer the certificate maker
   if (new URLSearchParams(location.search).get('embed') === '1'){
     window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status; }),
-      certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l),
+      certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
       itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
   (async function start(){
