@@ -442,7 +442,7 @@
   const isTackle = r => { const d = r.desc || ''; if (isForklift(r) || isHarness(r)) return false; return TACKLE.test(d) && !/hoist|crane|gantry|chain\s*block|lever\s*(block|hoist)|winch|tirfor|monorail|runway/i.test(d); };
   // inspection certificate: safety gear, lifting tackle, man cages and any other equipment that is not lifting machinery
   // (cranes, hoists, chain blocks, lever hoists, winches… get a load test certificate; forklifts and stackers have their own)
-  const NOREPAIR = /shackle|\bbow\b|eye\s*-?\s*bolt|eye\s*-?\s*nut|round\s*sling|endless|web\s*-?\s*sling|webbing|flat\s*sling|wire\s*rope\s*sling|^(?!.*chain).*\bslings?\b|harness|lanyard/i;
+  const NOREPAIR = /shackle|\bbow\b|eye\s*-?\s*bolt|eye\s*-?\s*nut|round\s*sling|endless|web\s*-?\s*sling|webbing|flat\s*sling|wire\s*rope\s*sling|^(?!.*chain).*\bslings?\b|harness|lanyard|fall\s*arrest|inertia|retract|\bsrl\b|lifeline|rescue\s*(device|winch)/i;
   const isInspCert = r => !isForklift(r) && (isManCage(r) || isHarness(r) || isTackle(r) || !MACHINE.test(r.desc || ''));
   const isHarness = r => /harness|lanyard|fall\s*arrest|inertia\s*reel|self[\s-]*retract/i.test(r.desc || '');
   const isCertItem = r => !isForklift(r) && !!(r.desc || r.serial) && (isInspCert(r) || MACHINE.test(r.desc || ''));
@@ -726,7 +726,8 @@
       <div style="display:flex;gap:18px"><button type="button" id="pdfZip" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Download as zip folder</button>
       <button type="button" id="pdfOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory PDF only</button>
       <button type="button" id="certOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Certificates PDF</button>
-      <button type="button" id="xlsOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory Excel</button></div></div>`}`;
+      <button type="button" id="xlsOnly" style="border:0;background:none;color:var(--navy);font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">Inventory Excel</button></div>
+      ${hasQuote(l) ? `<button type="button" id="quoteOnly" style="border:0;background:none;color:#B42318;font-weight:700;font-size:12.5px;font-family:inherit;padding:2px;cursor:pointer">⬇ Equipment for quote (technician's copy)</button>` : ''}</div>`}`;
   }
 
   function vInventory(){
@@ -1091,6 +1092,9 @@
       catch(e){ console.error(e); toast('Could not make the certificates'); } finally { b.disabled = false; b.textContent = old; } };
     $('xlsOnly').onclick = async () => { const b = $('xlsOnly'), old = b.textContent; b.disabled = true; b.textContent = 'Working…'; saveList(l, true);
       try { const f = await listXlsx(l); const how = await BC.saveFile(f.blob, f.name, f.type, 'Client\'s inventory'); if (how) toast(how === 'shared' ? 'Excel ready to send' : 'Excel downloaded'); } catch(e){ console.error(e); toast('Could not make the Excel file'); } finally { b.disabled = false; b.textContent = old; } };
+    if ($('quoteOnly')) $('quoteOnly').onclick = async () => { const b = $('quoteOnly'), old = b.textContent; b.disabled = true; b.textContent = 'Working…'; saveList(l, true);
+      try { const f = await quoteDoc(l); if (!f){ toast('Nothing to quote – no unsafe or refurbish items'); return; } const how = await BC.saveFile(f.blob, f.name, f.type, 'Equipment for quote'); if (how) toast(how === 'shared' ? 'PDF ready to send' : 'PDF downloaded'); }
+      catch(e){ console.error(e); toast('Could not make the PDF'); } finally { b.disabled = false; b.textContent = old; } };
     $('pdfZip').onclick = () => { saveList(l, true); jobPack(l, $('pdfZip'), true); };
     $('pdf').onclick = () => {
       const used = (l.rows || []).map((r, i) => ({ r, i })).filter(x => x.r.serial || x.r.desc);
@@ -1242,6 +1246,60 @@
     const buf = await wb.xlsx.writeBuffer();
     return { blob:new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name:`Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.xlsx`, type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
   }
+  // ---------- technician's copy: equipment for quote (to the office, not for the client) ----------
+  // REPLACE = condemned items (unsafe, can't be repaired), counted per kind / SWL / length; REPAIR = other unsafe items; REFURBISH = items marked Refurbish
+  function quoteItems(l){
+    const rows = (l.rows || []).filter(r => (r.serial || r.desc) && (r.status === 'UNSAFE' || r.status === 'REFURB'));
+    const U = s => String(s || '').trim().toUpperCase();
+    const descOf = r => U(isSling(r) && r.len ? String(r.desc || '').replace(/\s*\b\d+([.,]\d+)?\s*m(tr|trs|eter|eters|etre|etres)?\b\.?/gi, '').replace(/\s+/g, ' ') : r.desc);
+    const lenOf = r => isSling(r) && r.len ? lenText(r.len) : isFallArrest(r) && r.hol ? 'HOL ' + lenText(r.hol) : '';
+    const makeOf = r => /^unknown$/i.test(r.make || '') ? '' : U(r.make);
+    const replace = [], byKey = {};
+    rows.filter(isCondemned).forEach(r => { const it = { desc:descOf(r), make:makeOf(r), ton:tonText(r.swl), len:lenOf(r) }; const k = [it.desc, it.make, it.ton, it.len].join('|');
+      if (!byKey[k]){ byKey[k] = Object.assign(it, { qty:0, nos:[] }); replace.push(byKey[k]); } byKey[k].qty++; if (r.serial) byKey[k].nos.push(U(r.serial)); });
+    const one = r => ({ serial:U(r.serial), desc:descOf(r), make:makeOf(r), ton:tonText(r.swl), len:lenOf(r), report:repNo(r), reason:U(r.reason).replace(/^SEE REPORT\s+\S+\s*[–-]?\s*/, '') });
+    return { replace, repair:rows.filter(r => r.status === 'UNSAFE' && !isCondemned(r)).map(one), refurb:rows.filter(r => r.status === 'REFURB').map(one) };
+  }
+  const hasQuote = l => { const q = quoteItems(l); return q.replace.length + q.repair.length + q.refurb.length > 0; };
+  async function quoteDoc(l, opts){ opts = opts || {};
+    const q = quoteItems(l); if (!q.replace.length && !q.repair.length && !q.refurb.length) return null;
+    await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
+    const L = 15, R = 195, INK = [0, 0, 0], NV = [11, 53, 117], RED = [200, 0, 0], PH = 287; let y = 18;
+    const LOGO = await logoWide();
+    { const LW = 50, LH = LOGO ? LW * LOGO.h / LOGO.w : 0, top = 10;
+      if (LOGO) try { doc.addImage(LOGO.data, 'JPEG', L, top, LW, LH, 'bclogo', 'FAST'); } catch(e){}
+      const cx = LOGO ? (L + LW + 4 + R) / 2 : 105; y = LOGO ? top + LH / 2 - 4 : 18;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(...NV); doc.text('EQUIPMENT FOR QUOTE', cx, y, { align:'center' });
+      doc.setFontSize(9.5); doc.setTextColor(...RED); doc.text("TECHNICIAN'S COPY – FOR THE OFFICE, NOT FOR THE CLIENT", cx, y + 6, { align:'center' });
+      y = Math.max(y + 9, top + LH) + 3; doc.setDrawColor(...NV); doc.setLineWidth(0.8); doc.line(L, y, R, y); doc.setDrawColor(251, 210, 32); doc.setLineWidth(0.5); doc.line(L, y + 1, R, y + 1); doc.setLineWidth(0.2); doc.setDrawColor(0); y += 7; }
+    // job details
+    const card = (l.signoff && l.signoff.card) || {}, order = card.order || (S.active && S.active.order) || '';
+    const info = [['CUSTOMER:', l.customer], ['JOB NO:', l.job], ['SITE:', l.location || card.site], ['ORDER NO:', order], ['TECHNICIAN:', opts.techName || card.tech || (S.profile && S.profile.name) || l.tech], ['DATE:', dmy(l.date)]];
+    for (let k = 0; k < info.length; k += 2){ [info[k], info[k + 1]].forEach(([lab, v], c) => { const x = L + c * 92; doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...INK); doc.text(lab, x, y);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(doc.splitTextToSize(String(v || '').toUpperCase(), 66)[0] || '', x + 22, y); }); y += 6.5; }
+    y += 3;
+    const table = (title, note, cols, items, color) => {
+      const X = cols.map((c, k) => L + cols.slice(0, k).reduce((a, b) => a + b.w, 0));
+      const colHead = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(...INK); cols.forEach((c, k) => { doc.setFillColor(240, 242, 247); doc.rect(X[k], y, c.w, 7, 'FD'); doc.text(c.t, X[k] + 1.5, y + 4.7); }); y += 7; };
+      if (y + 22 > PH - 10){ doc.addPage(); y = 18; }
+      doc.setFillColor(...color); doc.rect(L, y, R - L, 8, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(255, 255, 255); doc.text(title, L + 2, y + 5.5);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(note, R - 2, y + 5.5, { align:'right' }); y += 8; colHead();
+      items.forEach(it => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...INK);
+        const lines = cols.map(c => doc.splitTextToSize(String(it[c.k] == null ? '' : it[c.k]), c.w - 3)); const h = Math.max(6.5, ...lines.map(x => x.length * 4 + 2.5));
+        if (y + h > PH - 10){ doc.addPage(); y = 18; colHead(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...INK); }
+        cols.forEach((c, k) => { doc.rect(X[k], y, c.w, h); if (c.bold) doc.setFont('helvetica', 'bold'); doc.text(lines[k], c.center ? X[k] + c.w / 2 : X[k] + 1.5, y + 4.5, c.center ? { align:'center' } : undefined); doc.setFont('helvetica', 'normal'); }); y += h; });
+      y += 7; };
+    if (q.replace.length){ const n = q.replace.reduce((a, it) => a + it.qty, 0);
+      table('REPLACE – CONDEMNED, REMOVED FROM SITE', n + (n === 1 ? ' item' : ' items'), [{ t:'QTY', k:'qty', w:12, center:true, bold:true }, { t:'DESCRIPTION', k:'desc', w:58 }, { t:'MANUFACTURER', k:'make', w:26 }, { t:'TONNAGE', k:'ton', w:20 }, { t:'LENGTH / HOL', k:'len', w:22 }, { t:'ITEM NOs', k:'nosT', w:42 }],
+        q.replace.map(it => Object.assign({}, it, { nosT:it.nos.join(', ') })), [200, 0, 0]); }
+    const per = [{ t:'ITEM NO', k:'serial', w:20, bold:true }, { t:'DESCRIPTION', k:'desc', w:42 }, { t:'TONNAGE', k:'ton', w:18 }, { t:'LENGTH / HOL', k:'len', w:23 }, { t:'REPORT', k:'report', w:21 }, { t:'WHAT IS WRONG / NOTES', k:'reason', w:56 }];
+    if (q.repair.length) table('REPAIR – UNSAFE, CAN BE REPAIRED', q.repair.length + (q.repair.length === 1 ? ' item' : ' items'), per, q.repair, [214, 110, 0]);
+    if (q.refurb.length) table('REFURBISH', q.refurb.length + (q.refurb.length === 1 ? ' item' : ' items'), per, q.refurb, NV);
+    if (y + 8 > PH - 6){ doc.addPage(); y = 18; }
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor(90, 96, 112);
+    doc.text('Items with a report number: the full findings and parts are on that report (technician\'s copy).', L, y);
+    return { blob:doc.output('blob'), name:`TECHNICIAN_Equipment_for_quote_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`, type:'application/pdf' };
+  }
   // ---------- load test certificates (same layout as the forklift certificate) ----------
   const imgDims = src => new Promise(res => { const im = new Image(); im.onload = () => res({ w:im.naturalWidth || 1, h:im.naturalHeight || 1 }); im.onerror = () => res(null); im.src = src; });
   const addMonths = (k, n) => { const [y, m, d] = k.split('-').map(Number); const t = new Date(y, m - 1 + n, Math.min(d, 28)); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
@@ -1252,9 +1310,23 @@
   // safety harnesses and lanyards: inspection certificate (Construction Regulation 10(d)), no understudy
   // certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
   const CERT_TOP = 70, CERT_K = 0.82;
+  // unsafe items that can't be repaired are condemned: a big red CONDEMNED / REMOVED FROM SITE across the certificate, like a watermark
+  const isCondemned = r => r.status === 'UNSAFE' && NOREPAIR.test(r.desc || '');
+  function condemnedStamp(doc){
+    const a = 38 * Math.PI / 180, cx = 105, cy = 160, co = Math.cos(a), si = Math.sin(a);
+    let gs = false; try { if (doc.GState){ doc.saveGraphicsState(); doc.setGState(new doc.GState({ opacity:0.2 })); gs = true; } } catch(e){}
+    const line = (t, size, off) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(size); let w = doc.getTextWidth(t);
+      if (w > 205){ size = size * 205 / w; doc.setFontSize(size); w = doc.getTextWidth(t); }
+      const h = size * 0.3528 * 0.72, px = cx + si * off, py = cy + co * off;   // off = distance below the middle line, square to the text
+      doc.text(t, px - w / 2 * co + si * h / 2, py + w / 2 * si + co * h / 2, { angle:38 }); };
+    doc.setTextColor(220, 0, 0); line('CONDEMNED', 92, -6); line('REMOVED FROM SITE', 34, 18);
+    if (gs) try { doc.restoreGraphicsState(); } catch(e){}
+    doc.setTextColor(0, 0, 0);
+  }
   function harnessPage(doc, l, r, no, tech, sigImg, dots){
     const kind = isManCage(r) ? 'mc' : isHarness(r) ? 'h' : isTackle(r) ? 't' : 'g', tackle = kind === 't';
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [0, 0, 0], L = 20, R = 190, U = s => String(s || '').toUpperCase(), unsafe = r.status === 'UNSAFE';
+    if (isCondemned(r)) condemnedStamp(doc);
     let y = CERT_TOP; doc.setFont('times', 'bold'); doc.setTextColor(...INK); doc.setFontSize(20); doc.text('INSPECTION CERTIFICATE', 105, y, { align:'center' });
     y += 7 * CERT_K; doc.setFontSize(14); doc.text({ mc:'Man Cage (Work Platform)', h:'Safety Harnesses', t:'Lifting Tackle', g:'Equipment' }[kind], 105, y, { align:'center' });
     y += 8 * CERT_K; doc.setFontSize(9.5); doc.text(doc.splitTextToSize({ t:'CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993 DRIVEN MACHINERY REGULATION 18(10 e).', h:'CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993, CONSTRUCTION REGULATION 10(d).',
@@ -1464,7 +1536,7 @@
   // opened hidden by the Admin page: only offer the certificate maker
   if (new URLSearchParams(location.search).get('embed') === '1'){
     window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; }),
-      certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
+      certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), quoteDoc: (l, techName) => quoteDoc(l, { techName }), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
       itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
   (async function start(){
