@@ -53,7 +53,8 @@ window.Cloud = api;
     const putList = (ref, key, data) => { const run = async () => {
         let cur = null; try { const c = await F.getDocFromCache(ref); if (c.exists()) cur = c.data(); } catch(e){}
         if (!cur){ try { const c = await Promise.race([F.getDoc(ref), new Promise((_, rj) => setTimeout(() => rj(new Error('slow')), 5000))]); if (c.exists()) cur = c.data(); } catch(e){} }
-        const merged = cur && window.BC && window.BC.mergeList ? Object.assign(window.BC.mergeList(cur, data), { kind:data.kind }) : data;
+        const fn = data.kind === 'sheet' ? (window.BC && window.BC.mergeSheet) : (window.BC && window.BC.mergeList);
+        const merged = cur && fn ? Object.assign(fn(cur, data), { kind:data.kind }) : data;
         return track(F.setDoc(ref, JSON.parse(JSON.stringify(merged)))); };
       const p = (chains[key] || Promise.resolve()).then(run, run); chains[key] = p.catch(() => {}); return p; };
 
@@ -65,7 +66,7 @@ window.Cloud = api;
         // Writes land in the phone's offline cache straight away and sync when there is signal.
         // We don't wait for the server, otherwise saves would stall with no signal.
         doc: id => ({
-          set: data => { track(F.setDoc(F.doc(col, id), data)).catch(report); return Promise.resolve(); },
+          set: data => { const ref = F.doc(col, id); (data && data.kind === 'sheet' && Array.isArray(data.jobs) ? putList(ref, (auth.currentUser && auth.currentUser.uid) + '/' + id, data) : track(F.setDoc(ref, data))).catch(report); return Promise.resolve(); },
           delete: () => { track(F.deleteDoc(F.doc(col, id))).catch(report); return Promise.resolve(); }
         }),
         get: async () => {

@@ -173,7 +173,17 @@
     queues[key] = next.catch(()=>{});
     return next;
   }
+  // each field of a day and each job remembers when it last changed, so two devices can be combined (BC.mergeSheet)
+  const SNAPT = {}; const jsig = j => { const c = Object.assign({}, j); delete c.t; return JSON.stringify(c); };
+  function snapSheet(key){ const sh = state.sheets[key]; if (!sh) return; const f = {}, jj = {};
+    Object.keys(sh).forEach(k => { if (k !== 'jobs' && k !== 'ft' && k !== 'savedAt' && k !== 'del') f[k] = JSON.stringify(sh[k]); });
+    (sh.jobs || []).forEach((j, i) => { j.jid = BC.jobKey(j, i); jj[j.jid] = jsig(j); }); SNAPT[key] = { f, j:jj }; }
+  function snapAll(){ Object.keys(state.sheets || {}).forEach(snapSheet); }
+  function stampSheet(key){ const sh = state.sheets[key]; if (!sh) return; const m = SNAPT[key] || { f:{}, j:{} }, now = Date.now();
+    sh.ft = sh.ft || {}; Object.keys(sh).forEach(k => { if (k === 'jobs' || k === 'ft' || k === 'savedAt' || k === 'del') return; if (m.f[k] !== JSON.stringify(sh[k])) sh.ft[k] = now; });
+    (sh.jobs || []).forEach((j, i) => { j.jid = BC.jobKey(j, i); if (m.j[j.jid] !== jsig(j)) j.t = now; }); sh.savedAt = now; snapSheet(key); }
   function saveSheet(key){
+    if (state.sheets[key] && window.BC && BC.mergeSheet) stampSheet(key);
     lsWrite();
     if (!db || !uid) return;
     const data = JSON.parse(JSON.stringify(state.sheets[key]));
@@ -233,6 +243,7 @@
     state.profile = BC.cachedProfile();
     let local = lsRead();
     if (local){ state.sheets = local.sheets || {}; state.schedule = local.schedule || {}; state.settings = Object.assign(state.settings, local.settings || {}); }
+    snapAll();
     let place = new URLSearchParams(location.search).get('job') ? null : takePlace();
     // back from the client sign-off (Finish job): carry on to the finish form
     try { const fn = JSON.parse(localStorage.getItem('bco-finish-now') || 'null'); localStorage.removeItem('bco-finish-now');
@@ -261,6 +272,29 @@
     if (wantJob && state.schedule[wantJob]){ history.replaceState(history.state, '', location.pathname); state._schedBack = 'today'; go('schedjob', { schedId:wantJob }); }
   }
 
+  // the other device may have done work: fetch the day sheets and jobs again and combine them with this phone's copy
+  let pulling = false;
+  async function pullCloud(){
+    if (!db || !uid || pulling) { if (window.BC) BC.syncDone(); return; } pulling = true;
+    try {
+      const k0 = curKey(), curJid = state.view === 'job' && state.sheets[k0] && (state.sheets[k0].jobs || [])[state.jobIdx] ? state.sheets[k0].jobs[state.jobIdx].jid : null;
+      const before = JSON.stringify({ s:state.sheets, c:state.schedule });
+      const snap = await db.collection('data/users/' + uid).get(); const push = [];
+      snap.docs.forEach(doc => { const b = doc.data(); if (!b) return;
+        if (b.kind === 'sheet' && b.date){ const c = JSON.parse(JSON.stringify(b)); delete c.kind; const mine = state.sheets[b.date]; const m = mine ? BC.mergeSheet(mine, c) : c; state.sheets[b.date] = m;
+          if (mine && JSON.stringify(m) !== JSON.stringify(BC.mergeSheet(c, c))) push.push(b.date); }
+        else if (b.kind === 'sched' && b.id){ const c = JSON.parse(JSON.stringify(b)); delete c.kind; const o = state.schedule[b.id]; const x = Object.assign({}, o || {}, c);
+          if (o && o.addedTo && !c.addedTo) x.addedTo = o.addedTo; if (o && o.done && !c.done) x.done = o.done; state.schedule[b.id] = x; } });
+      snapAll(); push.forEach(k => saveSheet(k)); lsWrite();
+      try { await loadAssigned(); } catch(e){}
+      if (JSON.stringify({ s:state.sheets, c:state.schedule }) !== before){
+        if (curJid){ const i = (state.sheets[k0].jobs || []).findIndex(j => j.jid === curJid); if (i >= 0) state.jobIdx = i; else state.view = 'today'; }
+        if (window.BC && BC.busyTyping && BC.busyTyping()) state._needRender = true; else render(); }
+    } catch(e){ console.error('Sync failed', e); }
+    finally { pulling = false; if (window.BC) BC.syncDone(); }
+  }
+  window.addEventListener('bc-sync', () => { if (state.loaded) pullCloud(); else if (window.BC) BC.syncDone(); }); if (window.BC) BC._syncHandled = true;
+  document.addEventListener('focusout', () => setTimeout(() => { if (state._needRender && !(window.BC && BC.busyTyping())){ state._needRender = false; render(); } }, 300));
   async function loadCloud(id, local){
     try {
       {
@@ -268,13 +302,17 @@
           db = window.Cloud; uid = id;
           const timer = setTimeout(()=>{ state.storeNote = 'No signal – saving on this phone, will sync later.'; render(); }, 10000);
           const snap = await db.collection('data/users/' + uid).get();
-          clearTimeout(timer);
+          clearTimeout(timer); const pushBack = [];
           snap.docs.forEach(doc => {
             const b = doc.data(); if (!b) return;
             if (b.kind === 'settings'){ state.settings = { tech:b.tech||'', assistant:b.assistant||'', reg:b.reg||'', wa:b.wa||'', waWho:b.waWho||'', services: Object.assign({}, b.services || {}), assistants: (b.assistants || []).slice(), vehicles: (b.vehicles || []).slice(), hidden: JSON.parse(JSON.stringify(b.hidden || {})) }; }
-            else if (b.kind === 'sheet' && b.date){ const c = JSON.parse(JSON.stringify(b)); delete c.kind; /* stored data arrives read-only: work on a full copy */ state.sheets[b.date] = c; }
+            else if (b.kind === 'sheet' && b.date){ const c = JSON.parse(JSON.stringify(b)); delete c.kind; /* stored data arrives read-only: work on a full copy */
+              // combine with this phone's copy of the day (newest per field and per job); if this phone has newer parts, send them
+              const mine = state.sheets[b.date]; const m = mine && BC.mergeSheet ? BC.mergeSheet(mine, c) : c; state.sheets[b.date] = m;
+              if (mine && JSON.stringify(m) !== JSON.stringify(BC.mergeSheet ? BC.mergeSheet(c, c) : c)) pushBack.push(b.date); }
             else if (b.kind === 'sched' && b.id){ const c = JSON.parse(JSON.stringify(b)); delete c.kind; state.schedule[b.id] = c; }
           });
+          snapAll(); pushBack.forEach(k => saveSheet(k));
           // push any phone-only sheets and scheduled jobs up to the cloud
           if (local && local.sheets){ Object.keys(local.sheets).forEach(k => { if (!snap.docs.some(d=>d.id==='sheet-'+k)) saveSheet(k); }); }
           if (local && local.schedule){ Object.keys(local.schedule).forEach(id => { if (!snap.docs.some(d=>d.id==='sched-'+id)) saveSched(id); }); }
@@ -1740,6 +1778,7 @@
       const del = document.getElementById('delJob');
       if (del) del.onclick = () => confirmBox('Delete job ' + (state.jobIdx+1) + '?', 'Delete job', () => {
         const k = curKey(); const gone = state.sheets[k].jobs.splice(state.jobIdx,1)[0];
+        if (gone){ const sh = state.sheets[k]; sh.del = sh.del || {}; sh.del[gone.jid || BC.jobKey(gone, state.jobIdx)] = Date.now(); }
         if (gone && gone.sched && state.schedule[gone.sched]){ delete state.schedule[gone.sched].addedTo; delete state.schedule[gone.sched].done; saveSched(gone.sched); }
         saveSheet(k); if (state._jobBack){ state.activeDate = null; state._jobBack = null; go('history', { jobIdx:null }); return; } go('today', { jobIdx:null });
       });

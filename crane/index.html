@@ -585,6 +585,8 @@ async function fitCloud(rec){const size=o=>JSON.stringify(o).length;if(size(rec)
 function cloudPut(r){if(!cloudOK())return;fitCloud(r).then(c=>window.Cloud.putItem(cid(r.id),Object.assign({kind:"crane"},JSON.parse(JSON.stringify(c)))));}
 RDB.put=async r=>{await _rdbPut(r);cloudPut(r);};
 RDB.del=async id=>{await _rdbDel(id);if(cloudOK())window.Cloud.deleteItem(cid(id));};
+// coming back to the app / "Sync now": fetch saved and unfinished reports again
+window.addEventListener("bc-sync",async()=>{if(!EMBED&&cloudOK()){try{await syncReports();await syncDrafts();}catch(e){}}if(window.BC)BC.syncDone();});if(window.BC)BC._syncHandled=true;
 async function syncReports(){if(!cloudOK())return;try{const remote=await window.Cloud.listKind("crane"),local=await RDB.all(),lm={},seen={};local.forEach(r=>lm[r.id]=r);
   for(const d of remote){const r=d.data;if(!r||!r.id)continue;delete r.kind;seen[r.id]=1;const l=lm[r.id];if(!l||(r.savedAt||0)>(l.savedAt||0))await _rdbPut(r);}
   for(const l of local){if(!seen[l.id])cloudPut(l);}

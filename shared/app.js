@@ -217,6 +217,44 @@
     return out;
   };
 
+  // ---------- time sheet days: two devices can't undo each other ----------
+  // A day keeps when each of its fields last changed (ft) and each job carries t; jobs are matched by jid.
+  // Combining two copies of the same day takes the newest value per field and per job; deleted jobs (del) stay deleted.
+  BC.jobKey = (j, i) => j.jid || ('j_' + (j.startedAt || j.sched || ((j.card || '') + '_' + i)));
+  BC.mergeSheet = (a, b) => {
+    if (!a || typeof a !== 'object') return b; if (!b || typeof b !== 'object') return a;
+    const [nw, od] = (b.savedAt || 0) >= (a.savedAt || 0) ? [b, a] : [a, b];
+    const out = {}, fa = nw.ft || {}, fb = od.ft || {};
+    new Set([...Object.keys(od), ...Object.keys(nw)]).forEach(k => { if (k === 'jobs' || k === 'del' || k === 'ft') return;
+      out[k] = !(k in nw) ? od[k] : !(k in od) ? nw[k] : ((fb[k] || 0) > (fa[k] || 0) ? od[k] : nw[k]); });
+    const ft = {}; new Set([...Object.keys(fa), ...Object.keys(fb)]).forEach(k => { ft[k] = Math.max(fa[k] || 0, fb[k] || 0); }); if (Object.keys(ft).length) out.ft = ft;
+    const del = Object.assign({}, od.del || {}); Object.entries(nw.del || {}).forEach(([k, v]) => { if (!del[k] || v > del[k]) del[k] = v; });
+    const jn = (nw.jobs || []).map((j, i) => [BC.jobKey(j, i), j]), jo = (od.jobs || []).map((j, i) => [BC.jobKey(j, i), j]);
+    const mo = new Map(jo), seen = new Set(), jobs = [];
+    jn.forEach(([k, j]) => { seen.add(k); const o = mo.get(k); jobs.push(Object.assign({}, o && (o.t || 0) > (j.t || 0) ? o : j, { jid:k })); });
+    jo.forEach(([k, j]) => { if (!seen.has(k)) jobs.push(Object.assign({}, j, { jid:k })); });
+    const live = jobs.filter(j => !(del[j.jid] && del[j.jid] >= (j.t || 0)));
+    // keep the day in the order the jobs were started
+    live.forEach((j, i) => j._o = i); live.sort((x, y) => (x.startedAt && y.startedAt ? String(x.startedAt).localeCompare(String(y.startedAt)) : 0) || x._o - y._o); live.forEach(j => delete j._o);
+    out.jobs = live; if (Object.keys(del).length) out.del = del;
+    out.savedAt = Math.max(a.savedAt || 0, b.savedAt || 0);
+    return out;
+  };
+  // "Sync now" (tap the ☁ icon) and coming back to the app: pages listen for 'bc-sync' and fetch the latest from the server
+  BC.lastSync = 0;
+  BC.syncDone = () => { BC.lastSync = Date.now(); window.dispatchEvent(new Event('bc-synced')); };
+  { let last = 0; const fire = force => { if (/[?&]embed=1/.test(location.search)) return; if (!force && Date.now() - last < 15000) return; last = Date.now(); window.dispatchEvent(new Event('bc-sync')); };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') fire(false); });
+    window.addEventListener('pageshow', e => { if (e.persisted) fire(false); });
+    BC.syncNow = () => fire(true); }
+  // pages that fetch something set BC._syncHandled; on other pages "Sync now" is done straight away
+  window.addEventListener('bc-sync', () => { if (!BC._syncHandled) setTimeout(BC.syncDone, 300); });
+  // a page is busy when the person is typing or a box is open: then new data waits instead of redrawing under their fingers
+  BC.busyTyping = () => { const a = document.activeElement; return !!(a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) || !!document.querySelector('.modal-bg, #modal.show, .mbg'); };
+  BC.toastSync = () => { const t = document.createElement('div'); t.setAttribute('role', 'status'); t.textContent = '✓ Up to date with the server';
+    t.style.cssText = 'position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:9002;background:#15703D;color:#fff;border-radius:999px;padding:9px 16px;font:700 14px Inter,Arial,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2)';
+    document.body.appendChild(t); setTimeout(() => t.remove(), 2200); };
+
   // ---------- the phone's own storage: never fail without saying so ----------
   // Photos live in the large photo store (IndexedDB), not in the small 5 MB storage the inventories and time sheets use.
   const PDB = () => BC._pdb || (BC._pdb = new Promise((res, rej) => { const q = indexedDB.open('bc-photos', 1); q.onupgradeneeded = () => q.result.createObjectStore('p'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }));
@@ -273,7 +311,13 @@
         err:'The last change could not be saved to the server' + (st.error ? ' (' + st.error + ')' : '') + '. It is kept on this phone – keep the app open with signal, or tell the office.' }[shown];
       let tip = document.getElementById('bcSaveTip'); if (!tip){ tip = document.createElement('div'); tip.id = 'bcSaveTip'; tip.setAttribute('role', 'status');
         tip.style.cssText = 'position:fixed;left:8px;right:8px;z-index:9001;background:#0B3575;color:#fff;border-radius:12px;padding:11px 14px;font:500 13.5px/1.45 Inter,Arial,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.25)'; document.body.appendChild(tip); }
-      tip.textContent = m; tip.style.bottom = 'calc(' + (parseFloat(el.style.bottom) || 8) + 'px + 40px)'; clearTimeout(BC._tipT); BC._tipT = setTimeout(() => tip.remove(), 5000); };
+      const ls = BC.lastSync ? ' Last checked with the server at ' + new Date(BC.lastSync).toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' }) + '.' : '';
+      tip.innerHTML = ''; const tx = document.createElement('div'); tx.textContent = m + ls; tip.appendChild(tx);
+      const sb = document.createElement('button'); sb.type = 'button'; sb.textContent = '↻ Sync now – get the latest from the server';
+      sb.style.cssText = 'margin-top:8px;width:100%;border:0;border-radius:10px;padding:10px;background:#FBD220;color:#0B3575;font:800 14px Inter,Arial,sans-serif;cursor:pointer';
+      sb.onclick = () => { sb.textContent = 'Syncing…'; sb.disabled = true; const done = () => { window.removeEventListener('bc-synced', done); tip.remove(); if (BC.toastSync) BC.toastSync(); }; window.addEventListener('bc-synced', done); BC.syncNow(); setTimeout(done, 12000); };
+      tip.appendChild(sb);
+      tip.style.bottom = 'calc(' + (parseFloat(el.style.bottom) || 8) + 'px + 40px)'; clearTimeout(BC._tipT); BC._tipT = setTimeout(() => tip.remove(), 8000); };
     window.addEventListener('resize', place); window.addEventListener('online', () => { st.online = true; view(); }); window.addEventListener('offline', () => { st.online = false; view(); });
     const hook = () => { if (window.Cloud && window.Cloud.onSync){ window.Cloud.onSync(s => { st = Object.assign(st, s, { online:navigator.onLine }); view(); }); return true; } return false; };
     if (!hook()){ const iv = setInterval(() => { if (hook()) clearInterval(iv); }, 300); setTimeout(() => clearInterval(iv), 15000); }

@@ -243,6 +243,8 @@
   const cloudOK = () => !!(window.Cloud && Cloud.user && Cloud.user());
   const docId = id => 'eq-' + String(id).replace(/\//g, '_');
   let saveT;
+  // coming back to the app / "Sync now": fetch the inventories again (combined item by item) – not while typing
+  window.addEventListener('bc-sync', async () => { if (cloudOK() && S.lists && !(window.BC && BC.busyTyping())){ try { await syncCloud(); } catch(e){} } if (window.BC) BC.syncDone(); }); if (window.BC) BC._syncHandled = true;
   function saveList(l, now){
     stampList(l); l.savedAt = Date.now(); S.lists[l.id] = l; lsSave();
     clearTimeout(saveT); const push = () => { pending = null; if (cloudOK()) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); };
