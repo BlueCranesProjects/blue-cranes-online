@@ -88,3 +88,9 @@ Everything for a person is under `users/{uid}/items/`:
 - Inventories are combined item by item (BC.mergeList): every row has t (last change), deleted rows are kept in l.del; the newest result per item wins on the phone, between pages and on the server (Cloud.putItem merges equipment lists before writing). Reports only change their own item.
 - The phone's small storage is written with BC.lsSet: if it is full, photos move to the photo store (IndexedDB bc-photos) and a red warning shows. Inventory photos live in bc-photos, not in localStorage.
 - Opening an inventory puts back results that are in a saved report but missing on the inventory (repairFromReports). Small-equipment groups have "Mark all Safe".
+
+## Client sign-off (rule)
+
+- The sign-off is the Technicians Report and Time Card, like the paper card: customer, job no, site, order no, technician, report to, date, type of work (Inspection / Service / Load test), equipment, work done, materials used, file updated / new file needed, time record (from the time sheet, changeable), customer's certificate with print name and signature, email.
+- A job with an order nr from the office (Admin) is a quoted job: the time record starts switched off (the technician can switch it on).
+- The PDF (Report_and_time_card_…) is laid out like the paper card; it is in the job zip / whole-job PDF on the phone and in Admin (own button, Job PDF, All files).
