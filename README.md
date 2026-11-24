@@ -85,6 +85,7 @@ Everything for a person is under `users/{uid}/items/`:
 
 ## Saving (rule)
 
+- Two devices on one account: when the app comes to the front (or ↻ Sync now in the ☁ icon) every page fetches the latest from the server ('bc-sync' event). Time sheet days are combined field by field (ft) and job by job (jid, t, del) with BC.mergeSheet, on the phone and on the server (Cloud collection set merges sheets before writing).
 - Save icon bottom left on every page (BC.saveIcon, Cloud.onSync): Saved / Saving… / No signal (kept on the phone) / Not saved.
 - Inventories are combined item by item (BC.mergeList): every row has t (last change), deleted rows are kept in l.del; the newest result per item wins on the phone, between pages and on the server (Cloud.putItem merges equipment lists before writing). Reports only change their own item.
 - The phone's small storage is written with BC.lsSet: if it is full, photos move to the photo store (IndexedDB bc-photos) and a red warning shows. Inventory photos live in bc-photos, not in localStorage.
