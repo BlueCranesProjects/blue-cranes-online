@@ -38,6 +38,39 @@
     });
   });
 
+  // After the phone / tablet was emptied (sign-out, or another person signed in): put the person's inventories,
+  // saved reports and unfinished reports back on it from the account, so the job pages show them straight away.
+  // Only fills in what is missing or older; returns how many things came back.
+  BC.restoreDevice = async () => {
+    let flag = null; try { flag = localStorage.getItem('bco-restore'); } catch(e){}
+    if (!flag || !window.Cloud || !window.Cloud.listKind || !(window.Cloud.user && window.Cloud.user())) return 0;
+    if (BC._restoring) return BC._restoring;
+    BC._restoring = (async () => { let n = 0;
+      const newer = (a, b) => !b || (a.savedAt || 0) > (b.savedAt || 0);
+      // inventories
+      const eq = await window.Cloud.listKind('equipment'); let lists = {}; try { lists = JSON.parse(localStorage.getItem('bco-equipment') || '{}') || {}; } catch(e){}
+      eq.forEach(d => { const r = d.data; if (!r || !r.id) return; delete r.kind; if (newer(r, lists[r.id])){ lists[r.id] = r; n++; } });
+      try { localStorage.setItem('bco-equipment', JSON.stringify(lists)); } catch(e){}
+      // unfinished reports
+      for (const [kind, key] of [['crane-draft', 'bc-crane-drafts'], ['forklift-draft', 'bc-forklift-drafts'], ['mancage-draft', 'bc-mancage-drafts']]){
+        const rem = await window.Cloud.listKind(kind); let d = {}; try { d = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch(e){}
+        let ch = false; rem.forEach(x => { const r = x.data; if (r && r.id && r.state && newer(r, d[r.id])){ delete r.kind; d[r.id] = r; ch = true; n++; } });
+        if (ch) try { localStorage.setItem(key, JSON.stringify(d)); } catch(e){}
+      }
+      // saved reports (same store the report pages use)
+      for (const kind of ['crane', 'forklift', 'mancage']){
+        const rem = await window.Cloud.listKind(kind); if (!rem.length) continue;
+        const db = await new Promise((res, rej) => { const q = indexedDB.open('bc-' + kind, 1); q.onupgradeneeded = () => q.result.createObjectStore('reports', { keyPath:'id' }); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+        const have = await new Promise(res => { const out = {}; const c = db.transaction('reports').objectStore('reports').openCursor(); c.onsuccess = () => { const k = c.result; if (k){ out[k.value.id] = k.value; k.continue(); } else res(out); }; c.onerror = () => res(out); });
+        await new Promise(res => { const t = db.transaction('reports', 'readwrite'), st = t.objectStore('reports');
+          rem.forEach(x => { const r = x.data; if (r && r.id && newer(r, have[r.id])){ delete r.kind; st.put(r); n++; } }); t.oncomplete = t.onerror = t.onabort = () => res(); });
+        db.close();
+      }
+      try { localStorage.removeItem('bco-restore'); } catch(e){}
+      return n; })();
+    try { return await BC._restoring; } catch(e){ console.error('Restore failed', e); return 0; } finally { BC._restoring = null; }
+  };
+
   // Phones: share sheet (WhatsApp, Files, email…). Elsewhere: normal download. Several files go in one share.
   BC.saveFiles = async (files, title) => {
     const list = files.map(f => new File([f.blob], f.name, { type: f.type || f.blob.type || 'application/octet-stream' }));

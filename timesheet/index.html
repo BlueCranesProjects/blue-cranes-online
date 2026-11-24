@@ -254,6 +254,8 @@
     await loadCloud(user.uid, local);
     await loadAssigned();
     state.loaded = true; render(); settlePlace(place);
+    // phone emptied earlier (sign-out / another person): inventories and reports come back from the account by themselves
+    if (window.BC && BC.restoreDevice) BC.restoreDevice().then(n => { if (n){ render(); toast('Your inventories and reports are back on this phone'); } });
     // opened with ?job=<schedule id> (e.g. from a forklift in the inventory): show that job
     const wantJob = new URLSearchParams(location.search).get('job');
     if (wantJob && state.schedule[wantJob]){ history.replaceState(history.state, '', location.pathname); state._schedBack = 'today'; go('schedjob', { schedId:wantJob }); }

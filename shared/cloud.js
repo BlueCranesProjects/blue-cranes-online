@@ -121,8 +121,9 @@ window.Cloud = api;
     A.onAuthStateChanged(auth, async u => {
       // another person signing in on this phone / tablet: clear what the last person left here first
       if (u){ let o = null; try { o = localStorage.getItem(OWNER); } catch(e){}
-        if (o && o !== u.uid){ await wipeDevice(); try { localStorage.setItem(OWNER, u.uid); } catch(e){} location.reload(); return; }
-        if (!o) try { localStorage.setItem(OWNER, u.uid); } catch(e){} }
+        if (o && o !== u.uid){ await wipeDevice(); try { localStorage.setItem(OWNER, u.uid); localStorage.setItem('bco-restore', '1'); } catch(e){} location.reload(); return; }
+        // first sign-in on this phone / tablet (or after signing out): bring the person's work back from the account
+        if (!o) try { localStorage.setItem(OWNER, u.uid); if (!localStorage.getItem('bco-equipment')) localStorage.setItem('bco-restore', '1'); } catch(e){} }
       current = u ? { uid: u.uid, email: u.email, verified: !!u.emailVerified } : null;
       listeners.forEach(cb => { try { cb(current); } catch (e) { console.error(e); } });
     });
