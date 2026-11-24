@@ -81,3 +81,10 @@ Everything for a person is under `users/{uid}/items/`:
 - New accounts get a "confirm your email" link; until it is opened the app shows the Confirm your email screen (existing accounts get their link once, by themselves). Jobs and Admin need a confirmed email – in the app and in firestore.rules (verified()).
 - Signing out empties the phone / tablet (inventories, reports, drafts, photos, time sheet); everything stays in the account. If another account signs in on a device holding someone else's work, that work is cleared first (bco-owner).
 - After a device was emptied, the next sign-in brings the person's inventories, saved reports and unfinished reports back from the account by themselves (BC.restoreDevice, flag bco-restore).
+
+## Saving (rule)
+
+- Save icon bottom left on every page (BC.saveIcon, Cloud.onSync): Saved / Saving… / No signal (kept on the phone) / Not saved.
+- Inventories are combined item by item (BC.mergeList): every row has t (last change), deleted rows are kept in l.del; the newest result per item wins on the phone, between pages and on the server (Cloud.putItem merges equipment lists before writing). Reports only change their own item.
+- The phone's small storage is written with BC.lsSet: if it is full, photos move to the photo store (IndexedDB bc-photos) and a red warning shows. Inventory photos live in bc-photos, not in localStorage.
+- Opening an inventory puts back results that are in a saved report but missing on the inventory (repairFromReports). Small-equipment groups have "Mark all Safe".
