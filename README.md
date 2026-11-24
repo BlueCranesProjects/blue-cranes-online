@@ -66,7 +66,12 @@ Everything for a person is under `users/{uid}/items/`:
 - Load test certificate: lifting machinery – cranes, gantries, hoists, chain blocks, lever hoists, winches / Tirfors. With a report: SEE REPORT … under the remarks, no reason.
 - Inspection certificate: lifting tackle, safety harnesses / lanyards, man cages (SANS 583:2015, SEE REPORT MC…, next inspection due, 3 inspection lines) and any other equipment that is not lifting machinery.
 - Forklifts and stackers: their own certificate from the forklift report.
-- Unsafe items that can't be repaired (shackles, round / web / wire rope slings, eye bolts, eye nuts, harnesses, lanyards) get no further inspection lines; repairable items (man cages, chain slings, other equipment) keep them.
+- Unsafe items that can't be repaired (shackles, round / web / wire rope slings, eye bolts, eye nuts, harnesses, lanyards, fall arrestors) are condemned: no further inspection lines and a faint red CONDEMNED / REMOVED FROM SITE watermark across the certificate; repairable items (man cages, chain slings, chain blocks, other equipment) keep their inspection lines.
+
+## Equipment for quote (rule)
+
+- Technician's copy for the office, never in the client's files: TECHNICIAN_Equipment_for_quote (equipment/ quoteDoc). Replace = condemned items counted per description / manufacturer / SWL / length or HOL with their item numbers; Repair = other unsafe items (what's wrong, report nr); Refurbish = items marked Refurbish.
+- In the app: red link under the inventory download links when there are unsafe or refurbish items. In Admin: ⬇ Equipment for quote button, and in the Job PDF, All files zip and period export.
 
 ## Inventory (rule)
 
