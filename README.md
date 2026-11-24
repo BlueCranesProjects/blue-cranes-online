@@ -78,6 +78,7 @@ Everything for a person is under `users/{uid}/items/`:
 - Search box above the items (item number, description, make, location, report number).
 - Item number in bold, the description underneath.
 - Inside To do / Completed the items are grouped by type (man cages, cranes, chain blocks, lever hoists, hoists, shackles, eye bolts, eye nuts, round / web / chain / wire rope slings, harnesses, lanyards …); anything else is grouped by its description. The census PDF and Excel use the same groups, each with a heading.
+- Inside each group the items go from the lowest to the highest SWL; items with the same SWL keep the order they were listed in (new items at the bottom of their SWL). Same order in the app, census PDF / Excel and certificate numbers.
 - Groups can be renamed per job (l.gnames, shown in the app, search, PDF and Excel) and an item can be moved to another or a new group (r.grp; the automatic group still decides slings / certificates).
 - Slings (web, endless round, chain, steel wire rope) have a length in metres: in the app, a LENGTH column on the census and a LENGTH line on the certificate (the description on the certificate leaves the length out).
 - Fall arrestors (inertia reels, self-retracting lifelines, rescue devices) have a height of lift in metres: "HOL 10 m" in the app, in the LENGTH column on the census and a HEIGHT OF LIFT line on the certificate. Lanyards and harnesses do not.

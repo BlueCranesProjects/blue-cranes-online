@@ -395,7 +395,12 @@
   const isFallArrest = r => !isSling(r) && /fall\s*arrest|inertia|retract|\bsrl\b|lifeline|rescue\s*(device|winch)/i.test(r.desc || '');
   const lenText = v => { const t = String(v == null ? '' : v).trim().replace('.', ','); return t ? t + ' M' : ''; };
   // [[group name, [[row, index]…]]…] in a fixed order: machinery, tackle, safety gear, then everything else A–Z
+  // SWL in kg for sorting ("1000", "1 000 kg", "1,5 t" → 1500); no SWL → last
+  const swlKg = v => { const t = String(v == null ? '' : v).trim().toLowerCase().replace(/\s/g, '').replace(',', '.'); const m = /^(\d+(?:\.\d+)?)(kg|t|ton|tons)?$/.exec(t);
+    return m ? Number(m[1]) * (m[2] && m[2] !== 'kg' ? 1000 : 1) : Infinity; };
+  // inside a group: lowest to highest SWL; the same SWL keeps the order the items were listed in (new items at the bottom of their SWL)
   function groupRows(pairs){ const m = new Map(); pairs.forEach(p => { const g = groupOf(p[0]); if (!m.has(g)) m.set(g, []); m.get(g).push(p); });
+    m.forEach(list => { const k = list.map((p, n) => [swlKg(p[0].swl), n, p]); k.sort((a, b) => a[0] - b[0] || a[1] - b[1]); k.forEach((x, n) => { list[n] = x[2]; }); });
     const rank = g => { const k = GORDER.indexOf(g); return k < 0 ? (g === 'New items' ? 9999 : 1000) : k; };
     return [...m.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])); }
   // can be marked Safe together with its group: small equipment that has no report of its own
