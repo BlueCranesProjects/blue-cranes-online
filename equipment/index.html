@@ -192,7 +192,7 @@
   }
   function addMake(v){ v = String(v || '').trim(); if (!v) return ''; const hit = makesList().find(x => x.toLowerCase() === v.toLowerCase()); if (hit) return hit; MAKES.push(v); saveMakes(); return v; }
   const FL = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18V6h5l3 6v6"/><path d="M12 12h3"/><path d="M17 4v14h4"/><circle cx="6" cy="19" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
-  const repText = r => r && r.report && r.report.no ? r.report.no + (r.report.cert ? ' / ' + r.report.cert : '') : '';
+  const repText = r => r && r.report && r.report.no ? r.report.no : '';
   // ---- locations inside a site (Workshop, Cellar 2, Yard…) ----
   function locsOf(l){ const out = []; (l.locs || []).concat((l.rows || []).map(r => r.loc)).forEach(v => { v = String(v || '').trim(); if (v && !out.includes(v)) out.push(v); }); return out; }
   function addLoc(l, v){ v = String(v || '').trim(); if (!v) return ''; const hit = locsOf(l).find(x => x.toLowerCase() === v.toLowerCase()); if (hit) return hit; l.locs = (l.locs || []).concat(v); return v; }
@@ -455,7 +455,16 @@
     if (r.rno && r.rno.p === pfx) return r.rno.n;
     let max = 0; (l.rows || []).forEach(x => { const m = x.report && rx.exec(no(x.report.no)); if (m && !(pfx === 'F' && /^(CR|S|MC)\d/i.test(no(x.report.no)))) max = Math.max(max, +m[1]); if (x.rno && x.rno.p === pfx) max = Math.max(max, x.rno.n); });
     r.rno = { p:pfx, n:max + 1 }; return r.rno.n; }
-  function certN(l, i){ const r = l.rows[i]; if (r.cno) return r.cno; const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let n = i + 1; if (used.has(n)) n = Math.max(...used) + 1; return n; }
+  // the certificate number is the item's line number on the client's inventory list (census PDF / Excel order: by group, then as listed),
+  // so certificate C<job>/5 is line 5 of the list; worked out every time, so adding, moving or regrouping items renumbers them
+  function lineNos(l){ const m = new Map(); let n = 0;
+    groupRows((l.rows || []).filter(r => r.serial || r.desc).map(r => [r, 0])).forEach(([, rs]) => rs.forEach(([r]) => m.set(r.id || r, ++n))); return m; }
+  function certN(l, i){ const r = l.rows[i]; const n = lineNos(l).get(r.id || r); if (n) return n;
+    const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let k = i + 1; if (used.has(k)) k = Math.max(...used) + 1; return k; }
+  // a forklift / stacker report's certificate gets the number of its line on the inventory
+  function flCertNo(l, st){ if (!l || !st || !st.f) return null; const rid = st._rid || st.f.docno || '';
+    const r = (st.row && (l.rows || []).find(x => x.id === st.row)) || (l.rows || []).find(x => x.fl && x.fl === rid); return r ? lineNos(l).get(r.id || r) || null : null; }
+  const withFlNo = (l, st) => { const n = flCertNo(l, st); if (n) st.f.cno = n; return st; };
   const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
   const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
   function certLine(l, r, i){
@@ -658,7 +667,7 @@
           ${isForklift(r) ? `<div class="flbar"><span>${FL} ${isStacker(r) ? 'Stacker' : 'Forklift'} – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${isManCage(r) ? `<div class="flbar"><span>🧺 Man cage – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-mcopen="${i}">Inspection</button></div></div>` : ''}
           ${isCrane(r) ? `<div class="flbar"><span>🏗 Crane / hoist – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-cropen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-cropen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
-          ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span></div>` : ''}
+          ${r.auto && rep ? `<div class="from">${FL}<span>Added from <b>${esc(rep.type)}</b> ${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(certNoOf(l, i)) : ''}</span></div>` : ''}
           <div class="top"><div class="field" style="flex:1"><label for="s${i}">Serial nr</label><input id="s${i}" data-f="serial" value="${esc(r.serial)}" autocapitalize="characters" ${ro}></div>
             <button class="btn secondary small" data-del="${i}" aria-label="Remove item ${i+1}" style="color:var(--bad);border-color:var(--bad);margin-top:20px">✕</button></div>
           ${dupes[k] > 1 ? '<span class="warn">This serial nr is on the list more than once.</span>' : ''}
@@ -690,7 +699,7 @@
             ${r.photo ? `<img class="photo" id="ph${i}" data-pid="${esc(r.photo)}" alt="Photo of the defect on item ${i+1}">` : ''}
             <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label><label class="btn secondary small" style="flex:1;cursor:pointer">🖼 From gallery<input type="file" accept="image/*" data-photo="${i}" style="display:none"></label>
               ${r.photo ? `<button type="button" class="btn secondary small" data-nophoto="${i}" style="color:var(--bad);border-color:var(--bad)">Remove photo</button>` : ''}</div>` : ''}
-          ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(rep.cert) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
+          ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(certNoOf(l, i)) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
           </div>`; };
         // To do / Completed: an item is completed once it is marked Safe, or Unsafe with a reason
         const all0 = (l.rows || []).map((r, i) => [r, i]).filter(([r]) => show(r)); if (!all0.length) return '<div class="empty">No items yet. Tap <b>Add item</b> for each piece of equipment.</div>';
@@ -1084,7 +1093,7 @@
       try { const parts = await itemCertParts(l); let tools = null;
         try { tools = await forkliftTools(); const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
           for (const r of (await tools.api.reports()).filter(r => r && r.state && r.state.type === 'LOAD TEST' && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))){
-            const c = await tools.api.buildCert(JSON.parse(JSON.stringify(r.state))); parts.push({ no:'/' + (r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
+            const c = await tools.api.buildCert(withFlNo(l, JSON.parse(JSON.stringify(r.state)))); parts.push({ no:'/' + (flCertNo(l, r.state) || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
         catch(e){ console.error(e); } finally { if (tools) tools.done(); }
         if (!parts.length){ toast('No certificates yet – mark the items Safe or Unsafe first'); return; }
         const idx = parts; const f = await mergeCerts(l, parts); const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -1185,11 +1194,11 @@
     const items = rows.map(r => { const make = String(r.make || '').trim(); const desc = String(r.desc || '').trim();
       return { serial:String(r.serial || '').toUpperCase(), desc:desc.toUpperCase(), make:make && !/^unknown$/i.test(make) ? make.toUpperCase() : '', ton:tonText(r.swl), len:isSling(r) ? lenText(r.len) : isFallArrest(r) && r.hol ? lenText(r.hol) : '', loc:String(r.loc || '').toUpperCase(), unsafe:r.status === 'UNSAFE', refurb:r.status === 'REFURB', report:repNo(r) || (r.status === 'REFURB' ? 'REFURBISH' : '') }; });
     // grouped by type (all eye bolts together…), each group with its heading
-    return groupRows(rows.map((r, k) => [r, k])).map(([g, rs]) => Object.assign(rs.map(([, k]) => items[k]), { title:gname(l, g).toUpperCase() }));
+    let n = 0; return groupRows(rows.map((r, k) => [r, k])).map(([g, rs]) => Object.assign(rs.map(([, k]) => Object.assign(items[k], { no:++n })), { title:gname(l, g).toUpperCase() }));
   }
   async function listDoc(l){
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
-    const L = 15, W = [22, 40, 30, 19, 16, 30, 23], X = W.map((w, k) => L + W.slice(0, k).reduce((a, b) => a + b, 0)), R = L + 180, INK = [0, 0, 0], RED = [220, 0, 0], PH = 287;
+    const L = 15, W = [9, 21, 37, 28, 19, 16, 28, 22], X = W.map((w, k) => L + W.slice(0, k).reduce((a, b) => a + b, 0)), R = L + 180, INK = [0, 0, 0], RED = [220, 0, 0], PH = 287;
     let y = 18;
     // letterhead-style top: the Blue Cranes logo top left, the title centred in the space beside it, a navy rule under both
     const LOGO = await logoWide();
@@ -1204,18 +1213,18 @@
       y = Math.max(y - 2, top + LH) + 3; doc.setDrawColor(11, 53, 117); doc.setLineWidth(0.8); doc.line(L, y, R, y); doc.setDrawColor(251, 210, 32); doc.setLineWidth(0.5); doc.line(L, y + 1, R, y + 1); doc.setLineWidth(0.2); doc.setDrawColor(0);
       y += 6; colHead(); };
     const colHead = () => { doc.setFont('helvetica', 'bold'); doc.setFontSize(8.3); doc.setTextColor(...INK); doc.setDrawColor(0); doc.setLineWidth(0.2);
-      ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'LENGTH:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { doc.rect(X[k], y, W[k], 7); doc.text(h, X[k] + 1.5, y + 4.8); }); y += 7 + 4; };
+      ['NO:', 'ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'LENGTH:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { doc.rect(X[k], y, W[k], 7); doc.text(h, X[k] + 1.2, y + 4.8); }); y += 7 + 4; };
     const cell = (vals, color) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color);
       const lines = vals.map((v, k) => doc.splitTextToSize(String(v || ''), W[k] - 3)); const h = Math.max(6, ...lines.map(x => x.length * 4 + 2));
       if (y + h > PH - 12){ doc.addPage(); y = 15; colHead(); doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...color); }
-      lines.forEach((ls, k) => { doc.setDrawColor(0); doc.rect(X[k], y, W[k], h); doc.text(ls, X[k] + 1.5, y + 4.2); }); y += h; };
+      lines.forEach((ls, k) => { doc.setDrawColor(0); doc.rect(X[k], y, W[k], h); doc.text(ls, X[k] + 1.2, y + 4.2); }); y += h; };
     head();
     censusItems(l).forEach((grp, gi) => { if (gi) y += 4;
       // group heading: navy band across the table, e.g. "EYE BOLTS · 10"
       if (y + 7 + 6 > PH - 12){ doc.addPage(); y = 15; colHead(); }
       doc.setFillColor(227, 234, 245); doc.setDrawColor(0); doc.rect(L, y, 180, 7, 'FD'); doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); doc.setTextColor(11, 53, 117);
       doc.text(grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'), L + 1.5, y + 4.8); y += 7;
-      grp.forEach(it => { cell([it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report], it.unsafe ? RED : it.refurb ? [11, 53, 117] : INK); }); });
+      grp.forEach(it => { cell([it.no, it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report], it.unsafe ? RED : it.refurb ? [11, 53, 117] : INK); }); });
     y += 8; if (y > PH - 12){ doc.addPage(); y = 20; } doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...RED); doc.text('RED = UNSAFE FOR USE', L, y);
     // client sign-off (once the client has signed the job): name, date and signature under the list
     const so = l.signoff; if (so && so.sig){ const BH = 20; y += 8; if (y + BH > PH - 8){ doc.addPage(); y = 20; }
@@ -1234,14 +1243,14 @@
   async function listXlsx(l){
     const EX = await excelJS(); const wb = new EX.Workbook(); wb.creator = 'Blue Cranes Online';
     const ws = wb.addWorksheet(String(l.customer || 'Inventory').toUpperCase().replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 28) || 'INVENTORY', { pageSetup:{ paperSize:9, orientation:'portrait', fitToPage:true, fitToWidth:1, fitToHeight:0 } });
-    ws.columns = [{ width:20 }, { width:42 }, { width:20 }, { width:12 }, { width:10 }, { width:24 }, { width:18 }];
+    ws.columns = [{ width:6 }, { width:20 }, { width:42 }, { width:20 }, { width:12 }, { width:10 }, { width:24 }, { width:18 }];
     const red = { argb:'FFFF0000' }, line = { style:'thin', color:{ argb:'FF000000' } }, box = { top:line, left:line, bottom:line, right:line };
-    [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 7); const c = ws.getCell(k + 1, 1); c.value = t; c.font = { name:'Arial', bold:true, size:12 }; c.alignment = { horizontal:'center' }; });
-    ['ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'LENGTH:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { const c = ws.getCell(4, k + 1); c.value = h; c.font = { name:'Arial', bold:true }; c.border = box; });
+    [String(l.customer || '').toUpperCase(), 'CENSUS OF LIFTING EQUIPMENT', monthOf(l.date)].forEach((t, k) => { ws.mergeCells(k + 1, 1, k + 1, 8); const c = ws.getCell(k + 1, 1); c.value = t; c.font = { name:'Arial', bold:true, size:12 }; c.alignment = { horizontal:'center' }; });
+    ['NO:', 'ITEM NO:', 'DESCRIPTION:', 'MANUFACTURER:', 'TONNAGE:', 'LENGTH:', 'ITEM LOCATION:', 'REPORT:'].forEach((h, k) => { const c = ws.getCell(4, k + 1); c.value = h; c.font = { name:'Arial', bold:true }; c.border = box; });
     let r = 6;
     censusItems(l).forEach((grp, gi) => { if (gi) r++;
-      { ws.mergeCells(r, 1, r, 7); const c = ws.getCell(r, 1); c.value = grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'); c.font = { name:'Arial', bold:true, color:{ argb:'FF0B3575' } }; c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE3EAF5' } }; c.border = box; r++; }
-      grp.forEach(it => { [it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : it.refurb ? { name:'Arial', color:{ argb:'FF0B3575' } } : { name:'Arial' }; c.border = box; }); r++; }); });
+      { ws.mergeCells(r, 1, r, 8); const c = ws.getCell(r, 1); c.value = grp.title + '  ·  ' + grp.length + (grp.length === 1 ? ' ITEM' : ' ITEMS'); c.font = { name:'Arial', bold:true, color:{ argb:'FF0B3575' } }; c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE3EAF5' } }; c.border = box; r++; }
+      grp.forEach(it => { [it.no, it.serial, it.desc, it.make, it.ton, it.len, it.loc, it.report].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.font = it.unsafe ? { name:'Arial', color:red } : it.refurb ? { name:'Arial', color:{ argb:'FF0B3575' } } : { name:'Arial' }; c.border = box; }); r++; }); });
     r++; const f = ws.getCell(r, 1); f.value = 'RED = UNSAFE FOR USE'; f.font = { name:'Arial', bold:true, color:red };
     const buf = await wb.xlsx.writeBuffer();
     return { blob:new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name:`Inventory_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.xlsx`, type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
@@ -1461,7 +1470,7 @@
         for (let k = 0; k < reps.length; k++){
           const st = reps[k].state; busy(`Forklift report ${k + 1} of ${reps.length} (${st.f.docno || ''})…`);
           const a = await tools.api.buildPdf(JSON.parse(JSON.stringify(st))); flPdfs.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
-          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(JSON.parse(JSON.stringify(st))); flCerts.push({ no:'/' + (st.f.cno || (/\.(\d+)$/.exec(st.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); }
+          if (st.type === 'LOAD TEST'){ const c = await tools.api.buildCert(withFlNo(l, JSON.parse(JSON.stringify(st)))); flCerts.push({ no:'/' + (flCertNo(l, st) || st.f.cno || (/\.(\d+)$/.exec(st.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); }
         }
       } catch(e){ console.error(e); toast('Forklift reports could not be added – check your signal'); }
       finally { if (tools) tools.done(); }
@@ -1537,7 +1546,7 @@
   if (new URLSearchParams(location.search).get('embed') === '1'){
     window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; }),
       certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), quoteDoc: (l, techName) => quoteDoc(l, { techName }), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
-      itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
+      flCertNo: (l, st) => flCertNo(l, st), itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
   (async function start(){
     lsLoad(); S.profile = BC.cachedProfile();
