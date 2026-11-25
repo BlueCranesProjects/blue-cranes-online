@@ -10,6 +10,13 @@
 
   // The signed-in person's profile, kept on the phone so tools open instantly (and offline)
   BC.cachedProfile = () => { try { const p = JSON.parse(localStorage.getItem(PKEY) || 'null'); return p && p.name ? p : null; } catch(e){ return null; } };
+  // the office's technician list (Admin → Technicians): name, email, own LMI number, signature – kept on the device for offline use
+  // A technician with an LMI number tests on their own: their LMI goes under their name and there is no understudy on the load test certificates.
+  BC.techs = () => { try { return JSON.parse(localStorage.getItem('bco-techs') || '[]') || []; } catch(e){ return []; } };
+  BC.loadTechs = async () => { try { if (!window.Cloud || !window.Cloud.getSetting) return BC.techs(); const d = await window.Cloud.getSetting('technicians'); const list = (d && Array.isArray(d.list)) ? d.list : [];
+      try { localStorage.setItem('bco-techs', JSON.stringify(list)); } catch(e){} return list; } catch(e){ return BC.techs(); } };
+  BC.techOf = email => { const e = String(email || '').trim().toLowerCase(); return e ? (BC.techs().find(t => String(t.email || '').trim().toLowerCase() === e) || null) : null; };
+  BC.myLmi = () => { try { const t = BC.techOf(window.Cloud && window.Cloud.email && window.Cloud.email()); return (t && String(t.lmi || '').trim()) || ''; } catch(e){ return ''; } };
   BC.cacheProfile = p => { try { if (p) localStorage.setItem(PKEY, JSON.stringify(p)); else localStorage.removeItem(PKEY); } catch(e){} };
   BC.goHome = q => { location.href = BC.home + (q || ''); };
 
@@ -34,6 +41,7 @@
       else { BC.goHome('?profile=1'); return; }
       // admins use the technician tools too (paper jobs, their own jobs) – no longer sent to Admin from these pages
       try { if (window.Cloud.saveUser) window.Cloud.saveUser({ email:String(u.email || '').toLowerCase(), name:(p && p.name) || '', seen:new Date().toISOString() }); } catch(e){}
+      BC.loadTechs().then(() => window.dispatchEvent(new Event('bc-techs'))).catch(() => {});
       resolve({ user:u, profile:p });
     });
   });

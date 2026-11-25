@@ -927,7 +927,8 @@ function monthYear(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s||""))return(s||"").toUppe
 const CERT_TOP=70,CERT_K=0.82;
 async function buildCert(st){
   // no understudy on the report: the one saved on this phone (filled in on the client's inventory) – not when Admin makes it (it passes the job's own)
-  if(!EMBED&&st&&st.f){st.sig=st.sig||{};
+  if(!EMBED&&st&&st.f&&window.BC&&BC.myLmi&&BC.myLmi()){st.f.engLmi=BC.myLmi();}
+  if(!EMBED&&st&&st.f&&!st.f.engLmi){st.sig=st.sig||{};
     // the understudy chosen on the job's client's inventory (Job details & understudy) wins
     try{const all=JSON.parse(localStorage.getItem("bco-equipment")||"{}")||{},rid=st._rid||st.f.docno||"",jc=jobCore(st.f.jobno||"");
       const ls=Object.values(all).filter(x=>x&&x.ut&&x.ut.name);const l=ls.find(x=>(x.rows||[]).some(r=>(st.row&&r.id===st.row)||(rid&&r.fl===rid)))||(jc&&ls.filter(x=>jobCore(x.job||"")===jc).sort((a,b)=>(b.savedAt||0)-(a.savedAt||0))[0]);
@@ -955,9 +956,10 @@ async function buildCert(st){
   function sigImg(img,x,base){if(!img)return;try{const d=dims[img]||{w:44,h:12.5},sc=Math.min(42/d.w,14/d.h),w=d.w*sc,h=d.h*sc;doc.addImage(img,"PNG",x+(42-w)/2,base-h+1,w,h,undefined,"FAST");}catch(e){}}
   doc.setTextColor(...INK);doc.setFont("times","bold");doc.setFontSize(12.5);
   doc.text("TESTED BY",L,y);doc.text("NAME: "+U(f.engName),L+44,y);doc.text("SIGNATURE",L+112,y);doc.setLineDashPattern([0.4,0.9],0);doc.line(L+137,y+0.6,R,y+0.6);doc.setLineDashPattern([],0);sigImg(st.sig.sigEng,L+138,y);
-  y+=18 * CERT_K;
+  if(f.engLmi){doc.setFontSize(8.5);doc.text("LMI : "+f.engLmi,L+58,y+4.5);doc.setFontSize(12.5);}   // own LMI number: no understudy
+  else{y+=18 * CERT_K;
   doc.text("UNDERSTUDY TO",L,y);doc.text("NAME: "+U(f.utName),L+44,y);doc.text("SIGNATURE",L+112,y);doc.setLineDashPattern([0.4,0.9],0);doc.line(L+137,y+0.6,R,y+0.6);doc.setLineDashPattern([],0);sigImg(st.sig.sigUt,L+138,y);
-  if(f.utLmi){doc.setFontSize(8.5);doc.text("LMI : "+f.utLmi,L+58,y+4.5);doc.setFontSize(12.5);}
+  if(f.utLmi){doc.setFontSize(8.5);doc.text("LMI : "+f.utLmi,L+58,y+4.5);doc.setFontSize(12.5);}}
   y+=15 * CERT_K;
   doc.text("TEST DATE",L,y);doc.text(fmt(f.date),L+44,y);
   y+=12 * CERT_K;

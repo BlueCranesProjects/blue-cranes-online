@@ -64,6 +64,12 @@ Everything for a person is under `users/{uid}/items/`:
 - Firestore → `admins` collection → one document per admin, ID = email in lower case
 - Firestore → `admins` → the owner's document has the field `owner` = true (boolean)
 
+## Technicians and LMI numbers (rule)
+
+- Admin → **Technicians** is the office's list (`settings/technicians` = { list:[{ id, name, email, lmi, sig }] }): name and surname, sign-in email (only if they use the app), own LMI number, signature (drawn, uploaded or taken from their app profile). Only admins change it; every signed-in phone reads it (`BC.loadTechs`, kept in `bco-techs`).
+- A technician **with an LMI number** tests on their own: on every load test certificate (inventory and forklift) their LMI goes under their name and there is **no UNDERSTUDY line**; the app doesn't ask for an understudy (`techLmiOf`, `needsUt`; forklift `f.engLmi`; Admin `lmiFor`, `stWithUt(…, lmi)`).
+- Paper jobs pick the technician from this list first (also people without an app account), then app users not on it; the paper job keeps `techRec`, `techLmi`, `techSig` and refreshes them from the list when opened.
+
 ## Paper jobs (rule)
 
 - For jobs that were done on paper in the past. Admin → **Paper jobs**: choose the technician who did the job, the job number, the date from the paper, the client and the site, then **Start paper job**.
