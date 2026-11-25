@@ -432,8 +432,10 @@
     return cands.find(u => u && (u.name || u.sig)) || null;
   }
   // a forklift load test certificate gets the job's understudy when the report has none (or only the name)
-  function stWithUt(st, ut){ if (!st || !st.f || !ut || !(ut.name || ut.sig)) return st; st.sig = st.sig || {};
+  //   force: the job has its own understudy (chosen in Job details & understudy) – it replaces the one on the report
+  function stWithUt(st, ut, force){ if (!st || !st.f || !ut || !(ut.name || ut.sig)) return st; st.sig = st.sig || {};
     const same = !st.f.utName || !ut.name || String(st.f.utName).trim().toLowerCase() === String(ut.name).trim().toLowerCase();
+    if (force && ut.name){ st.f.utName = ut.name; st.f.utLmi = ut.lmi || (same ? st.f.utLmi : '') || ''; st.sig.sigUt = ut.sig || (same ? st.sig.sigUt : null) || null; return st; }
     if (!st.f.utName && !st.sig.sigUt){ st.f.utName = ut.name || ''; st.f.utLmi = ut.lmi || ''; st.sig.sigUt = ut.sig || null; }
     else if (same){ if (!st.sig.sigUt && ut.sig) st.sig.sigUt = ut.sig; if (!st.f.utLmi && ut.lmi) st.f.utLmi = ut.lmi; }
     return st; }
@@ -518,7 +520,7 @@
           let prof = {}; prof = await profOf(g.uid);
           const jut = await utFor(g.uid, l, null); const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, jut);
           if ((g.fl || []).some(r => r.state.type === 'LOAD TEST')){ const ft = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
-            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const st = stWithUt(JSON.parse(JSON.stringify(r.state)), jut), fn = t.api.flCertNo && t.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await ft.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
+            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const st = stWithUt(JSON.parse(JSON.stringify(r.state)), jut, !!(l.ut && l.ut.name)), fn = t.api.flCertNo && t.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await ft.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
           const f = await t.api.mergeCerts(l, parts); if (f) files.push(f); }
         // copy the files into this page before the hidden page is closed
         for (const f of files) f.blob = new Blob([new Uint8Array(await f.blob.arrayBuffer())], { type:f.type || f.blob.type || 'application/pdf' });
@@ -628,7 +630,7 @@
             if (r._cr){ const a = await cz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); crp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
               if (cz.api.buildTechPdf && cz.api.needsTech(r.state)){ const b = await cz.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); tcp.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), name:b.name }); } continue; }
             const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); flp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
-            if (r.state.type === 'LOAD TEST'){ if (jut === undefined) jut = await utFor(g.u.uid, null, null); const st = stWithUt(JSON.parse(JSON.stringify(r.state)), jut), fn = l.rows && eq.api.flCertNo && eq.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await fk.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
+            if (r.state.type === 'LOAD TEST'){ if (jut === undefined) jut = await utFor(g.u.uid, null, null); const st = stWithUt(JSON.parse(JSON.stringify(r.state)), jut, !!(l.rows && l.ut && l.ut.name)), fn = l.rows && eq.api.flCertNo && eq.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await fk.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
           if (flp.length) await put(await onePdf(flp, packName('Forklift_reports', l)));
           if (crp.length) await put(await onePdf(crp, packName('Crane_hoist_reports', l)));
           if (tcp.length) await put(await onePdf(tcp, packName('TECHNICIAN_Crane_hoist_reports_for_quote', l)));
