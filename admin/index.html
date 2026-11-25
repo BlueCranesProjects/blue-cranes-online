@@ -79,8 +79,10 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
-  const S = { tab:savedTab, users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
+  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
+  // ?printrun=auto: opened by the office computer's 6:00 print program – go straight to Print run and make the files
+  const AUTOPRINT = (() => { try { return new URLSearchParams(location.search).get('printrun') === 'auto'; } catch(e){ return false; } })();
+  const S = { tab:AUTOPRINT ? 'print' : savedTab, users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
   // ---------- Excel helpers ----------
@@ -330,7 +332,7 @@
   // ---------- views ----------
   function head(){ return `<header><img src="../icons/logo.png" alt="Blue Cranes" style="width:44px;height:44px;border-radius:50%;background:#fff;object-fit:contain">
       <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div><button type="button" id="admOut" style="border:1.5px solid rgba(255,255,255,.6);background:none;color:#fff;border-radius:10px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer">Sign out</button></header>
-      <nav class="seg" aria-label="Admin sections">${[['inv','Import jobs'],['jobs','Schedule jobs'],['export','Export jobs']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
+      <nav class="seg" aria-label="Admin sections">${[['inv','Import jobs'],['jobs','Schedule jobs'],['print','Print run'],['export','Export jobs']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
     return `<main><div class="steps">
@@ -393,7 +395,7 @@
         const g = { fl:(S.invProg[j.id] || {}).fl || [], cr:(S.invProg[j.id] || {}).cr || [], mc:(S.invProg[j.id] || {}).mc || [], total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
         const o = S.invProg[j.id]; if (!o || o.done !== g.done || o.total !== g.total || o.unsafe !== g.unsafe) changed = true; S.invProg[j.id] = g; }
     } finally { progBusy = false; }
-    if (changed && S.tab === 'jobs') render();
+    if (changed && (S.tab === 'jobs' || S.tab === 'print')) render();
   }
   // the job's certificates, made by the inventory tool (hidden) from the technician's synced inventory
   function certTool(){
@@ -709,6 +711,76 @@
     const all = o => { app.querySelectorAll('tr.dayh').forEach(tr => { dayState[tr.dataset.day] = o; }); keepDays(); render(); };
     const a = document.getElementById('daysOpen'), c = document.getElementById('daysClose'); if (a) a.onclick = () => all(true); if (c) c.onclick = () => all(false);
   }
+  // ---------- Print run: the finished jobs' files for the office printer ----------
+  // White paper: everything except the certificates (the Job PDF). Blue paper: the certificates.
+  // Files go to Downloads as BC-PRINT_<when>_<nn>_<job>_<client>_1-WHITE.pdf / _2-BLUE.pdf, then BC-PRINT_DONE_<when>.txt;
+  // the print program on the office computer (print/bc-print.ps1) prints them and moves them to C:\BlueCranes\Printed.
+  // A job printed once gets printedAt and is not printed again unless asked.
+  const printable = j => j.status === 'done' && !!S.invProg[j.id] && !!(S.invProg[j.id].list || (S.invProg[j.id].fl || []).length || (S.invProg[j.id].cr || []).length || (S.invProg[j.id].mc || []).length);
+  // only jobs of the last 7 days: older finished jobs (from before the print run existed) are never printed by themselves
+  const recentJob = j => { const k = j.sheetDate || j.date || ''; return k >= keyOf(new Date(Date.now() - 7 * 864e5)); };
+  const waitingPrint = () => (S.jobs || []).filter(j => printable(j) && !j.printedAt && recentJob(j)).sort((a, b) => String(a.sheetDate || a.date).localeCompare(String(b.sheetDate || b.date)) || String(a.card || '').localeCompare(String(b.card || '')));
+  const printedRecently = () => (S.jobs || []).filter(j => j.printedAt && Date.now() - Date.parse(j.printedAt) < 7 * 864e5).sort((a, b) => String(b.printedAt).localeCompare(String(a.printedAt)));
+  async function prepPrint(){ S.prReady = false; if (!S.users.length) await refreshUsers(); progAt = 0; await loadProgress(); S.prReady = true; if (S.tab === 'print') render(); }
+  function vPrint(){
+    const wait = waitingPrint(), done = printedRecently(), sel = S.prSel || (S.prSel = new Set()), busy = S.prBusy;
+    wait.forEach(j => { if (!S.prSeen || !S.prSeen.has(j.id)){ sel.add(j.id); (S.prSeen = S.prSeen || new Set()).add(j.id); } });
+    const n = wait.filter(j => sel.has(j.id)).length;
+    const row = (j, again) => `<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)">${again ? '' : `<input type="checkbox" data-prsel="${esc(j.id)}" ${sel.has(j.id) ? 'checked' : ''} ${busy ? 'disabled' : ''} style="margin-top:3px">`}
+      <span style="flex:1"><b>${esc(j.customer || 'Job')}</b> <span class="hint">· Job ${esc(j.card || '–')} · ${esc(niceDate(j.sheetDate || j.date))} · ${esc(nameOf(j.tech) || j.tech || '')}</span>
+      ${again ? `<div class="hint">Printed ${esc(new Date(j.printedAt).toLocaleString('en-ZA', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }))}</div>` : ''}</span>
+      ${again ? `<button class="btn secondary" data-pragain="${esc(j.id)}" ${busy ? 'disabled' : ''} style="padding:6px 14px;width:auto;flex:0 0 auto">Print again</button>` : ''}</label>`;
+    return `<main><section class="card wide"><h2>🖨 Print run</h2>
+      <span class="hint" style="font-size:14px;line-height:1.5">Finished jobs ready for the office printer. <b>White paper:</b> inventory, reports, time card, equipment for quote. <b>Blue paper:</b> the certificates.
+        Every weekday at 05:55 the office computer opens this page by itself, makes the files and prints them. You can also make them now and print with <b>Blue Cranes – Print now</b> on the desktop.</span>
+      ${!S.prReady ? '<span class="hint">Looking for finished jobs…</span>' : wait.length ? `<div>${wait.map(j => row(j, false)).join('')}</div>` : '<span class="hint" style="font-size:14px">✓ Nothing waiting – every finished job has been printed.</span>'}
+      ${wait.length ? `<button class="btn primary" id="prMake" ${busy || !n ? 'disabled' : ''}>${busy ? esc(S.prMsg || 'Working…') : `⬇ Make print files (${n} ${n === 1 ? 'job' : 'jobs'})`}</button>` : ''}
+      ${S.prLast ? `<div class="hint" style="font-size:14px;line-height:1.5;color:var(--ok)">${S.prLast}</div>` : ''}
+    </section>
+    ${done.length ? `<section class="card wide"><h2>Printed in the last 7 days</h2><div>${done.map(j => row(j, true)).join('')}</div></section>` : ''}
+    <section class="card wide"><h2>Set up the office computer</h2>
+      <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.7">
+        <li>Install <b>SumatraPDF</b> (free) from <b>sumatrapdfreader.org</b>.</li>
+        <li>Download the print program below, open the zip, and run <b>Install print program</b>. It makes the folder C:\\BlueCranes and a <b>Blue Cranes – Print now</b> file on the desktop.</li>
+        <li>Test: tick one job above, <b>Make print files</b>, then double-click <b>Blue Cranes – Print now</b>.</li>
+        <li>When the test prints right, run <b>Switch on 6am print</b> once.</li></ol>
+      <span class="hint">Printer and trays are set at the top of C:\\BlueCranes\\bc-print.ps1 (now: Groot printer, normal tray for both until the blue tray is known). In Chrome, turn off "Ask where to save each file" and allow this site to download several files.</span>
+      <button class="btn secondary" id="prZip">⬇ Print program (zip)</button></section></main>`;
+  }
+  async function runPrint(ids, auto){
+    if (S.prBusy) return; S.prBusy = true; S.prLast = ''; const stamp = (() => { const d = new Date(); return keyOf(d) + '_' + pad(d.getHours()) + pad(d.getMinutes()); })();
+    const safe = x => String(x || '').replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+    const jobs = ids ? ids.map(id => S.jobs.find(x => x.id === id)).filter(Boolean) : waitingPrint().filter(j => auto || (S.prSel || new Set()).has(j.id));
+    const lines = [], made = []; let k = 0;
+    const say = m => { S.prMsg = m; if (S.tab === 'print') render(); };
+    try {
+      for (const j of jobs){ k++; say(`Job ${k} of ${jobs.length}: ${j.customer || j.card || ''}…`);
+        const base = `BC-PRINT_${stamp}_${pad(k)}_${safe(j.card) || 'job'}_${safe(j.customer)}`; let w = null, b = null;
+        try { w = await jobPdf(j.id); } catch(e){ console.error('white', e); }
+        try { b = (await jobFiles(j.id, 'certs'))[0] || null; } catch(e){ console.error('blue', e); }
+        if (w){ dlFile({ blob:w.blob, name:base + '_1-WHITE.pdf' }); await new Promise(r => setTimeout(r, 700)); }
+        if (b){ dlFile({ blob:b.blob, name:base + '_2-BLUE.pdf' }); await new Promise(r => setTimeout(r, 700)); }
+        if (w || b){ made.push(j); lines.push(`${j.card || '-'} ${j.customer || ''}: ${w ? 'white' : ''}${w && b ? ' + ' : ''}${b ? 'blue' : ''}`);
+          const at = new Date().toISOString(); j.printedAt = at; try { await window.Cloud.updateJob(j.id, { printedAt:at, printedBy:(window.Cloud.email && window.Cloud.email()) || '' }); } catch(e){ console.error(e); } }
+        else lines.push(`${j.card || '-'} ${j.customer || ''}: no files`);
+      }
+      dlFile({ blob:new Blob([`Blue Cranes print run ${stamp}\r\n${lines.join('\r\n') || 'Nothing to print'}\r\n`], { type:'text/plain' }), name:`BC-PRINT_DONE_${stamp}.txt` });
+      S.prLast = made.length ? `✓ Print files made for ${made.length} ${made.length === 1 ? 'job' : 'jobs'} (${new Date().toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' })}). They are in Downloads; double-click <b>Blue Cranes – Print now</b> to print them.` : 'Nothing to print.';
+    } catch(e){ console.error(e); S.prLast = 'Could not make the print files: ' + esc((e && e.message) || String(e)); }
+    finally { S.prBusy = false; S.prMsg = ''; (S.prSel || new Set()).clear(); if (S.tab === 'print') render(); }
+  }
+  async function printZip(btn){ const old = btn.textContent; btn.disabled = true; btn.textContent = 'Working…';
+    try { for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
+      const zip = new JSZip(), dir = zip.folder('Blue Cranes print program');
+      for (const f of ['bc-print.ps1', 'Install print program.bat', 'Print now.bat', 'Switch on 6am print.bat', 'READ ME.txt']){ const r = await fetch('../print/' + encodeURIComponent(f), { cache:'no-store' }); if (!r.ok) throw new Error(f); dir.file(f, await r.blob()); }
+      dlFile({ blob:await zip.generateAsync({ type:'blob' }), name:'Blue Cranes print program.zip' }); toast('Downloaded – open the zip and run Install print program'); }
+    catch(e){ console.error(e); toast('Could not make the zip'); } finally { btn.disabled = false; btn.textContent = old; } }
+  function wirePrint($){
+    app.querySelectorAll('[data-prsel]').forEach(c => c.onchange = () => { const s = S.prSel || (S.prSel = new Set()); if (c.checked) s.add(c.dataset.prsel); else s.delete(c.dataset.prsel); render(); });
+    app.querySelectorAll('[data-pragain]').forEach(b => b.onclick = () => runPrint([b.dataset.pragain], false));
+    const m = $('prMake'); if (m) m.onclick = () => runPrint(null, false);
+    const z = $('prZip'); if (z) z.onclick = () => printZip(z);
+  }
   function vJobs(){
     const from = S.allJobs ? '' : keyOf(new Date(Date.now() - 7 * 864e5));
     const techs = [...new Set(S.jobs.map(j => j.tech))].sort();
@@ -790,10 +862,10 @@
       if ((S.tab === 'jobs' || S.tab === 'inv') && !(S.jobs || []).length) refreshJobs().then(() => render()).catch(() => {}); },
     render: () => render() });
   function render(){ if (!NAVON && !S.noAdmin && window.Cloud && window.Cloud.email && window.Cloud.email()){ NAVON = true; NAV.start(); }
-    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + backupBar() + (S.tab === 'jobs' ? vJobs() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
+    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + backupBar() + (S.tab === 'jobs' ? vJobs() : S.tab === 'print' ? vPrint() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
   function wire(){
     const $ = id => document.getElementById(id);
-    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; try { sessionStorage.setItem('bco-admin-tab', S.tab); } catch(e){} if (S.tab === 'jobs' || S.tab === 'inv') await refreshJobs(); if ((S.tab === 'inv' || S.tab === 'export') && !S.users.length) await refreshUsers(); render(); });
+    app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; try { sessionStorage.setItem('bco-admin-tab', S.tab); } catch(e){} if (S.tab === 'jobs' || S.tab === 'inv' || S.tab === 'print') await refreshJobs(); if ((S.tab === 'inv' || S.tab === 'export' || S.tab === 'print') && !S.users.length) await refreshUsers(); render(); if (S.tab === 'print') prepPrint(); });
     const tpl = $('tpl'); if (tpl) tpl.onclick = async () => { try { await xlsxReady();
       const wb = XLSX.utils.book_new(); const nx = new Date(Date.now() + 864e5); const ex = pad(nx.getDate()) + '/' + pad(nx.getMonth() + 1) + '/' + nx.getFullYear();
       const me = S.users[0] ? S.users[0].email : 'tech@example.com';
@@ -832,6 +904,7 @@
     app.querySelectorAll('[data-allpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.allpdf, 'all', b));
     app.querySelectorAll('[data-tspdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.tspdf, 'ts', b));
     if (S.tab === 'jobs') loadProgress();
+    wirePrint($);
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
     app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b){ const j = newJob(); const n = (S.inv || []).filter(r => !r.errs.length).length; b.disabled = !(j.ready && !S.busy); b.textContent = schedLabel(j, n); } };
       el.oninput = upd; el.onchange = upd; });
@@ -1010,6 +1083,7 @@
     if (!(await window.Cloud.isAdmin())){ S.noAdmin = `This page is for the office. Your account (${esc(window.Cloud.email())}) is not an admin.<br><br>To make an account an admin: in Firebase → Firestore → start a collection called <b>admins</b> and add a document whose ID is the email address (lower case).`; render(); return; }
     try { S.backup = await window.Cloud.getItem('backup'); } catch(e){ S.backup = null; }
     await refreshUsers(); await refreshJobs(); render();
+    if (S.tab === 'print'){ await prepPrint(); if (AUTOPRINT) runPrint(null, true); }
     try { const x = sessionStorage.getItem('bco-admin-export'); if (x){ sessionStorage.removeItem('bco-admin-export');
       exportBox(`<h2>The export stopped</h2><span class="hint" style="font-size:14px">The page restarted while the export was busy (${esc(x)}). This happens when a phone runs out of memory. Try a shorter period or one technician, or do the export on the computer.</span><button class="btn secondary" id="xbClose">Close</button>`).querySelector('#xbClose').onclick = e => e.target.closest('.xbox').remove(); } } catch(e){}
   })();
