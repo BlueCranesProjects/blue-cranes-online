@@ -74,6 +74,7 @@
   // Phones: share sheet (WhatsApp, Files, email…). Elsewhere: normal download. Several files go in one share.
   BC.saveFiles = async (files, title) => {
     const list = files.map(f => new File([f.blob], f.name, { type: f.type || f.blob.type || 'application/octet-stream' }));
+    BC._dlAt = Date.now();
     if (navigator.canShare && navigator.share && navigator.canShare({ files:list })){
       try { await navigator.share({ files:list, title: title || list[0].name }); return 'shared'; }
       catch(e){ if (e && e.name === 'AbortError') return null; }
@@ -243,7 +244,10 @@
   // "Sync now" (tap the ☁ icon) and coming back to the app: pages listen for 'bc-sync' and fetch the latest from the server
   BC.lastSync = 0;
   BC.syncDone = () => { BC.lastSync = Date.now(); window.dispatchEvent(new Event('bc-synced')); };
-  { let last = 0; const fire = force => { if (/[?&]embed=1/.test(location.search)) return; if (!force && Date.now() - last < 15000) return; last = Date.now(); window.dispatchEvent(new Event('bc-sync')); };
+  // just after a download or share (PDF viewer, share sheet, Downloads): coming back must not redraw the page – it stays exactly as it was
+  BC._dlAt = 0; document.addEventListener('click', e => { const a = e.target && e.target.closest && e.target.closest('a[download]'); if (a) BC._dlAt = Date.now(); }, true);
+  BC.justDownloaded = () => Date.now() - (BC._dlAt || 0) < 120000;
+  { let last = 0; const fire = force => { if (/[?&]embed=1/.test(location.search)) return; if (!force && BC.justDownloaded()) return; if (!force && Date.now() - last < 15000) return; last = Date.now(); window.dispatchEvent(new Event('bc-sync')); };
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') fire(false); });
     window.addEventListener('pageshow', e => { if (e.persisted) fire(false); });
     BC.syncNow = () => fire(true); }
