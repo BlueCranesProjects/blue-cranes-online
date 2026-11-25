@@ -245,7 +245,7 @@
   const docId = id => 'eq-' + String(id).replace(/\//g, '_');
   let saveT;
   // coming back to the app / "Sync now": fetch the inventories again (combined item by item) – not while typing
-  window.addEventListener('bc-sync', async () => { if (cloudOK() && S.lists && !(window.BC && BC.busyTyping())){ try { await syncCloud(); } catch(e){} } if (window.BC) BC.syncDone(); }); if (window.BC) BC._syncHandled = true;
+  window.addEventListener('bc-sync', async () => { if (cloudOK() && S.lists && !(window.BC && BC.busyTyping())){ try { await syncCloud(); } catch(e){} setTimeout(retryMail, 2000); } if (window.BC) BC.syncDone(); }); if (window.BC) BC._syncHandled = true;
   function saveList(l, now){
     stampList(l); l.savedAt = Date.now(); S.lists[l.id] = l; lsSave();
     clearTimeout(saveT); const push = () => { pending = null; if (cloudOK()) Cloud.putItem(docId(l.id), Object.assign({ kind:'equipment' }, JSON.parse(JSON.stringify(l)))); };
@@ -851,7 +851,7 @@
     const yn = (k, lab) => `<div class="field"><label>${lab}</label><div class="yn">${['yes', 'no'].map(v => `<button type="button" data-yn="${k}" data-v="${v}" class="${d[k] === v ? 'on' : ''}" aria-pressed="${d[k] === v}">${v === 'yes' ? 'Yes' : 'No'}</button>`).join('')}</div></div>`;
     const day = k => new Date(k + 'T12:00:00').toLocaleDateString('en-ZA', { weekday:'short' });
     return head('Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Technician's report & time card", `<a class="ib" href="../timesheet/" data-back="match" aria-label="Back">${ICON.back}</a>`) + `<main class="socard">
-      ${so.sig ? `<div class="sodone"><b>✓ Signed by ${esc(so.name)}${when ? ' · ' + esc(when) : ''}</b>${so.email ? (so.mail === 'sent' ? 'Emailed to ' : '⏳ To be emailed to ') + esc(so.email) : 'No email address – not emailed'}<br><span>Signing again replaces this signature.</span>
+      ${so.sig ? `<div class="sodone"><b>✓ Signed by ${esc(so.name)}${when ? ' · ' + esc(when) : ''}</b>${so.email ? (so.mail === 'sent' ? '✓ Emailed to ' : '⏳ To be emailed to ') + esc(so.email) : 'No email address – not emailed'}<br><span>Signing again replaces this signature.</span>
         <button type="button" class="btn secondary small" id="soPdf" style="margin-top:8px">⬇ Report &amp; time card (PDF)</button></div>` : ''}
       <section class="card"><h2>Job</h2><div class="sog">
         ${ro('Customer', l.customer)}${ro('Job no', l.job)}${ro('Site', l.location || (S.active && S.active.site))}
@@ -923,9 +923,60 @@
         materials:d.mat.map(m => String(m || '').trim()).filter(Boolean), fileUpd:d.fileUpd, newFile:d.newFile, timeOn:!!d.timeOn, time:d.timeOn ? d.time : [],
         site:l.location || (S.active && S.active.site) || '', tech:(S.profile && S.profile.name) || l.tech || '', techSig:(S.profile && S.profile.signature) || '' };
       l.signoff = { name:String(d.name).trim(), email:d.email || '', sig:d.sig, at:new Date().toISOString(), by:(S.profile && S.profile.name) || '', mail:d.email ? 'waiting' : 'none', card };
-      saveList(l, true); S.soDraft = null; toast('Signed by ' + l.signoff.name); setTimeout(leave, 400); };
+      saveList(l, true); S.soDraft = null; toast('Signed by ' + l.signoff.name);
+      if (!l.signoff.email){ setTimeout(leave, 400); return; }
+      // email the client straight away; no signal → it goes the next time the inventory is opened
+      (async () => { const say = t => { const b = busy(t); const h = b.querySelector('.modal > div'); if (h) h.textContent = 'Emailing the client'; };
+        let r = 'failed'; try { say('Making the PDFs…'); r = await mailJob(l, say); } catch(e){ console.error(e); }
+        const bb = document.getElementById('busyBox'); if (bb) bb.remove();
+        toast(r === 'sent' ? '✓ Reports emailed to ' + l.signoff.email : r === 'nocfg' ? 'Signed – the office still has to set up email; it will be sent later' : r === 'offline' ? 'Signed – no signal, the email goes when you have signal' : 'Signed – the email could not be sent yet, it will be tried again');
+        setTimeout(leave, r === 'sent' ? 900 : 1800); })(); };
     const sk = $('soSkip'); if (sk) sk.onclick = leave;
   }
+
+  // ---------- the client's email after sign-off: inventory list, client's reports and the signed report & time card ----------
+  // Sent straight after the client signs (Admin → Email sets up the office's Google script). No signal: it goes the next time this page is opened.
+  async function clientFiles(l, say){
+    const files = [await listDoc(l)];
+    if (l.signoff && l.signoff.card){ try { say && say('Report & time card…'); files.push(await timeCardDoc(l)); } catch(e){ console.error(e); } }
+    const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, '');
+    const mine = (reps, key) => { const linked = new Set((l.rows || []).map(x => x[key]).filter(Boolean));
+      return reps.filter(r => r && r.state && (linked.has(r.id) || (core(r.job || r.state.f.jobno) && core(r.job || r.state.f.jobno) === core(l.job))))
+        .sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true })); };
+    const pdfOf = a => ({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
+    { let t = null; try { say && say('Forklift reports…'); t = await forkliftTools(); const ps = []; for (const r of mine(await t.api.reports(), 'fl')) ps.push(pdfOf(await t.api.buildPdf(JSON.parse(JSON.stringify(r.state)))));
+        if (ps.length) files.push(await onePdf(ps, `Forklift_reports_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`)); } catch(e){ console.error(e); } finally { if (t) t.done(); } }
+    for (const [src, key, link, what, label] of [['../crane/?embed=1', 'BCC', 'cr', 'Crane_hoist_reports', 'Crane / hoist reports…'], ['../mancage/?embed=1', 'BCM', 'mc', 'Man_cage_reports', 'Man cage reports…']]){
+      let t = null; try { say && say(label); t = await hiddenPage(src, w => w[key] && w.jspdf && w[key]); const ps = []; for (const r of mine(await t.reports(), link)) ps.push(pdfOf(await t.buildPdf(JSON.parse(JSON.stringify(r.state)))));
+        if (ps.length) files.push(await onePdf(ps, `${what}_${safe(l.job) || 'job'}_${safe(l.customer)}_${l.date}.pdf`)); } catch(e){ console.error(e); } finally { if (t) t.done(); } }
+    return files;
+  }
+  function mailText(l, files){
+    const so = l.signoff || {}, c = so.card || {}, first = String(so.name || '').trim().split(/\s+/)[0] || '', tech = c.tech || l.tech || (S.profile && S.profile.name) || '';
+    const what = { 'Inspection':'inspection', 'Service':'service', 'Load test':'load test' }[c.type] || 'work';
+    const sub = `Blue Cranes – ${c.type || 'Job'} reports – Job ${l.job || ''} – ${l.customer || ''}`.replace(/\s+–\s*$/, '');
+    const lines = [`Good day${first ? ' ' + first : ''},`, '', `Please find attached the reports for the ${what} Blue Cranes did on ${niceDate(l.date)}${l.location ? ' at ' + l.location : ''} (job ${l.job || ''}).`, '',
+      'Attached:', ...files.map(f => '• ' + f.name), '', 'Kind regards', tech, 'Blue Cranes – Material Handling & Lifting Equipment'].filter(x => x !== undefined);
+    const html = lines.map(x => x === '' ? '<br>' : esc(x) + '<br>').join('');
+    return { subject:sub, text:lines.join('\n'), html:`<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">${html}</div>` };
+  }
+  let mailCfgP = null; const mailCfg = () => mailCfgP || (mailCfgP = (cloudOK() && Cloud.getSetting ? Cloud.getSetting('email') : Promise.resolve(null)).catch(() => null));
+  async function mailJob(l, say){
+    const so = l && l.signoff; if (!so || !so.email || so.mail === 'sent') return 'skip';
+    const cfg = await mailCfg(); if (!cfg || !cfg.url){ return 'nocfg'; }
+    if (!navigator.onLine) return 'offline';
+    const files = await clientFiles(l, say); const m = mailText(l, files); say && say('Sending to ' + so.email + '…');
+    const r = await BC.sendMail(cfg, Object.assign({ to:so.email, files }, m));
+    if (r.ok){ so.mail = 'sent'; so.mailAt = new Date().toISOString(); delete so.mailErr; saveList(l, true); return 'sent'; }
+    so.mailErr = r.error || 'failed'; so.mailTry = new Date().toISOString(); saveList(l, true); return /offline|no connection|timeout/.test(r.error || '') ? 'offline' : 'failed';
+  }
+  // emails still waiting (no signal at sign-off): send them quietly when this page is open
+  let mailRetrying = false;
+  async function retryMail(){ if (mailRetrying || !cloudOK() || !navigator.onLine) return; mailRetrying = true;
+    try { for (const l of Object.values(S.lists || {})){ const so = l && l.signoff; if (!so || !so.email || so.mail !== 'waiting') continue;
+        if (so.mailTry && Date.now() - Date.parse(so.mailTry) < 10 * 60000) continue;
+        const r = await mailJob(l); if (r === 'sent'){ toast('✓ Reports emailed to ' + so.email); if (S.view === 'signoff' && S.cur === l) render(); } else if (r === 'nocfg' || r === 'offline') break; } }
+    catch(e){ console.error('mail retry', e); } finally { mailRetrying = false; } }
   // the signed card as a PDF, laid out like the paper Technicians Report and Time Card
   async function timeCardDoc(l){
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
@@ -1621,6 +1672,7 @@
     if (window.Cloud) Cloud.onError = () => toast('Cloud save failed – kept on this phone');
     await syncCloud();
     loadOffice();
+    setTimeout(retryMail, 4000);
     repairFromReports();
   })();
 })();

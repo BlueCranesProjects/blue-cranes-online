@@ -99,6 +99,9 @@ window.Cloud = api;
     };
     // ---- shared: jobs loaded by the office, admin role, user directory ----
     api.email = () => String((auth.currentUser && auth.currentUser.email) || '').trim().toLowerCase();
+    // shared settings (settings/{id}): every signed-in technician reads them, only admins change them – e.g. 'email' = the Google script that sends the client emails
+    api.getSetting = async id => { try { const s = await F.getDoc(F.doc(fs, 'settings', id)); return s.exists() ? s.data() : null; } catch (e) { try { const c = await F.getDocFromCache(F.doc(fs, 'settings', id)); return c.exists() ? c.data() : null; } catch (_) { return null; } } };
+    api.setSetting = (id, data) => F.setDoc(F.doc(fs, 'settings', id), data);
     api.isAdmin = async () => { try { const s = await F.getDoc(F.doc(fs, 'admins', api.email())); return s.exists(); } catch (e) { return false; } };
     api.saveUser = data => { const u = auth.currentUser; if (!u) return Promise.resolve(); return F.setDoc(F.doc(fs, 'users', u.uid), data, { merge:true }).catch(() => {}); };
     // a technician's jobs (null when they can't be read, e.g. rules not set up yet)

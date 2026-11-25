@@ -86,6 +86,22 @@
     }, i * 400));
     return 'downloaded';
   };
+  // ---------- client emails: sent from the office's Google account by a small Google script (Admin → Email has the setup) ----------
+  // cfg = { url, key } (settings/email); mail = { to, subject, text, html, files:[{ blob, name, type }] } → { ok, error }
+  const b64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+  BC.sendMail = async (cfg, mail) => {
+    if (!cfg || !cfg.url || !cfg.key) return { ok:false, error:'Email is not set up yet (Admin → Email)' };
+    if (!navigator.onLine) return { ok:false, error:'offline' };
+    try {
+      const files = []; for (const f of (mail.files || [])) files.push({ name:f.name, type:f.type || f.blob.type || 'application/pdf', data:await b64(f.blob) });
+      const body = JSON.stringify({ key:cfg.key, to:mail.to, subject:mail.subject, text:mail.text, html:mail.html || '', fromName:cfg.fromName || 'Blue Cranes', replyTo:cfg.replyTo || '', files, test:!!mail.test });
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 90000);
+      // text/plain keeps it a "simple" request, which a Google script answers without extra checks
+      const r = await fetch(cfg.url, { method:'POST', body, headers:{ 'Content-Type':'text/plain;charset=utf-8' }, redirect:'follow', signal:ctl.signal }); clearTimeout(tm);
+      const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch(e){}
+      return j && j.ok ? { ok:true } : { ok:false, error:(j && j.error) || ('The email service answered ' + r.status) };
+    } catch(e){ return { ok:false, error:e && e.name === 'AbortError' ? 'timeout' : 'no connection' }; }
+  };
   BC.saveFile = (blob, name, type, title) => BC.saveFiles([{ blob, name, type }], title);
 
   // Short names inside zip folders: Windows can't unzip paths longer than 260 characters, and the folder already says
