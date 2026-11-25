@@ -82,6 +82,7 @@
   const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print','paper','admins'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
   // ?printrun=auto: opened by the office computer's 6:00 print program – go straight to Print run and make the files
   const AUTOPRINT = (() => { try { return new URLSearchParams(location.search).get('printrun') === 'auto'; } catch(e){ return false; } })();
+  const VIEWK = 'bco-admin-view'; const savedView = (() => { try { return JSON.parse(sessionStorage.getItem(VIEWK) || '{}') || {}; } catch(e){ return {}; } })();
   const S = { tab:AUTOPRINT ? 'print' : savedTab, users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
@@ -555,18 +556,26 @@
   }
   // phones (also the installed app): a plain download often goes nowhere, so offer the share menu (open with a PDF viewer, WhatsApp, email, Drive, Files)
   const isPhone = () => { try { return !!(navigator.canShare && navigator.share && navigator.canShare({ files:[new File(['x'], 'x.pdf', { type:'application/pdf' })] })) && (matchMedia('(pointer:coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent)); } catch(e){ return false; } };
-  function phoneFiles(files){
+  // the files just made are kept on this device for 30 minutes: when the tablet restarts the page after opening or sharing a PDF,
+  // the "Files ready" box comes back with the same files – nothing has to be made again
+  const FDB = () => new Promise((res, rej) => { const q = indexedDB.open('bc-admin-files', 1); q.onupgradeneeded = () => q.result.createObjectStore('f'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+  async function keepFiles(files){ try { const db = await FDB(); await new Promise(r => { const t = db.transaction('f', 'readwrite'); t.objectStore('f').put({ at:Date.now(), files:files.map(f => ({ blob:f.blob, name:f.name, type:f.type || f.blob.type || '' })) }, 'last'); t.oncomplete = t.onerror = () => r(); }); db.close(); sessionStorage.setItem('bco-admin-files', '1'); } catch(e){} }
+  async function keptFiles(){ try { if (!sessionStorage.getItem('bco-admin-files')) return null; const db = await FDB(); const v = await new Promise(r => { const g = db.transaction('f').objectStore('f').get('last'); g.onsuccess = () => r(g.result); g.onerror = () => r(null); }); db.close();
+      return v && Date.now() - v.at < 30 * 60000 && v.files && v.files.length ? v.files : null; } catch(e){ return null; } }
+  async function dropFiles(){ try { sessionStorage.removeItem('bco-admin-files'); const db = await FDB(); await new Promise(r => { const t = db.transaction('f', 'readwrite'); t.objectStore('f').delete('last'); t.oncomplete = t.onerror = () => r(); }); db.close(); } catch(e){} }
+  function phoneFiles(files, again){
+    if (!again) keepFiles(files);
     const list = files.map(f => new File([f.blob], f.name, { type:f.type || f.blob.type || 'application/pdf' }));
     const can = x => { try { return navigator.canShare({ files:x }); } catch(e){ return false; } };
     const share = can(list) ? list : list.filter(f => can([f])); const rest = files.filter(f => !share.some(x => x.name === f.name));
     const m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center;padding:16px';
-    m.innerHTML = `<div class="card" style="max-width:480px;width:100%;gap:10px"><h2>${files.length === 1 ? 'File ready' : files.length + ' files ready'}</h2>
+    m.innerHTML = `<div class="card" style="max-width:480px;width:100%;gap:10px"><h2>${files.length === 1 ? 'File ready' : files.length + ' files ready'}</h2>${again ? '<span class="hint" style="font-size:13.5px">Still here – you can open, share or save them again.</span>' : ''}
       <div class="hint" style="font-size:13.5px;line-height:1.5">${files.map(f => esc(f.name)).join('<br>')}</div>
       ${share.length ? `<button class="btn primary" id="pfShare">Open / share ${share.length === 1 ? 'the PDF' : share.length + ' files'} – WhatsApp, email, Drive, Files…</button>` : ''}
       <button class="btn secondary" id="pfDl">⬇ Save to Downloads${rest.length && share.length ? ' (' + rest.map(f => esc(f.name.replace(/^.*\./, '').toUpperCase())).join(', ') + ')' : ''}</button>
       <button class="btn secondary" id="pfNo">Close</button></div>`;
     document.body.appendChild(m);
-    m.querySelector('#pfNo').onclick = () => m.remove();
+    m.querySelector('#pfNo').onclick = () => { m.remove(); dropFiles(); };
     const sh = m.querySelector('#pfShare'); if (sh) sh.onclick = async () => { try { await navigator.share({ files:share, title:share.length === 1 ? share[0].name : 'Blue Cranes files' }); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – use Save to Downloads'); } };
     m.querySelector('#pfDl').onclick = () => { (rest.length && share.length ? rest : files).forEach((f, i) => setTimeout(() => dlFile(f), i * 400)); toast('Saved to Downloads – open the Files app'); };
   }
@@ -690,6 +699,47 @@
     catch(e){ console.error(e); toast('Could not make the file'); }
     finally { btn.disabled = false; btn.textContent = old; } }
   // change a planned or busy job; the technician's phone picks it up the next time the app opens
+
+  // ---------- import the client's inventory into a job that is already scheduled (forgot it, or more items came later) ----------
+  // The items are added to the job's office list (job.inv); the technician's phone adds them to the Client's inventory the next time it is opened.
+  const invKey = r => { const sr = up(r.serial); return sr ? 'S:' + sr : 'D:' + [up(r.desc), up(r.loc), up(r.make), up(r.swl)].join('|'); };
+  function invAddCard(){
+    const id = S.invAdd; if (!id) return ''; const j = S.jobs.find(x => x.id === id); if (!j){ S.invAdd = null; return ''; }
+    const ia = S.ia || (S.ia = {}); const p = ia.rows; const ok = p ? p.filter(r => !r.errs.length) : [];
+    const have = new Set((j.inv || []).map(invKey)); const fresh = ok.filter(r => !have.has(invKey(r))), dup = ok.length - fresh.length;
+    const custOff = p && ia.cust && j.customer && up(ia.cust) !== up(j.customer);
+    return `<section class="card wide" style="border:2px solid var(--navy)"><div class="row" style="justify-content:space-between"><h2>⬆ Import the client's inventory</h2><button class="x" id="iaClose" style="border-color:var(--navy);color:var(--navyDeep)">✕ Close</button></div>
+      <div style="font-size:15px"><b>${esc(j.customer || 'Job')}</b> <span class="hint">· Job ${esc(j.card || '–')} · ${esc(niceDate(j.date))} · ${esc(nameOf(j.tech) || j.tech || '')} · ${j.status === 'busy' ? 'busy' : 'planned'}</span></div>
+      ${(j.inv || []).length ? `<span class="hint">This job already has <b>${j.inv.length} items</b> from the office. New items are added; items with the same item no are left out.</span>` : '<span class="hint">This job has no inventory yet.</span>'}
+      <label class="drop" for="iaFile"><b>${ia.file ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word (.doc / .docx) or PDF – the census layout or the client's own list${ia.file ? ' · ' + esc(ia.file) : ''}</span></label>
+      <input type="file" id="iaFile" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
+      ${p ? `<div class="row" style="justify-content:space-between"><b>${fresh.length} new ${fresh.length === 1 ? 'item' : 'items'} to add</b>${dup ? `<span class="hint">${dup} already on the job – left out</span>` : ''}${p.length - ok.length ? `<span class="pill bad" style="white-space:normal">${p.length - ok.length} with problems – left out</span>` : ''}</div>
+        ${custOff ? `<span class="warn">The file says customer <b>${esc(ia.cust)}</b> but the job is for <b>${esc(j.customer)}</b>. Check that this is the right file.</span>` : ''}
+        <div class="scroll" style="max-height:340px"><table><thead><tr><th>Row</th><th>Location</th><th>Serial nr</th><th>Description</th><th>Manufacturer</th><th>SWL</th><th>Check</th></tr></thead><tbody>
+        ${p.map(r => { const isDup = !r.errs.length && have.has(invKey(r)); return `<tr class="${r.errs.length ? 'err' : ''}"${isDup ? ' style="opacity:.5"' : ''}><td>${r.line}</td><td>${esc(r.loc)}</td><td>${esc(r.serial)}</td><td>${esc(r.desc)}</td><td>${esc(r.make)}</td><td style="white-space:nowrap">${esc(r.swl)}${/^\d+(\.\d+)?$/.test(r.swl) ? ' kg' : ''}</td>
+          <td>${r.errs.length ? `<span class="warn">${esc(r.errs.join('; '))}</span>` : isDup ? '<span class="hint">Already on the job</span>' : '<span class="pill ok">OK</span>'}</td></tr>`; }).join('')}
+        </tbody></table></div>` : ''}
+      <button class="btn primary" id="iaSave" ${fresh.length && !S.busy ? '' : 'disabled'}>${S.busy ? 'Adding…' : fresh.length ? `Add ${fresh.length} ${fresh.length === 1 ? 'item' : 'items'} to job ${esc(j.card || j.customer || '')}` : 'Choose the client\'s file first'}</button>
+      <span class="hint">${j.status === 'busy' ? 'The job is busy: the technician gets the items the next time they open <b>Client\'s inventory</b> (with internet). Items they already added themselves are not doubled.' : 'The technician gets the items in <b>Client\'s inventory</b> when they start the job.'}</span></section>`;
+  }
+  function wireInvAdd($){
+    app.querySelectorAll('[data-invadd]').forEach(b => b.onclick = () => { S.invAdd = b.dataset.invadd; S.ia = {}; S.editJob = null; render(); window.scrollTo(0, 0); });
+    if (!S.invAdd) return;
+    const c = $('iaClose'); if (c) c.onclick = () => { S.invAdd = null; S.ia = null; render(); };
+    const fi = $('iaFile'); if (fi) fi.onchange = async () => { const file = fi.files && fi.files[0]; fi.value = ''; if (!file) return;
+      try { const r = await readInv(file); S.ia = { rows:r.rows, file:file.name, site:r.site || '', cust:r.customer || '' };
+        if (!r.rows.length) toast(r.noHead ? 'Could not find the headings (Serial nr / Item no, Description…)' : 'No items found in the first sheet'); render(); }
+      catch(e){ console.error(e); toast(e && e.userMsg ? e.userMsg : 'Could not read that file – check it is an Excel, Word (.docx) or PDF file with a table'); } };
+    const sv = $('iaSave'); if (sv) sv.onclick = async () => {
+      const j = S.jobs.find(x => x.id === S.invAdd); if (!j) return; const have = new Set((j.inv || []).map(invKey));
+      const add = ((S.ia || {}).rows || []).filter(r => !r.errs.length && !have.has(invKey(r))).map(r => { const o = { serial:r.serial, desc:r.desc, make:r.make, swl:r.swl, loc:r.loc }; if (r.note) o.note = r.note; return o; });
+      if (!add.length) return; S.busy = true; render();
+      try { const now = new Date().toISOString(); const inv = (j.inv || []).concat(add);
+        await window.Cloud.putJobs([{ id:j.id, inv, invSite:j.invSite || (S.ia && S.ia.site) || '', invAt:now, updatedAt:now }]);
+        toast(add.length + (add.length === 1 ? ' item' : ' items') + ' added to ' + (j.customer || 'the job')); S.invAdd = null; S.ia = null; await refreshJobs();
+      } catch(e){ console.error(e); toast('Adding failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
+      S.busy = false; render(); };
+  }
   function editCard(){
     const isNew = S.editJob === '__new'; const j = isNew ? { status:'planned' } : S.jobs.find(x => x.id === S.editJob); if (!j) return '';
     const e = S.ed; const busy = j.status === 'busy';
@@ -813,7 +863,7 @@
     const list = S.jobs.filter(j => j.date >= from && (!S.techFilter || j.tech === S.techFilter)).sort((a, b) => (a.date + (a.time || '99') + a.tech).localeCompare(b.date + (b.time || '99') + b.tech));
     const st = j => j.status === 'done' ? '<span class="pill ok">✓ Done</span>' : j.status === 'busy' ? '<span class="pill busy">Busy</span>' : '<span class="pill plan">Planned</span>';
     let lastDate = '';
-    return `<main>${editCard()}<section class="card">
+    return `<main>${editCard()}${invAddCard()}<section class="card">
       <div class="row"><div class="field"><label for="tf">Technician</label><select id="tf"><option value="">Everyone</option>${techs.map(t => `<option value="${esc(t)}" ${S.techFilter === t ? 'selected' : ''}>${esc(nameOf(t) || t)}</option>`).join('')}</select></div>
         <div class="field"><label for="per">Show</label><select id="per"><option value="">From a week ago</option><option value="all" ${S.allJobs ? 'selected' : ''}>All jobs, also older</option></select></div>
         <button class="btn secondary" id="refresh" style="width:auto;align-self:flex-end">↻ Refresh</button>
@@ -828,7 +878,7 @@
             h = `<tr class="dayh" data-day="${esc(j.date)}" tabindex="0" role="button" aria-expanded="${open}"><td colspan="6"><span class="dch" style="display:inline-block;transform:rotate(${open ? 0 : -90}deg)">▾</span> ${esc(niceDate(j.date))}${j.date === keyOf(new Date()) ? ' <span class="pill busy" style="margin-left:6px">Today</span>' : ''}<span class="dsum">${sum}</span></td></tr>`; }
           lastDate = j.date;
           return h + `<tr data-dayrow="${esc(j.date)}" ${open ? '' : 'style="display:none"'}><td><input type="checkbox" data-sel="${esc(j.id)}" aria-label="Select job" ${S.sel.has(j.id) ? 'checked' : ''}></td><td>${esc(j.time || '–')}</td><td><b>${esc(j.customer || '')}</b><div class="hint">${esc([j.card ? 'Job ' + j.card : '', j.order ? 'Order ' + j.order : '', j.site, j.contact, (j.inv || []).length && !S.invProg[j.id] ? j.inv.length + ' inventory items' : ''].filter(Boolean).join(' · '))}</div>${S.signs[j.id] ? `<div class="hint" style="color:var(--ok);font-weight:700">✓ Signed by ${esc(S.signs[j.id].name)}${S.signs[j.id].email ? (S.signs[j.id].mail === 'sent' ? ' · emailed' : ' · ⏳ email waiting') : ''}</div>` : j.status === 'done' ? '<div class="hint" style="color:#7a5600;font-weight:700">Not signed by the client</div>' : ''}${progLine(j)}</td><td>${esc(nameOf(j.tech) || j.tech)}</td><td>${st(j)}</td>
-            <td style="white-space:nowrap">${j.status !== 'done' ? `<button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-edit="${esc(j.id)}" aria-label="Change job">✎ Edit</button> ` : ''}<button class="x" data-del="${esc(j.id)}" aria-label="Remove job">🗑 Remove</button></td></tr>`; }).join('')}
+            <td style="white-space:nowrap">${j.status !== 'done' ? `<button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-edit="${esc(j.id)}" aria-label="Change job">✎ Edit</button> <button class="x" style="border-color:var(--navy);color:var(--navyDeep)" data-invadd="${esc(j.id)}" aria-label="Import the client's inventory for this job">⬆ ${(j.inv || []).length ? 'Inventory (' + j.inv.length + ')' : 'Add inventory'}</button> ` : ''}<button class="x" data-del="${esc(j.id)}" aria-label="Remove job">🗑 Remove</button></td></tr>`; }).join('')}
       </tbody></table></div>` : '<div class="empty">No jobs loaded for this period.</div>'}
     </section></main>`;
   }
@@ -931,6 +981,7 @@
     app.querySelectorAll('[data-allpdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.allpdf, 'all', b));
     app.querySelectorAll('[data-tspdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.tspdf, 'ts', b));
     if (S.tab === 'jobs') loadProgress();
+    wireInvAdd($);
     wirePrint($); wirePaper($); wireAdmins($);
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
     app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b){ const j = newJob(); const n = (S.inv || []).filter(r => !r.errs.length).length; b.disabled = !(j.ready && !S.busy); b.textContent = schedLabel(j, n); } };
@@ -948,11 +999,11 @@
         toast(isNew ? 'Job scheduled for ' + (nameOf(job.tech) || job.tech) + (ok.length ? ' with ' + ok.length + ' items' : '') : ok.length + ' items loaded for ' + (job.customer || job.card)); if (isNew){ S.nj = {}; S.invJob = ''; S.tab = 'jobs'; } S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
-    const tf = $('tf'); if (tf) tf.onchange = () => { S.techFilter = tf.value; render(); };
+    const tf = $('tf'); if (tf) tf.onchange = () => { S.techFilter = tf.value; keepView(); render(); };
     const rf = $('refresh'); if (rf) rf.onclick = async () => { await refreshJobs(); progAt = 0; render(); toast('Updated'); };
     app.querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => { const j = S.jobs.find(x => x.id === b.dataset.edit); if (!j) return;
       if (!S.users.length) await refreshUsers();
-      S.editJob = j.id; S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', email:j.email || '', order:j.order || '', site:j.site || '', notes:j.notes || '' }; render(); window.scrollTo(0, 0); });
+      S.editJob = j.id; S.invAdd = null; S.ed = { date:j.date || '', time:j.time || '', tech:j.tech || '', customer:j.customer || '', card:j.card || '', contact:j.contact || '', email:j.email || '', order:j.order || '', site:j.site || '', notes:j.notes || '' }; render(); window.scrollTo(0, 0); });
     app.querySelectorAll('[data-ed]').forEach(el => { el.oninput = el.onchange = () => { S.ed[el.dataset.ed] = el.value; }; });
     const ao = $('admOut'); if (ao) ao.onclick = () => { const m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:center;justify-content:center;padding:16px';
       m.innerHTML = '<div class="card" style="max-width:380px;width:100%;gap:12px"><h2>Sign out?</h2><div class="row"><button class="btn primary" id="soYes" style="flex:1">Sign out</button><button class="btn secondary" id="soNo" style="flex:1">Cancel</button></div></div>'; document.body.appendChild(m);
@@ -982,7 +1033,7 @@
     const sa = $('selAll'); if (sa) sa.onchange = () => { app.querySelectorAll('[data-sel]').forEach(c => sa.checked ? S.sel.add(c.dataset.sel) : S.sel.delete(c.dataset.sel)); render(); };
     const sn = $('selNone'); if (sn) sn.onclick = () => { S.sel.clear(); render(); };
     const sd = $('selDel'); if (sd) sd.onclick = () => removeJobs([...S.sel]);
-    const per = $('per'); if (per) per.onchange = () => { S.allJobs = per.value === 'all'; render(); };
+    const per = $('per'); if (per) per.onchange = () => { S.allJobs = per.value === 'all'; keepView(); render(); };
     const ef = $('ef'), et = $('et'); if (ef){ ef.onchange = () => S.ef = ef.value; et.onchange = () => S.et = et.value; }
     const ei = $('expInv'); if (ei) ei.onclick = () => exportInv(ei);
     const ec = $('expCen'); if (ec) ec.onclick = () => exportCensus(ec);
@@ -1201,14 +1252,25 @@
   }
   async function refreshUsers(){ try { S.users = (await window.Cloud.listUsers()).filter(u => u.email).sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))); } catch(e){ S.users = []; } }
 
+  // after a restart (a tablet does this when a PDF is opened or shared) the page comes back as it was: tab, filters, scroll position, files
+  if (savedView.techFilter) S.techFilter = savedView.techFilter; if (savedView.allJobs) S.allJobs = true;
+  const keepView = () => { try { sessionStorage.setItem(VIEWK, JSON.stringify({ techFilter:S.techFilter || '', allJobs:!!S.allJobs, tab:S.tab, y:window.scrollY })); } catch(e){} };
+  let kvT; window.addEventListener('scroll', () => { clearTimeout(kvT); kvT = setTimeout(keepView, 300); }, { passive:true });
+  window.addEventListener('pagehide', keepView); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') keepView(); });
+  const cacheK = 'bco-admin-cache';
   (async function start(){
     const w = await BC.requireUser();
     if (!w.user){ S.noAdmin = 'Cloud saving must be set up to use the admin page.'; render(); return; }
     if (!(await window.Cloud.isAdmin())){ S.noAdmin = `This page is for the office. Your account (${esc(window.Cloud.email())}) is not an admin.<br><br>To make an account an admin: in Firebase → Firestore → start a collection called <b>admins</b> and add a document whose ID is the email address (lower case).`; render(); return; }
+    // show the last jobs straight away (this tab's copy), then fetch the latest
+    let shown = false; try { const c = JSON.parse(sessionStorage.getItem(cacheK) || 'null'); if (c && c.jobs){ S.jobs = c.jobs; S.users = c.users || []; render(); shown = true; if (savedView.y && savedView.tab === S.tab) window.scrollTo(0, savedView.y); } } catch(e){}
     try { S.backup = await window.Cloud.getItem('backup'); } catch(e){ S.backup = null; }
     try { const me = await window.Cloud.adminInfo(); S.owner = !!(me && me.owner); } catch(e){ S.owner = false; }
     if (S.tab === 'admins' && !S.owner) S.tab = 'inv';
-    await refreshUsers(); await refreshJobs(); render();
+    await refreshUsers(); await refreshJobs(); const y0 = window.scrollY; render();
+    try { sessionStorage.setItem(cacheK, JSON.stringify({ jobs:S.jobs, users:S.users.map(u => ({ uid:u.uid, email:u.email, name:u.name || '' })) })); } catch(e){}
+    window.scrollTo(0, shown ? y0 : (savedView.tab === S.tab && savedView.y) || 0);
+    { const kf = await keptFiles(); if (kf) phoneFiles(kf.map(f => ({ blob:f.blob, name:f.name, type:f.type })), true); }
     if (S.tab === 'paper') loadPapers(); if (S.tab === 'admins' && S.owner) loadAdmins();
     if (S.tab === 'print'){ await prepPrint(); if (AUTOPRINT) runPrint(null, true); }
     try { const x = sessionStorage.getItem('bco-admin-export'); if (x){ sessionStorage.removeItem('bco-admin-export');

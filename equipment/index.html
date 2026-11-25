@@ -259,6 +259,7 @@
   window.addEventListener('pagehide', flush); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
   // back from a report (page restored from memory): take the newer lists from the phone, e.g. a manufacturer typed on the report
   function pickUpChanges(){
+    if (window.BC && BC.justDownloaded && BC.justDownloaded()) return;   // back from a download: leave the page as it is
     let disk = {}; try { disk = JSON.parse(localStorage.getItem(LKEY) || '{}') || {}; } catch(e){ return; }
     let changed = false; Object.values(disk).forEach(d => { if (d && d.id && mergeIn(d)) changed = true; });
     if (!changed) return; if (S.cur && S.lists[S.cur.id]) S.cur = S.lists[S.cur.id]; if (typeof render === 'function' && S.view) render();
