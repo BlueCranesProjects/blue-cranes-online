@@ -230,6 +230,8 @@
     if (!a || !a.rows) return b; if (!b || !b.rows) return a;
     const [nw, od] = (b.savedAt || 0) >= (a.savedAt || 0) ? [b, a] : [a, b];
     const out = Object.assign({}, od, nw);
+    // locked certificate numbers never get lost or changed by an older / newer copy: an item keeps the number it got first
+    if (od.certLock || nw.certLock){ out.certLock = Object.assign({}, nw.certLock || {}, od.certLock || {}); out.certLockAt = [od.certLockAt, nw.certLockAt].filter(Boolean).sort()[0] || out.certLockAt; }
     const del = Object.assign({}, od.del || {}); Object.entries(nw.del || {}).forEach(([k, v]) => { if (!del[k] || v > del[k]) del[k] = v; });
     const byO = new Map((od.rows || []).filter(r => r && r.id).map(r => [r.id, r])), inN = new Set();
     const rows = [];

@@ -99,6 +99,8 @@ Everything for a person is under `users/{uid}/items/`:
 
 ## Certificates (rule)
 
+- **Locked certificate numbers:** the numbers follow the inventory order only until they are issued. At client sign-off, or when the certificates PDF / job folder is made in the app (also paper jobs), every item's number is stored (`l.certLock`, `certLockAt`). Locked items keep their number for good; items added later get the next free numbers; a removed item's number is not reused. Jobs signed off before this existed are locked the next time the inventory syncs. Copies of a list combine their locks (`BC.mergeList`), an item keeps the number it got first.
+
 - Load test certificate: lifting machinery – cranes, gantries, hoists, chain blocks, lever hoists, winches / Tirfors. With a report: SEE REPORT … under the remarks, no reason.
 - Inspection certificate: lifting tackle, safety harnesses / lanyards, man cages (SANS 583:2015, SEE REPORT MC…, next inspection due, 3 inspection lines) and any other equipment that is not lifting machinery.
 - Forklifts and stackers: their own certificate from the forklift report.

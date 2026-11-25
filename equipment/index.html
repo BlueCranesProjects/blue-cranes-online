@@ -282,6 +282,7 @@
         if (x.report && x.report.no && fixNo(x.report.no) !== x.report.no){ x.report.no = fixNo(x.report.no); c = true; }
         if (x.report && x.report.cert && /^CC(?=\d)/i.test(x.report.cert)){ x.report.cert = 'C' + x.report.cert.slice(2); c = true; }
         if (x.reason){ const nr = x.reason.replace(/^See report (\S+)/, (m, no) => 'See report ' + fixNo(no)); if (nr !== x.reason){ x.reason = nr; c = true; } } });
+        if (l.signoff && l.signoff.sig && !l.certLock && lockCertNos(l)) c = true;   // jobs signed off before the lock existed: lock what they have now
         if (c){ fixed = true; saveList(l, true); } });
       lsSave(); if (fixed || S.view !== 'list') render(); else refreshSuggestions();
     } catch(e){ console.error('Equipment sync failed', e); }
@@ -467,8 +468,16 @@
     r.rno = { p:pfx, n:max + 1 }; return r.rno.n; }
   // the certificate number is the item's line number on the client's inventory list (census PDF / Excel order: by group, then as listed),
   // so certificate C<job>/5 is line 5 of the list; worked out every time, so adding, moving or regrouping items renumbers them
-  function lineNos(l){ const m = new Map(); let n = 0;
-    groupRows((l.rows || []).filter(r => r.serial || r.desc).map(r => [r, 0])).forEach(([, rs]) => rs.forEach(([r]) => m.set(r.id || r, ++n))); return m; }
+  // Certificate numbers follow the inventory order – until they are issued (sign-off, or certificates made): then they are locked
+  // (l.certLock = { rowId: n }). Locked items keep their number for good; items added later get the next numbers; a removed item's number is not reused.
+  function lineNos(l){ const m = new Map(); const order = []; groupRows((l.rows || []).filter(r => r.serial || r.desc).map(r => [r, 0])).forEach(([, rs]) => rs.forEach(([r]) => order.push(r)));
+    const lk = l.certLock || null;
+    if (!lk){ order.forEach((r, k) => m.set(r.id || r, k + 1)); return m; }
+    let top = Math.max(0, ...Object.values(lk).map(Number).filter(n => n > 0));
+    order.forEach(r => { const n = r.id && lk[r.id]; if (n) m.set(r.id, n); });
+    order.forEach(r => { if (!m.has(r.id || r)) m.set(r.id || r, ++top); }); return m; }
+  function lockCertNos(l){ if (!l) return false; const m = lineNos(l), lk = Object.assign({}, l.certLock || {}); let ch = !l.certLock;
+    m.forEach((n, id) => { if (typeof id === 'string' && !lk[id]){ lk[id] = n; ch = true; } }); if (ch){ l.certLock = lk; l.certLockAt = l.certLockAt || new Date().toISOString(); } return ch; }
   function certN(l, i){ const r = l.rows[i]; const n = lineNos(l).get(r.id || r); if (n) return n;
     const used = new Set(l.rows.map(x => x.cno).filter(Boolean)); let k = i + 1; if (used.has(k)) k = Math.max(...used) + 1; return k; }
   // a forklift / stacker report's certificate gets the number of its line on the inventory
@@ -936,7 +945,7 @@
       const card = { type:d.type, order:String(d.order || '').trim(), reportTo:String(d.reportTo || '').trim(), equipment:String(d.equip || '').trim(), work:String(d.work || '').trim(),
         materials:d.mat.map(m => String(m || '').trim()).filter(Boolean), fileUpd:d.fileUpd, newFile:d.newFile, timeOn:!!d.timeOn, time:d.timeOn ? d.time : [],
         site:l.location || (S.active && S.active.site) || '', tech:(S.profile && S.profile.name) || l.tech || '', techSig:(S.profile && S.profile.signature) || '' };
-      l.signoff = { name:String(d.name).trim(), email:d.email || '', sig:d.sig, at:new Date().toISOString(), by:(S.profile && S.profile.name) || '', mail:d.email ? 'waiting' : 'none', card };
+      lockCertNos(l); l.signoff = { name:String(d.name).trim(), email:d.email || '', sig:d.sig, at:new Date().toISOString(), by:(S.profile && S.profile.name) || '', mail:d.email ? 'waiting' : 'none', card };
       saveList(l, true); S.soDraft = null; toast('Signed by ' + l.signoff.name);
       if (!l.signoff.email){ setTimeout(leave, 400); return; }
       // email the client straight away; no signal → it goes the next time the inventory is opened
@@ -1186,7 +1195,7 @@
     app.querySelectorAll('img[data-pid]').forEach(im => photoGet(im.dataset.pid).then(d => { if (d) im.src = d; else im.alt = 'Photo not on this phone yet'; }));
     if (!$('pdfOnly')) return;
     $('pdfOnly').onclick = () => { saveList(l, true); listPdf(l, $('pdfOnly')); };
-    $('certOnly').onclick = async () => { const b = $('certOnly'), old = b.textContent; saveList(l, true);
+    $('certOnly').onclick = async () => { const b = $('certOnly'), old = b.textContent; lockCertNos(l); saveList(l, true);
       b.disabled = true; b.textContent = 'Working…';
       try { const parts = await itemCertParts(l); let tools = null;
         if (!PAPER) try { tools = await forkliftTools(); const core = j => norm(j).replace(/\s+/g, '').replace(/^C(?=\d)/, ''); const linked = new Set((l.rows || []).map(x => x.fl).filter(Boolean));
@@ -1556,7 +1565,7 @@
   function busy(text){ let m = document.getElementById('busyBox'); if (!m){ m = modal('<div style="font-size:16px;font-weight:700">Making the job folder</div><div class="hint" id="busyTxt" style="font-size:14px"></div>'); m.id = 'busyBox'; }
     m.querySelector('#busyTxt').textContent = text; return m; }
   async function jobPack(l, btn, asZip){
-    if (!l) return; const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Working…';
+    if (!l) return; const old = btn.innerHTML; btn.disabled = true; btn.textContent = 'Working…'; if (lockCertNos(l)) saveList(l, true);
     const folder = BC.zipDir(l.job, l.customer);
     try {
       for (let i = 0; i < 50 && !window.JSZip; i++) await new Promise(r => setTimeout(r, 100));
