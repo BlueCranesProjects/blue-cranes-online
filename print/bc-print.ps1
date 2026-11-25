@@ -58,8 +58,14 @@ try {
     Write-Host ("Printing {0}  ->  {1}, {2}, {3}" -f $f.Name, $Printer, $where, $sides)
     $p = Start-Process -FilePath $Sumatra -Wait -PassThru -ArgumentList @(
       '-print-to', "`"$Printer`"", '-print-settings', "`"$settings`"", '-silent', '-exit-on-print', "`"$($f.FullName)`"")
-    if ($p.ExitCode -eq 0) { Move-Item -Force -LiteralPath $f.FullName -Destination "$Base\Printed\$Day\" }
-    else { Write-Host "  FAILED (code $($p.ExitCode)) - kept in $Base\Failed"; Move-Item -Force -LiteralPath $f.FullName -Destination "$Base\Failed\" }
+    $dest = if ($p.ExitCode -eq 0) { "$Base\Printed\$Day\" } else { Write-Host "  FAILED (code $($p.ExitCode)) - kept in $Base\Failed"; "$Base\Failed\" }
+    # the PDF can stay locked for a few seconds after printing: try again for up to a minute, so it is never printed twice
+    $moved = $false
+    for ($i = 0; $i -lt 30 -and -not $moved; $i++) {
+      try { Move-Item -Force -LiteralPath $f.FullName -Destination $dest -ErrorAction Stop; $moved = $true }
+      catch { Start-Sleep -Seconds 2 }
+    }
+    if (-not $moved) { Write-Host "  Could not move $($f.Name) out of Downloads - delete it there so it does not print again" }
   }
   Get-ChildItem -Path $Downloads -Filter 'BC-PRINT_DONE_*.txt' -ErrorAction SilentlyContinue |
     ForEach-Object { Move-Item -Force -LiteralPath $_.FullName -Destination "$Base\Printed\$Day\" }
