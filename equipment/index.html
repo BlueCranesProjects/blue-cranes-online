@@ -651,6 +651,8 @@
   function vList(){
     const l = S.cur; const inv = inventory()[norm(l.customer)]; const known = inv ? inv.items : {};
     const MK = makesList(); const dupes = {}; (l.rows || []).forEach(r => { const k = norm(r.serial); if (k) dupes[k] = (dupes[k] || 0) + 1; });
+    // a location filter that no longer matches any item (e.g. "No location" after the items got their locations) would hide everything: show all
+    { const c0 = l.curLoc || '', m0 = r => c0 === '__none' ? !r.loc : r.loc === c0; if (c0 && (l.rows || []).some(r => r.serial || r.desc) && !(l.rows || []).some(m0)){ l.curLoc = ''; saveList(l); } }
     const LOCS = locsOf(l); const cur = l.curLoc || ''; const show = (r) => !cur || (cur === '__none' ? !r.loc : r.loc === cur);
     const cnt = v => (l.rows || []).filter(r => v === '__none' ? !r.loc : r.loc === v).length;
     const sel = S.sel || null; const OPEN = openSet(); (l.rows || []).forEach(r => { if (!r.id) r.id = rowId(); });
@@ -735,7 +737,7 @@
           ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(certNoOf(l, i)) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
           </div>`; };
         // To do / Completed: an item is completed once it is marked Safe, or Unsafe with a reason
-        const all0 = (l.rows || []).map((r, i) => [r, i]).filter(([r]) => show(r)); if (!all0.length) return '<div class="empty">No items yet. Tap <b>Add item</b> for each piece of equipment.</div>';
+        const all0 = (l.rows || []).map((r, i) => [r, i]).filter(([r]) => show(r)); if (!all0.length) return cur ? `<div class="empty">No items in ${cur === '__none' ? 'No location' : esc(cur)}. <button type="button" class="btn secondary small" data-loc="" style="margin-top:8px">Show all ${(l.rows || []).length} items</button></div>` : '<div class="empty">No items yet. Tap <b>Add item</b> for each piece of equipment.</div>';
         // search: item number, description, make, location or report number
         const q = String(S.q || '').trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean), cq = v => String(v || '').toLowerCase().replace(/[\s-]+/g, '');
         const hit = r => { const t = [r.serial, r.desc, r.make, r.loc, r.report && r.report.no, groupOf(r), gname(l, groupOf(r))].join(' ').toLowerCase(), tc = cq(t); return words.every(w => t.includes(w) || tc.includes(cq(w))); };
