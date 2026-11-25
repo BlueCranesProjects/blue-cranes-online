@@ -506,6 +506,9 @@
   const utLocal = () => { try { return JSON.parse(localStorage.getItem(UTK) || '{}') || {}; } catch(e){ return {}; } };
   const needsUt = l => (l.rows || []).some(r => (isCertItem(r) && !isInspCert(r)) || isForklift(r));
   function utOf(l){ if (!l.ut){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
+  // for the certificates: the job's understudy, with the signature / LMI number of the same person saved on this phone if the job has none
+  function utFull(l){ const u = utOf(l); if (!(u.name || u.sig)) return u; const sv = utLocal(), same = !u.name || !sv.name || String(sv.name).trim().toLowerCase() === String(u.name).trim().toLowerCase();
+    return (same && (!u.sig || !u.lmi)) ? { name:u.name || sv.name || '', lmi:u.lmi || sv.lmi || '', sig:u.sig || sv.sig || '' } : u; }
   let utCloudT;
   function utSave(l, p){ l.ut = Object.assign(utOf(l), p); saveList(l); try { localStorage.setItem(UTK, JSON.stringify(Object.assign(utLocal(), { name:l.ut.name, lmi:l.ut.lmi, sig:l.ut.sig || null }))); } catch(e){}
     clearTimeout(utCloudT); utCloudT = setTimeout(() => { try { if (cloudOK()) Cloud.putItem('understudy', { kind:'understudy', name:l.ut.name || '', lmi:l.ut.lmi || '', sig:l.ut.sig || '', updated:new Date().toISOString() }); } catch(e){} }, 1000); }
@@ -556,7 +559,7 @@
   }
   // inventory items → one part per certificate (so they can be put in number order with the forklift ones)
   async function itemCertParts(l, opts){ const parts = []; opts = opts || {};
-    if (opts.ut === undefined){ const u = utOf(l); if (u && (u.name || u.sig)) opts.ut = u; }
+    if (opts.ut === undefined){ const u = utFull(l); if (u && (u.name || u.sig)) opts.ut = u; }
     for (const i of (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; })){
       const f = await certDoc(l, [i], opts); if (f) parts.push({ no:certNoOf(l, i), blob:f.blob, name:f.name }); }
     return parts; }
@@ -1380,7 +1383,7 @@
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [0, 0, 0], L = 15 + 5, R = 190, U = s => String(s || '').toUpperCase();
     const tech = opts.tech || S.profile || {}; let ut = {}; try { ut = JSON.parse(localStorage.getItem('bc-forklift-understudy') || '{}') || {}; } catch(e){}
     if (opts.ut !== undefined) ut = opts.ut || {};
-    else if (l.ut && (l.ut.name || l.ut.sig)) ut = l.ut;
+    else if (l.ut && (l.ut.name || l.ut.sig)) ut = utFull(l);   // signature missing on the job: the same understudy's saved one
     else if (ut && ut.name){ l.ut = { name:ut.name || '', lmi:ut.lmi || '', sig:ut.sig || '' }; }   // kept with the job, so the office can make the same certificates
     const dims = {}; for (const im of [tech.signature, ut.sig]) if (im) dims[im] = await imgDims(im);
     const sigImg = (img, x, base) => { if (!img) return; try { const d = dims[img] || { w:44, h:12.5 }, sc = Math.min(42 / d.w, 14 / d.h), w = d.w * sc, h = d.h * sc; doc.addImage(img, 'PNG', x + (42 - w) / 2, base - h + 1, w, h, undefined, 'FAST'); } catch(e){} };
@@ -1554,7 +1557,7 @@
   if (new URLSearchParams(location.search).get('embed') === '1'){
     window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; }),
       certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), quoteDoc: (l, techName) => quoteDoc(l, { techName }), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
-      flCertNo: (l, st) => flCertNo(l, st), itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (l.ut && (l.ut.name || l.ut.sig)) ? l.ut : (ut || null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
+      flCertNo: (l, st) => flCertNo(l, st), itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (ut && (ut.name || ut.sig)) ? ut : ((l.ut && (l.ut.name || l.ut.sig)) ? l.ut : null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
   (async function start(){
     lsLoad(); S.profile = BC.cachedProfile();

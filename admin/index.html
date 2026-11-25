@@ -417,12 +417,19 @@
   }
   const dlFile = f => { const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); };
   // the understudy for a technician's certificates: the job's own, else the one saved in their account, else their latest forklift load test
+  //   a job's understudy saved without a signature (or LMI number) gets it from the same person saved in the account
   async function utFor(uid, l, reps){
-    if (l && l.ut && (l.ut.name || l.ut.sig)) return l.ut;
-    try { const u = (await window.Cloud.listKindOf(uid, 'understudy')).map(d => d.data || {})[0]; if (u && (u.name || u.sig)) return u; } catch(e){}
+    const own = (l && l.ut && (l.ut.name || l.ut.sig)) ? l.ut : null;
+    if (own && own.name && own.sig) return own;
+    const cands = [];
+    try { (await window.Cloud.listKindOf(uid, 'understudy')).forEach(d => cands.push(d.data || d || {})); } catch(e){}
     let rs = reps; if (!rs){ try { rs = (await window.Cloud.listKindOf(uid, 'forklift')).map(d => d.data || {}); } catch(e){ rs = []; } }
-    const r = (rs || []).filter(r => r && r.state && r.state.f && (r.state.f.utName || (r.state.sig && r.state.sig.sigUt))).sort((a, b) => String(b.state.f.date || '').localeCompare(String(a.state.f.date || '')))[0];
-    return r ? { name:r.state.f.utName || '', lmi:r.state.f.utLmi || '', sig:(r.state.sig && r.state.sig.sigUt) || '' } : null;
+    (rs || []).filter(r => r && r.state && r.state.f && (r.state.f.utName || (r.state.sig && r.state.sig.sigUt))).sort((a, b) => String(b.state.f.date || '').localeCompare(String(a.state.f.date || '')))
+      .forEach(r => cands.push({ name:r.state.f.utName || '', lmi:r.state.f.utLmi || '', sig:(r.state.sig && r.state.sig.sigUt) || '' }));
+    const nm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (own){ const m = cands.find(u => u && u.sig && (!own.name || !u.name || nm(u.name) === nm(own.name)));
+      return m ? { name:own.name || m.name || '', lmi:own.lmi || m.lmi || '', sig:own.sig || m.sig || '' } : own; }
+    return cands.find(u => u && (u.name || u.sig)) || null;
   }
   // several report PDFs → one PDF
   let pdfLibP = null;
@@ -433,6 +440,12 @@
     for (const f of list){ const src = await P.PDFDocument.load(new Uint8Array(await f.blob.arrayBuffer())); (await out.copyPages(src, src.getPageIndices())).forEach(pg => out.addPage(pg)); }
     return { blob:new Blob([await out.save()], { type:'application/pdf' }), name, type:'application/pdf' };
   }
+  // a technician's profile (name, signature): the document with id 'profile', or else any item of kind 'profile'
+  // (older accounts saved their profile without a kind, so a search by kind alone found no signature)
+  async function profOf(uid){ let p = null;
+    try { if (window.Cloud.getItemOf) p = await window.Cloud.getItemOf(uid, 'profile'); } catch(e){}
+    if (!p || !p.signature){ try { const ps = await window.Cloud.listKindOf(uid, 'profile'); const q = (ps[0] && (ps[0].data || ps[0])) || null; if (q && (!p || q.signature)) p = Object.assign({}, p || {}, q); } catch(e){} }
+    return p || {}; }
   const packName = (what, l) => `${what}_${String((l && l.job) || 'job').replace(/[^\w\-]+/g, '_')}_${String((l && l.customer) || '').replace(/[^\w\-]+/g, '_')}_${(l && l.date) || ''}.pdf`.replace(/_+\.pdf$/, '.pdf');
   // ---- Job PDF: everything for one job except the certificates, in one PDF to print with one click ----
   // inventory → forklift reports → crane / hoist reports (client's) → technician's quote pages → the day's time sheet
@@ -475,7 +488,7 @@
   // the technician's time sheet of one day as a PDF ({ blob, name }), or null when there is none
   async function sheetFileOf(uid, day, j){
     try { const sheets = (await window.Cloud.listKindOf(uid, 'sheet')).map(d => d.data || {}); const sh = sheets.find(x => x.date === day); if (!sh) return null;
-      let prof = {}, set = {}; try { const ps = await window.Cloud.listKindOf(uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
+      let prof = {}, set = {}; prof = await profOf(uid);
       try { const ss = await window.Cloud.listKindOf(uid, 'settings'); set = (ss[0] && (ss[0].data || ss[0])) || {}; } catch(e){}
       const t = await hiddenTool('../timesheet/?embed=1', w => w.BCT && w.BCT.sheetPdfOf && w.BCT);
       try { const f = await t.api.sheetPdfOf(sh, prof, set); if (!f) return null;
@@ -496,7 +509,7 @@
         if ((which === 'quote' || which === 'all') && t.api.quoteDoc){ const f = await t.api.quoteDoc(l, nameOf(j.tech) || ''); if (f) files.push(f); }
         if (which === 'all'){ try { files.push(await t.api.listXlsx(l)); } catch(e){} }
         if (which === 'certs' || which === 'all'){
-          let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
+          let prof = {}; prof = await profOf(g.uid);
           const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, await utFor(g.uid, l, null));
           if ((g.fl || []).some(r => r.state.type === 'LOAD TEST')){ const ft = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
             try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const st = JSON.parse(JSON.stringify(r.state)), fn = t.api.flCertNo && t.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await ft.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
@@ -564,7 +577,7 @@
         try { (await window.Cloud.listKindOf(u.uid, 'mancage')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to).forEach(r => { r._mc = true; reps.push(r); }); } catch(e){}
         try { reps = reps.concat((await window.Cloud.listKindOf(u.uid, 'forklift')).map(d => d.data || {}).filter(r => r && r.state && r.state.f && (r.state.f.date || r.date) >= from && (r.state.f.date || r.date) <= to)); } catch(e){}
         if (!lists.length && !reps.length) continue;
-        try { const ps = await window.Cloud.listKindOf(u.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
+        prof = await profOf(u.uid);
         const mine = lists.map(l => ({ u, prof, l, reps:[] }));
         reps.forEach(r => { const jc = core(r.job || r.state.f.jobno); const g = jc && mine.find(x => core(x.l.job) === jc);
           if (g) g.reps.push(r); else { let o = mine.find(x => !x.l.rows && core(x.l.job) === jc && x.l.date === (r.state.f.date || r.date));
@@ -648,10 +661,10 @@
     const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return;
     const old = btn.textContent; btn.disabled = true; btn.textContent = '…'; let tool = null;
     try {
-      let prof = {}; try { const ps = await window.Cloud.listKindOf(g.uid, 'profile'); prof = (ps[0] && (ps[0].data || ps[0])) || {}; } catch(e){}
+      let prof = {}; prof = await profOf(g.uid);
       tool = await certTool(); const l = JSON.parse(JSON.stringify(g.list)); const idx = tool.api.certIdx(l);
       if (!idx.length){ toast('No certificates yet – the technician has not marked the items Safe or Unsafe'); return; }
-      const f = await tool.api.certDoc(l, idx, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, l.ut || null);
+      const f = await tool.api.certDoc(l, idx, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, await utFor(g.uid, l, null));
       if (!f) return toast('No certificates for this job');
       const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
       toast(idx.length + (idx.length === 1 ? ' certificate' : ' certificates') + ' downloaded');
@@ -716,7 +729,7 @@
   }
   // ---------- Print run: the finished jobs' files for the office printer ----------
   // White paper: everything except the certificates (the Job PDF). Blue paper: the certificates.
-  // Files go to Downloads as BC-PRINT_<when>_<nn>_<job>_<client>_1-CLIENT.pdf (one-sided) / _2-TECH.pdf (both sides) / _3-BLUE.pdf (certificates), then BC-PRINT_DONE_<when>.txt;
+  // Files go to Downloads as BC-PRINT_<when>_<nn>_<job>_<client>_1-CLIENT.pdf / _2-TECH.pdf (both one-sided) / _3-BLUE.pdf (certificates), then BC-PRINT_DONE_<when>.txt;
   // the print program on the office computer (print/bc-print.ps1) prints them and moves them to C:\BlueCranes\Printed.
   // A job printed once gets printedAt and is not printed again unless asked.
   const printable = j => j.status === 'done' && !!S.invProg[j.id] && !!(S.invProg[j.id].list || (S.invProg[j.id].fl || []).length || (S.invProg[j.id].cr || []).length || (S.invProg[j.id].mc || []).length);
@@ -734,7 +747,7 @@
       ${again ? `<div class="hint">Printed ${esc(new Date(j.printedAt).toLocaleString('en-ZA', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }))}</div>` : ''}</span>
       ${again ? `<button class="btn secondary" data-pragain="${esc(j.id)}" ${busy ? 'disabled' : ''} style="padding:6px 14px;width:auto;flex:0 0 auto">Print again</button>` : ''}</label>`;
     return `<main><section class="card wide"><h2>🖨 Print run</h2>
-      <span class="hint" style="font-size:14px;line-height:1.5">Finished jobs ready for the office printer. <b>Client's copies</b> (inventory, reports) on white paper, one side only. <b>Technician's copies</b> (time card, time sheet, quote pages, equipment for quote) on white paper, both sides. <b>Certificates</b> on the blue paper, one side.
+      <span class="hint" style="font-size:14px;line-height:1.5">Finished jobs ready for the office printer. <b>Client's copies</b> (inventory, reports) on white paper, one side only. <b>Technician's copies</b> (time card, time sheet, quote pages, equipment for quote) on white paper, one side only. <b>Certificates</b> on the blue paper, one side.
         Every weekday at 05:55 the office computer opens this page by itself, makes the files and prints them. You can also make them now and print with <b>Blue Cranes – Print now</b> on the desktop.</span>
       ${!S.prReady ? '<span class="hint">Looking for finished jobs…</span>' : wait.length ? `<div>${wait.map(j => row(j, false)).join('')}</div>` : '<span class="hint" style="font-size:14px">✓ Nothing waiting – every finished job has been printed.</span>'}
       ${wait.length ? `<button class="btn primary" id="prMake" ${busy || !n ? 'disabled' : ''}>${busy ? esc(S.prMsg || 'Working…') : `⬇ Make print files (${n} ${n === 1 ? 'job' : 'jobs'})`}</button>` : ''}
@@ -747,7 +760,7 @@
         <li>Download the print program below, open the zip, and run <b>Install print program</b>. It makes the folder C:\\BlueCranes and a <b>Blue Cranes – Print now</b> file on the desktop.</li>
         <li>Test: tick one job above, <b>Make print files</b>, then double-click <b>Blue Cranes – Print now</b>.</li>
         <li>When the test prints right, run <b>Switch on 6am print</b> once.</li></ol>
-      <span class="hint">Printer and trays are set at the top of C:\\BlueCranes\\bc-print.ps1 (now: Groot printer; client's copies and certificates one-sided, technician's copies both sides; normal tray until the blue tray is known). After an update of the print program, download the zip again and run Install print program again.. In Chrome, turn off "Ask where to save each file" and allow this site to download several files.</span>
+      <span class="hint">Printer and trays are set at the top of C:\\BlueCranes\\bc-print.ps1 (now: Groot printer; everything one-sided, no back to back; normal tray until the blue tray is known). After an update of the print program, download the zip again and run Install print program again.. In Chrome, turn off "Ask where to save each file" and allow this site to download several files.</span>
       <button class="btn secondary" id="prZip">⬇ Print program (zip)</button></section></main>`;
   }
   async function runPrint(ids, auto){

@@ -9,9 +9,9 @@ Blue Cranes print program
 
 Printer and paper trays: open C:\BlueCranes\bc-print.ps1 in Notepad and
 change the settings at the top (printer name, white tray, blue tray,
-both sides for the technician's copies).
+one side / both sides for the technician's copies).
 
-Client's copies and certificates print on one side; technician's copies
-(time card, time sheet, quote pages) print on both sides.
+Everything prints on one side only - no back to back printing
+(client's copies, technician's copies and certificates).
 After an update: download the zip again and run Install print program again.
 Daily logs: C:\BlueCranes\Logs. Printed files: C:\BlueCranes\Printed.
