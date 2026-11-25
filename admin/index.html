@@ -417,12 +417,19 @@
   }
   const dlFile = f => { const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); };
   // the understudy for a technician's certificates: the job's own, else the one saved in their account, else their latest forklift load test
+  //   a job's understudy saved without a signature (or LMI number) gets it from the same person saved in the account
   async function utFor(uid, l, reps){
-    if (l && l.ut && (l.ut.name || l.ut.sig)) return l.ut;
-    try { const u = (await window.Cloud.listKindOf(uid, 'understudy')).map(d => d.data || {})[0]; if (u && (u.name || u.sig)) return u; } catch(e){}
+    const own = (l && l.ut && (l.ut.name || l.ut.sig)) ? l.ut : null;
+    if (own && own.name && own.sig) return own;
+    const cands = [];
+    try { (await window.Cloud.listKindOf(uid, 'understudy')).forEach(d => cands.push(d.data || d || {})); } catch(e){}
     let rs = reps; if (!rs){ try { rs = (await window.Cloud.listKindOf(uid, 'forklift')).map(d => d.data || {}); } catch(e){ rs = []; } }
-    const r = (rs || []).filter(r => r && r.state && r.state.f && (r.state.f.utName || (r.state.sig && r.state.sig.sigUt))).sort((a, b) => String(b.state.f.date || '').localeCompare(String(a.state.f.date || '')))[0];
-    return r ? { name:r.state.f.utName || '', lmi:r.state.f.utLmi || '', sig:(r.state.sig && r.state.sig.sigUt) || '' } : null;
+    (rs || []).filter(r => r && r.state && r.state.f && (r.state.f.utName || (r.state.sig && r.state.sig.sigUt))).sort((a, b) => String(b.state.f.date || '').localeCompare(String(a.state.f.date || '')))
+      .forEach(r => cands.push({ name:r.state.f.utName || '', lmi:r.state.f.utLmi || '', sig:(r.state.sig && r.state.sig.sigUt) || '' }));
+    const nm = s => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (own){ const m = cands.find(u => u && u.sig && (!own.name || !u.name || nm(u.name) === nm(own.name)));
+      return m ? { name:own.name || m.name || '', lmi:own.lmi || m.lmi || '', sig:own.sig || m.sig || '' } : own; }
+    return cands.find(u => u && (u.name || u.sig)) || null;
   }
   // several report PDFs → one PDF
   let pdfLibP = null;
@@ -657,7 +664,7 @@
       let prof = {}; prof = await profOf(g.uid);
       tool = await certTool(); const l = JSON.parse(JSON.stringify(g.list)); const idx = tool.api.certIdx(l);
       if (!idx.length){ toast('No certificates yet – the technician has not marked the items Safe or Unsafe'); return; }
-      const f = await tool.api.certDoc(l, idx, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, l.ut || null);
+      const f = await tool.api.certDoc(l, idx, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, await utFor(g.uid, l, null));
       if (!f) return toast('No certificates for this job');
       const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
       toast(idx.length + (idx.length === 1 ? ' certificate' : ' certificates') + ' downloaded');
