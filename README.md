@@ -61,6 +61,12 @@ Everything for a person is under `users/{uid}/items/`:
 - Firestore → Rules → contents of `firestore.rules`
 - Firestore → `admins` collection → one document per admin, ID = email in lower case
 
+## Import the inventory afterwards (rule)
+
+- Admin → Schedule jobs: every job that is not done has **⬆ Add inventory** (or **⬆ Inventory (n)** when it has items). Choose the client's file (census layout or their own list – the same reader as Import jobs), check the preview, **Add n items**.
+- The items are added to the job's office list (`job.inv`); items already on it (same item no, or for items without a number the same description, location, make and SWL) are left out, so loading the same file twice does nothing.
+- The technician's Client's inventory picks the new items up when it is opened (`loadOffice`, also while the job is busy); items the technician already added with the same item no are not doubled.
+
 ## Certificates (rule)
 
 - Load test certificate: lifting machinery – cranes, gantries, hoists, chain blocks, lever hoists, winches / Tirfors. With a report: SEE REPORT … under the remarks, no reason.
