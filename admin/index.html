@@ -25,6 +25,11 @@
   nav.seg{display:flex;gap:6px;padding:12px 14px 0}
   nav.seg button{flex:1;height:44px;border-radius:10px;border:1.5px solid var(--navy);background:#fff;color:var(--navyDeep);font-weight:800;font-size:14px;font-family:inherit;cursor:pointer}
   nav.seg button[aria-current="page"]{background:var(--navyDeep);color:#fff}
+  nav.seg button.gear{flex:0 0 auto;padding:0 16px;margin-left:auto}
+  nav.seg .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#E5484D;vertical-align:middle;margin-left:4px}
+  nav.sub{display:flex;gap:18px;padding:10px 14px 0;max-width:1100px;margin:0 auto}
+  nav.sub button{border:0;background:none;font:inherit;font-weight:700;font-size:14.5px;color:var(--muted);padding:6px 2px;cursor:pointer;border-bottom:3px solid transparent}
+  nav.sub button[aria-current="page"]{color:var(--navyDeep);border-bottom-color:var(--yellow)}
   main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
   .steps{display:flex;flex-direction:column;gap:12px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
@@ -79,7 +84,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print','paper','admins','mail','techs'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
+  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print','paper','admins','mail','techs'].includes(t) ? t : 'jobs'; } catch(e){ return 'jobs'; } })();
   // ?printrun=auto: opened by the office computer's 6:00 print program – go straight to Print run and make the files
   const AUTOPRINT = (() => { try { return new URLSearchParams(location.search).get('printrun') === 'auto'; } catch(e){ return false; } })();
   const VIEWK = 'bco-admin-view'; const savedView = (() => { try { return JSON.parse(sessionStorage.getItem(VIEWK) || '{}') || {}; } catch(e){ return {}; } })();
@@ -307,7 +312,7 @@
     S.invJob = '__new'; const job = newJob(); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
     const other = p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
     return `<main><div class="steps">
-      <section class="card"><h2>Add new job</h2>
+      <section class="card"><button class="x" data-tab="jobs" style="align-self:flex-start;border-color:var(--navy);color:var(--navyDeep)">← Back to jobs</button><h2>New job from the client's file</h2>
         <b style="font-size:14px">1. Import the client's file</b>
         <label class="drop" for="ifile"><b>${S.invFile ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word (.doc / .docx) or PDF${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
         <input type="file" id="ifile" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
@@ -333,7 +338,11 @@
   // ---------- views ----------
   function head(){ return `<header><img src="../icons/logo.png" alt="Blue Cranes" style="width:44px;height:44px;border-radius:50%;background:#fff;object-fit:contain">
       <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div><button type="button" id="admOut" style="border:1.5px solid rgba(255,255,255,.6);background:none;color:#fff;border-radius:10px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer">Sign out</button></header>
-      <nav class="seg" aria-label="Admin sections">${[['inv','Import jobs'],['jobs','Schedule jobs'],['print','Print run'],['mail','Email'],['paper','Paper jobs'],['techs','Technicians'],['export','Export jobs']].concat(S.owner ? [['admins','Admins']] : []).map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
+      <nav class="seg" aria-label="Admin sections">${[['jobs','Jobs'],['paper','Paper jobs'],['print','Print run'],['export','Export']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k || (k === 'jobs' && S.tab === 'inv') ? 'aria-current="page"' : ''}>${t}${k === 'export' && backupDue() ? ' <span class="dot" title="Backup due"></span>' : ''}</button>`).join('')}
+        <button data-tab="techs" class="gear" ${SETTINGS.includes(S.tab) ? 'aria-current="page"' : ''} aria-label="Settings">⚙ Settings</button></nav>
+      ${SETTINGS.includes(S.tab) ? `<nav class="sub" aria-label="Settings">${[['techs','Technicians'],['mail','Email'],...(S.owner ? [['admins','Admins']] : [])].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>` : ''}`; }
+  const SETTINGS = ['techs', 'mail', 'admins'];
+  const backupDue = () => { const n = backupDays(); return n == null || n >= 7; };
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
     return `<main><div class="steps">
@@ -869,6 +878,7 @@
       <div class="row"><div class="field"><label for="tf">Technician</label><select id="tf"><option value="">Everyone</option>${techs.map(t => `<option value="${esc(t)}" ${S.techFilter === t ? 'selected' : ''}>${esc(nameOf(t) || t)}</option>`).join('')}</select></div>
         <div class="field"><label for="per">Show</label><select id="per"><option value="">From a week ago</option><option value="all" ${S.allJobs ? 'selected' : ''}>All jobs, also older</option></select></div>
         <button class="btn secondary" id="refresh" style="width:auto;align-self:flex-end">↻ Refresh</button>
+        <button class="btn secondary" data-tab="inv" style="width:auto;align-self:flex-end">⬆ New job from client's file</button>
         <button class="btn primary" id="newJob" style="width:auto;align-self:flex-end">＋ New job</button></div>
       ${list.length ? `<div class="row" style="gap:8px"><button class="x" id="daysOpen" style="border-color:var(--navy);color:var(--navyDeep)">▾ Open all days</button><button class="x" id="daysClose" style="border-color:var(--navy);color:var(--navyDeep)">▸ Close all days</button><span class="hint">Tap a day to open or close it.</span></div>` : ''}
       ${S.sel.size ? `<div class="row" style="background:#FDF3F2;border-radius:10px;padding:8px 10px"><b style="flex:1">${S.sel.size} selected</b><button class="x" id="selNone" style="border-color:var(--navy);color:var(--navyDeep)">Clear</button><button class="x" id="selDel" style="background:var(--bad);color:#fff">🗑 Remove ${S.sel.size} ${S.sel.size === 1 ? 'job' : 'jobs'}</button></div>` : ''}
@@ -900,7 +910,7 @@
   // ---------- weekly backup: a dated copy of every job, saved by the office (e.g. to Google Drive) ----------
   const backupDays = () => S.backup && S.backup.at ? Math.floor((Date.now() - S.backup.at) / 86400000) : null;
   const backupFrom = () => { if (S.backup && S.backup.to){ const d = new Date(S.backup.to + 'T12:00:00'); d.setDate(d.getDate() - 1); return keyOf(d); } return '2026-01-01'; };
-  function backupBar(){ if (S.tab === 'export') return ''; const n = backupDays(); if (n != null && n < 7) return '';
+  function backupBar(){ if (S.tab !== 'export') return ''; const n = backupDays(); if (n != null && n < 7) return '';
     return `<div role="status" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#FFF4CC;border:1px solid #f0dc8a;border-radius:12px;padding:10px 14px;margin:12px auto 0;max-width:1100px;color:#6B5200;font-size:14px">
       <span style="font-size:20px">🗂</span><span style="flex:1;min-width:200px"><b>${n == null ? 'No backup yet' : 'Last backup ' + n + ' days ago'}</b> – save a copy of every job (e.g. to Google Drive) once a week.</span>
       <button class="btn navy" id="bkGo" style="width:auto">Back up now</button></div>`; }
@@ -1415,7 +1425,7 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
     try { S.backup = await window.Cloud.getItem('backup'); } catch(e){ S.backup = null; }
     try { const me = await window.Cloud.adminInfo(); S.owner = !!(me && me.owner); } catch(e){ S.owner = false; }
     await loadTechs();
-    if (S.tab === 'admins' && !S.owner) S.tab = 'inv';
+    if (S.tab === 'admins' && !S.owner) S.tab = 'techs';
     await refreshUsers(); await refreshJobs(); const y0 = window.scrollY; render();
     try { sessionStorage.setItem(cacheK, JSON.stringify({ jobs:S.jobs, users:S.users.map(u => ({ uid:u.uid, email:u.email, name:u.name || '' })) })); } catch(e){}
     window.scrollTo(0, shown ? y0 : (savedView.tab === S.tab && savedView.y) || 0);

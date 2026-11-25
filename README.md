@@ -64,6 +64,11 @@ Everything for a person is under `users/{uid}/items/`:
 - Firestore → `admins` collection → one document per admin, ID = email in lower case
 - Firestore → `admins` → the owner's document has the field `owner` = true (boolean)
 
+## Admin layout (rule)
+
+- Main tabs: **Jobs** (schedule, ＋ New job, ⬆ New job from client's file, ⬆ Add inventory per job), **Paper jobs**, **Print run**, **Export** (backup reminder only here; a red dot on Export when a backup is due), and **⚙ Settings** with Technicians, Email and Admins (owner only).
+- Admin opens on Jobs.
+
 ## Technicians and LMI numbers (rule)
 
 - Admin → **Technicians** is the office's list (`settings/technicians` = { list:[{ id, name, email, lmi, sig }] }): name and surname, sign-in email (only if they use the app), own LMI number, signature (drawn, uploaded or taken from their app profile). Only admins change it; every signed-in phone reads it (`BC.loadTechs`, kept in `bco-techs`).
