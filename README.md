@@ -114,3 +114,11 @@ Everything for a person is under `users/{uid}/items/`:
 
 - No Refurbish condition button any more (only Safe / Unsafe); items marked Refurbish before 24 Nov (K) still show it and get no certificate until marked Safe or Unsafe.
 - Man cage and crane / hoist reports have "Refurbished by" (Blue Cranes offered) and "Year refurbished" under the manufacturer; printed on the report and, via the inventory row (refurbBy / refurbYear), on the certificate as REFURBISHED BY … (year) – only when filled in.
+
+## Print run (rule)
+
+- Admin → **Print run** lists finished jobs (status done) of the last 7 days that have no `printedAt`. Older jobs are never printed by themselves; "Printed in the last 7 days" has **Print again**.
+- For each job it downloads `BC-PRINT_<yyyy-mm-dd_HHMM>_<nn>_<job>_<client>_1-WHITE.pdf` (the Job PDF: everything except certificates) and `_2-BLUE.pdf` (the certificates), then `BC-PRINT_DONE_<stamp>.txt`, and sets `printedAt` / `printedBy` on the job.
+- `admin/?printrun=auto` does the same by itself once the page has loaded (opened by the office computer).
+- The office print program is in `print/` (downloaded as a zip from the Print run tab): `bc-print.ps1` opens the auto page in Chrome, waits for the DONE file, prints WHITE files to `$WhiteTray` and BLUE files to `$BlueTray` on `$Printer` (default Groot printer) with SumatraPDF (`-print-settings noscale,bin=<tray>`), and moves them to `C:\BlueCranes\Printed\<date>` (or `Failed`). Logs in `C:\BlueCranes\Logs`.
+- `Install print program.bat` copies it to `C:\BlueCranes` and puts "Blue Cranes – Print now" on the desktop (prints what is in Downloads, no Chrome). `Switch on 6am print.bat` adds the Windows task "Blue Cranes 6am print run", weekdays 05:55 – only after a test print.
