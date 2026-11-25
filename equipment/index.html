@@ -478,6 +478,7 @@
   // a forklift load test certificate: the report's own understudy, else the job's understudy (Job details & understudy) – name, LMI number and signature
   // the understudy chosen on the job (Job details & understudy) always wins, so changing it there changes every certificate of the job
   function withUt(l, st, ut){ if (!st || !st.f) return st; st.sig = st.sig || {};
+    { const tl = l ? techLmiOf(l) : ''; if (tl){ st.f.engLmi = tl; st.f.utName = ''; st.f.utLmi = ''; st.sig.sigUt = null; return st; } }
     const ju = l ? utFull(l) : null;
     if (l && l.ut && l.ut.name){ const same = String(st.f.utName || '').trim().toLowerCase() === String(ju.name).trim().toLowerCase();
       st.f.utName = ju.name; st.f.utLmi = ju.lmi || (same ? st.f.utLmi : '') || ''; st.sig.sigUt = ju.sig || (same ? st.sig.sigUt : null) || null; return st; }
@@ -520,7 +521,9 @@
   // ---------- understudy for the lifting machinery certificates (shared with the forklift load test) ----------
   const UTK = 'bc-forklift-understudy';
   const utLocal = () => { try { return JSON.parse(localStorage.getItem(UTK) || '{}') || {}; } catch(e){ return {}; } };
-  const needsUt = l => (l.rows || []).some(r => (isCertItem(r) && !isInspCert(r)) || isForklift(r));
+  // a technician with their own LMI number (Admin → Technicians) tests without an understudy
+  const techLmiOf = l => String((PAPER ? (l && l.techLmi) : EMB ? (l && l.techLmi) : (window.BC && BC.myLmi ? BC.myLmi() : '')) || '').trim();
+  const needsUt = l => !techLmiOf(l) && (l.rows || []).some(r => (isCertItem(r) && !isInspCert(r)) || isForklift(r));
   function utOf(l){ if (!l.ut && !PAPER && !EMB){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
   // for the certificates: the job's understudy, with the signature / LMI number of the same person saved on this phone if the job has none
   function utFull(l){ const u = utOf(l); if (PAPER || EMB || !(u.name || u.sig)) return u; const sv = utLocal(), same = !u.name || !sv.name || String(sv.name).trim().toLowerCase() === String(u.name).trim().toLowerCase();
@@ -662,7 +665,7 @@
     const sel = S.sel || null; const OPEN = openSet(); (l.rows || []).forEach(r => { if (!r.id) r.id = rowId(); });
     return head((PAPER ? 'Paper job · ' : '') + 'Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Client's inventory", PAPER ? backBtn('../admin/', 'Back to Admin') : backBtn('../timesheet/', 'Back to the time sheet'),
         PAPER ? '' : `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main class="wide">
-      ${PAPER ? `<section class="card" style="gap:4px;background:#FFF8D6;border-color:#F5B826"><b>📝 Paper job – typed in by the office</b><span class="hint" style="font-size:13.5px">Certificates in the name of <b>${esc(l.tech || '–')}</b>${l.techSig ? ' (with their signature)' : ' – <span style="color:var(--bad)">no signature saved for this technician</span>'}, dated ${esc(niceDate(l.date))}. Not in the print run – download below.</span></section>` : ''}
+      ${PAPER ? `<section class="card" style="gap:4px;background:#FFF8D6;border-color:#F5B826"><b>📝 Paper job – typed in by the office</b><span class="hint" style="font-size:13.5px">Certificates in the name of <b>${esc(l.tech || '–')}</b>${l.techLmi ? ' – LMI ' + esc(l.techLmi) + ', no understudy' : ''}${l.techSig ? ' (with their signature)' : ' – <span style="color:var(--bad)">no signature saved for this technician</span>'}, dated ${esc(niceDate(l.date))}. Not in the print run – download below.</span></section>` : ''}
       ${contCard(l)}
       ${(() => { const F = folds(); if (F.jd == null) F.jd = false;
         const sum = [l.customer, 'Job ' + (l.job || '–'), niceDate(l.date), l.location].filter(Boolean).map(esc).join(' · ');
@@ -1470,7 +1473,7 @@
   async function certDoc(l, idx, opts){ opts = opts || {};
     await ensurePdf(); const doc = new window.jspdf.jsPDF({ unit:'mm', format:'a4' });
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [0, 0, 0], L = 15 + 5, R = 190, U = s => String(s || '').toUpperCase();
-    const tech = opts.tech || S.profile || {}; let ut = {}; try { if (!PAPER) ut = JSON.parse(localStorage.getItem('bc-forklift-understudy') || '{}') || {}; } catch(e){}
+    const tech = opts.tech || S.profile || {}; const techLmi = String((opts.tech ? opts.tech.lmi : techLmiOf(l)) || '').trim(); let ut = {}; try { if (!PAPER) ut = JSON.parse(localStorage.getItem('bc-forklift-understudy') || '{}') || {}; } catch(e){}
     if (opts.ut !== undefined) ut = opts.ut || {};
     else if (l.ut && (l.ut.name || l.ut.sig)) ut = utFull(l);   // signature missing on the job: the same understudy's saved one
     else if (ut && ut.name){ l.ut = { name:ut.name || '', lmi:ut.lmi || '', sig:ut.sig || '' }; }   // kept with the job, so the office can make the same certificates
@@ -1498,8 +1501,9 @@
       if (unsafe && r.reason && !crNo){   /* with a report, the reason stays on the report only */ doc.setFontSize(10.5); doc.text(doc.splitTextToSize(U(r.reason), R - VX).slice(0, 2), VX, y + (crNo ? 12 : 6)); }
       doc.setTextColor(...INK); y += 22 * CERT_K; doc.setFontSize(12.5);
       doc.text('TESTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
-      y += 18 * CERT_K; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
-      if (ut.lmi){ doc.setFontSize(8.5); doc.text('LMI : ' + ut.lmi, L + 58, y + 4.5); doc.setFontSize(12.5); }
+      if (techLmi){ doc.setFontSize(8.5); doc.text('LMI : ' + techLmi, L + 58, y + 4.5); doc.setFontSize(12.5); }   // own LMI number: no understudy
+      else { y += 18 * CERT_K; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
+        if (ut.lmi){ doc.setFontSize(8.5); doc.text('LMI : ' + ut.lmi, L + 58, y + 4.5); doc.setFontSize(12.5); } }
       y += 15 * CERT_K; doc.text('TEST DATE', L, y); doc.text(dmy(r.at || l.date), L + 44, y);
       y += 12 * CERT_K; doc.text('PREVIOUS TEST DATE:  ', L, y); doc.text('NEXT TEST DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(r.at || l.date, 12))), R, y, { align:'right' });
       y += 12 * CERT_K; doc.text('6 MONTHLY THOROUGH INSPECTION DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(r.at || l.date, 6))), L, y);
@@ -1645,19 +1649,23 @@
   async function startPaper(){
     const use = l => { S.cur = l; l.rows = l.rows || []; l.rows.forEach(r => { if (!r.id) r.id = rowId(); }); if (!l.rows.length) l.rows.push({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'' });
       S.active = { paper:true, date:l.date, card:l.job, customer:l.customer, site:l.location };   // items marked here are dated on the paper job's date
-      S.profile = { name:l.tech || '', signature:l.techSig || '' }; S.view = 'list'; };
+      S.profile = { name:l.tech || '', signature:l.techSig || '', lmi:l.techLmi || '' }; S.view = 'list'; };
     const w = await BC.requireUser();
     if (!S.lists[PAPER] && cloudOK()){ try { const d = await Cloud.getItem(docId(PAPER)); if (d && d.id){ delete d.kind; S.lists[d.id] = d; snapList(d); lsSave(); } } catch(e){} }
     const l = S.lists[PAPER];
     if (!l){ app.innerHTML = head('Paper job', 'Not found', backBtn('../admin/', 'Back to Admin')) + '<main><div class="empty">This paper job is not on this computer or in your account. Open it from Admin → Paper jobs.</div></main>'; return; }
     use(l); render();
     if (window.Cloud) Cloud.onError = () => toast('Cloud save failed – kept on this computer');
-    // the technician's latest name and signature from their profile
-    if (l.techUid && cloudOK() && Cloud.getItemOf){ try { let p = await Cloud.getItemOf(l.techUid, 'profile');
+    // the technician's latest name, LMI number and signature: the office's list first (Admin → Technicians), then their app profile
+    if (l.techRec){ try { const t = (await BC.loadTechs()).find(x => x.id === l.techRec); if (t){ let ch = false; [['tech', t.name], ['techLmi', t.lmi || ''], ['techSig', t.sig || l.techSig || '']].forEach(([k, v]) => { if (v !== undefined && l[k] !== v){ l[k] = v; ch = true; } });
+        if (ch){ S.profile = { name:l.tech, signature:l.techSig, lmi:l.techLmi || '' }; saveList(l, true); render(); } } } catch(e){} }
+    if (l.techUid && !(l.techRec && l.techSig) && cloudOK() && Cloud.getItemOf){ try { let p = await Cloud.getItemOf(l.techUid, 'profile');
         if ((!p || !p.signature) && Cloud.listKindOf){ const ps = await Cloud.listKindOf(l.techUid, 'profile'); const q = ps[0] && (ps[0].data || ps[0]); if (q && q.signature) p = Object.assign({}, p || {}, q); }
-        if (p && p.signature && p.signature !== l.techSig){ l.techSig = p.signature; if (p.name) l.tech = p.name; S.profile = { name:l.tech, signature:l.techSig }; saveList(l, true); render(); } } catch(e){} }
+        if (p && p.signature && p.signature !== l.techSig){ l.techSig = p.signature; if (p.name && !l.techRec) l.tech = p.name; S.profile = { name:l.tech, signature:l.techSig, lmi:l.techLmi || '' }; saveList(l, true); render(); } } catch(e){} }
     await syncCloud(); if (S.lists[PAPER] && S.lists[PAPER] !== S.cur){ use(S.lists[PAPER]); render(); }
   }
+  // the office's technician list arrived (LMI numbers): redraw, so a technician with an LMI number no longer sees the understudy
+  window.addEventListener('bc-techs', () => { if (S.view === 'list' && S.cur && !(window.BC && BC.busyTyping())) render(); });
   // ---------- start ----------
   // opened hidden by the Admin page: only offer the certificate maker
   if (new URLSearchParams(location.search).get('embed') === '1'){

@@ -25,6 +25,11 @@
   nav.seg{display:flex;gap:6px;padding:12px 14px 0}
   nav.seg button{flex:1;height:44px;border-radius:10px;border:1.5px solid var(--navy);background:#fff;color:var(--navyDeep);font-weight:800;font-size:14px;font-family:inherit;cursor:pointer}
   nav.seg button[aria-current="page"]{background:var(--navyDeep);color:#fff}
+  nav.seg button.gear{flex:0 0 auto;padding:0 16px;margin-left:auto}
+  nav.seg .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#E5484D;vertical-align:middle;margin-left:4px}
+  nav.sub{display:flex;gap:18px;padding:10px 14px 0;max-width:1100px;margin:0 auto}
+  nav.sub button{border:0;background:none;font:inherit;font-weight:700;font-size:14.5px;color:var(--muted);padding:6px 2px;cursor:pointer;border-bottom:3px solid transparent}
+  nav.sub button[aria-current="page"]{color:var(--navyDeep);border-bottom-color:var(--yellow)}
   main{flex:1;padding:14px;display:flex;flex-direction:column;gap:12px;padding-bottom:calc(30px + env(safe-area-inset-bottom))}
   .steps{display:flex;flex-direction:column;gap:12px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px}
@@ -79,7 +84,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print','paper','admins','mail'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
+  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print','paper','admins','mail','techs'].includes(t) ? t : 'jobs'; } catch(e){ return 'jobs'; } })();
   // ?printrun=auto: opened by the office computer's 6:00 print program – go straight to Print run and make the files
   const AUTOPRINT = (() => { try { return new URLSearchParams(location.search).get('printrun') === 'auto'; } catch(e){ return false; } })();
   const VIEWK = 'bco-admin-view'; const savedView = (() => { try { return JSON.parse(sessionStorage.getItem(VIEWK) || '{}') || {}; } catch(e){ return {}; } })();
@@ -307,7 +312,7 @@
     S.invJob = '__new'; const job = newJob(); const p = S.inv; const ok = p ? p.filter(r => !r.errs.length) : [];
     const other = p ? [...new Set(p.map(r => r.customer).concat(S.invCust).filter(c => c && up(c) !== up(job.customer)))] : [];
     return `<main><div class="steps">
-      <section class="card"><h2>Add new job</h2>
+      <section class="card"><button class="x" data-tab="jobs" style="align-self:flex-start;border-color:var(--navy);color:var(--navyDeep)">← Back to jobs</button><h2>New job from the client's file</h2>
         <b style="font-size:14px">1. Import the client's file</b>
         <label class="drop" for="ifile"><b>${S.invFile ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word (.doc / .docx) or PDF${S.invFile ? ' · ' + esc(S.invFile) : ''}</span></label>
         <input type="file" id="ifile" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
@@ -333,7 +338,11 @@
   // ---------- views ----------
   function head(){ return `<header><img src="../icons/logo.png" alt="Blue Cranes" style="width:44px;height:44px;border-radius:50%;background:#fff;object-fit:contain">
       <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div><button type="button" id="admOut" style="border:1.5px solid rgba(255,255,255,.6);background:none;color:#fff;border-radius:10px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer">Sign out</button></header>
-      <nav class="seg" aria-label="Admin sections">${[['inv','Import jobs'],['jobs','Schedule jobs'],['print','Print run'],['mail','Email'],['paper','Paper jobs'],['export','Export jobs']].concat(S.owner ? [['admins','Admins']] : []).map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
+      <nav class="seg" aria-label="Admin sections">${[['jobs','Jobs'],['paper','Paper jobs'],['print','Print run'],['export','Export']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k || (k === 'jobs' && S.tab === 'inv') ? 'aria-current="page"' : ''}>${t}${k === 'export' && backupDue() ? ' <span class="dot" title="Backup due"></span>' : ''}</button>`).join('')}
+        <button data-tab="techs" class="gear" ${SETTINGS.includes(S.tab) ? 'aria-current="page"' : ''} aria-label="Settings">⚙ Settings</button></nav>
+      ${SETTINGS.includes(S.tab) ? `<nav class="sub" aria-label="Settings">${[['techs','Technicians'],['mail','Email'],...(S.owner ? [['admins','Admins']] : [])].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>` : ''}`; }
+  const SETTINGS = ['techs', 'mail', 'admins'];
+  const backupDue = () => { const n = backupDays(); return n == null || n >= 7; };
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
     return `<main><div class="steps">
@@ -434,7 +443,9 @@
   }
   // a forklift load test certificate gets the job's understudy when the report has none (or only the name)
   //   force: the job has its own understudy (chosen in Job details & understudy) – it replaces the one on the report
-  function stWithUt(st, ut, force){ if (!st || !st.f || !ut || !(ut.name || ut.sig)) return st; st.sig = st.sig || {};
+  //   lmi: the technician has their own LMI number – it goes under their name and there is no understudy
+  function stWithUt(st, ut, force, lmi){ if (st && st.f && lmi){ st.sig = st.sig || {}; st.f.engLmi = lmi; st.f.utName = ''; st.f.utLmi = ''; st.sig.sigUt = null; return st; }
+    if (!st || !st.f || !ut || !(ut.name || ut.sig)) return st; st.sig = st.sig || {};
     const same = !st.f.utName || !ut.name || String(st.f.utName).trim().toLowerCase() === String(ut.name).trim().toLowerCase();
     if (force && ut.name){ st.f.utName = ut.name; st.f.utLmi = ut.lmi || (same ? st.f.utLmi : '') || ''; st.sig.sigUt = ut.sig || (same ? st.sig.sigUt : null) || null; return st; }
     if (!st.f.utName && !st.sig.sigUt){ st.f.utName = ut.name || ''; st.f.utLmi = ut.lmi || ''; st.sig.sigUt = ut.sig || null; }
@@ -519,9 +530,9 @@
         if (which === 'all'){ try { files.push(await t.api.listXlsx(l)); } catch(e){} }
         if (which === 'certs' || which === 'all'){
           let prof = {}; prof = await profOf(g.uid);
-          const jut = await utFor(g.uid, l, null); const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, jut);
+          l.techLmi = lmiFor(j.tech); const jut = await utFor(g.uid, l, null); const parts = await t.api.itemCertParts(l, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '', lmi:l.techLmi }, jut);
           if ((g.fl || []).some(r => r.state.type === 'LOAD TEST')){ const ft = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
-            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const st = stWithUt(JSON.parse(JSON.stringify(r.state)), jut, !!(l.ut && l.ut.name)), fn = t.api.flCertNo && t.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await ft.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
+            try { for (const r of g.fl.filter(r => r.state.type === 'LOAD TEST')){ const st = stWithUt(JSON.parse(JSON.stringify(r.state)), jut, !!(l.ut && l.ut.name), l.techLmi), fn = t.api.flCertNo && t.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await ft.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } } finally { ft.done(); } }
           const f = await t.api.mergeCerts(l, parts); if (f) files.push(f); }
         // copy the files into this page before the hidden page is closed
         for (const f of files) f.blob = new Blob([new Uint8Array(await f.blob.arrayBuffer())], { type:f.type || f.blob.type || 'application/pdf' });
@@ -532,7 +543,7 @@
       try { const reps = g.fl.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }));
         const flp = [];
         for (const r of reps){ const st = JSON.parse(JSON.stringify(r.state)); const a = await t.api.buildPdf(st); flp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
-          if (st.type === 'LOAD TEST' && !g.list){ const c = await t.api.buildCert(stWithUt(JSON.parse(JSON.stringify(r.state)), await utFor(g.uid, null, null))); files.push({ blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
+          if (st.type === 'LOAD TEST' && !g.list){ const c = await t.api.buildCert(stWithUt(JSON.parse(JSON.stringify(r.state)), await utFor(g.uid, null, null), false, lmiFor(j.tech))); files.push({ blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
         if (flp.length) files.push(await onePdf(flp, packName('Forklift_reports', { job:j.card, customer:j.customer, date:j.date })));
       } finally { t.done(); }
     }
@@ -630,7 +641,7 @@
         const g = groups[gi], l = JSON.parse(JSON.stringify(g.l)); say(`Job ${gi + 1} of ${groups.length}…`);
         let dn = BC.zipDir(l.job, l.customer, l.date); if (usedDir[dn]) dn += ' (' + (++usedDir[dn]) + ')'; else usedDir[dn] = 1;
         const dir = root.folder(dn); const usedF = {}; const put = async (f) => { let n = BC.zipFile(f.name); if (usedF[n]) n = n.replace(/(\.\w+)$/, ' (' + (++usedF[n]) + ')$1'); else usedF[n] = 1; dir.file(n, await own(f.blob)); nFiles++; };
-        const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '' }; let jut; const parts = [], flp = [], crp = [], tcp = [], mcp = [], mtp = [];
+        const tech = { name:g.prof.name || g.u.name || '', signature:g.prof.signature || '', lmi:lmiFor(g.u.email) }; l.techLmi = tech.lmi; let jut; const parts = [], flp = [], crp = [], tcp = [], mcp = [], mtp = [];
         try {
           if (l.rows){ await put(await eq.api.listDoc(l)); try { await put(await eq.api.listXlsx(l)); } catch(e){} try { const qd = eq.api.quoteDoc && await eq.api.quoteDoc(l, tech.name); if (qd) await put(qd); } catch(e){} jut = await utFor(g.u.uid, l, null); parts.push(...(await eq.api.itemCertParts(l, tech, jut))); }
           for (const r of g.reps.sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
@@ -639,7 +650,7 @@
             if (r._cr){ const a = await cz.api.buildPdf(JSON.parse(JSON.stringify(r.state))); crp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
               if (cz.api.buildTechPdf && cz.api.needsTech(r.state)){ const b = await cz.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); tcp.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), name:b.name }); } continue; }
             const a = await fk.api.buildPdf(JSON.parse(JSON.stringify(r.state))); flp.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }), name:a.name });
-            if (r.state.type === 'LOAD TEST'){ if (jut === undefined) jut = await utFor(g.u.uid, null, null); const st = stWithUt(JSON.parse(JSON.stringify(r.state)), jut, !!(l.rows && l.ut && l.ut.name)), fn = l.rows && eq.api.flCertNo && eq.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await fk.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
+            if (r.state.type === 'LOAD TEST'){ if (jut === undefined) jut = await utFor(g.u.uid, null, null); const st = stWithUt(JSON.parse(JSON.stringify(r.state)), jut, !!(l.rows && l.ut && l.ut.name), l.techLmi), fn = l.rows && eq.api.flCertNo && eq.api.flCertNo(l, st); if (fn) st.f.cno = fn; const c = await fk.api.buildCert(st); parts.push({ no:'/' + (fn || r.state.f.cno || (/\.(\d+)$/.exec(r.state.f.docno || '') || [])[1] || 9999), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); } }
           if (flp.length) await put(await onePdf(flp, packName('Forklift_reports', l)));
           if (crp.length) await put(await onePdf(crp, packName('Crane_hoist_reports', l)));
           if (tcp.length) await put(await onePdf(tcp, packName('TECHNICIAN_Crane_hoist_reports_for_quote', l)));
@@ -681,7 +692,7 @@
       let prof = {}; prof = await profOf(g.uid);
       tool = await certTool(); const l = JSON.parse(JSON.stringify(g.list)); const idx = tool.api.certIdx(l);
       if (!idx.length){ toast('No certificates yet – the technician has not marked the items Safe or Unsafe'); return; }
-      const f = await tool.api.certDoc(l, idx, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '' }, await utFor(g.uid, l, null));
+      l.techLmi = lmiFor(j.tech); const f = await tool.api.certDoc(l, idx, { name:prof.name || nameOf(j.tech) || '', signature:prof.signature || '', lmi:l.techLmi }, await utFor(g.uid, l, null));
       if (!f) return toast('No certificates for this job');
       const url = URL.createObjectURL(f.blob); const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000);
       toast(idx.length + (idx.length === 1 ? ' certificate' : ' certificates') + ' downloaded');
@@ -867,6 +878,7 @@
       <div class="row"><div class="field"><label for="tf">Technician</label><select id="tf"><option value="">Everyone</option>${techs.map(t => `<option value="${esc(t)}" ${S.techFilter === t ? 'selected' : ''}>${esc(nameOf(t) || t)}</option>`).join('')}</select></div>
         <div class="field"><label for="per">Show</label><select id="per"><option value="">From a week ago</option><option value="all" ${S.allJobs ? 'selected' : ''}>All jobs, also older</option></select></div>
         <button class="btn secondary" id="refresh" style="width:auto;align-self:flex-end">↻ Refresh</button>
+        <button class="btn secondary" data-tab="inv" style="width:auto;align-self:flex-end">⬆ New job from client's file</button>
         <button class="btn primary" id="newJob" style="width:auto;align-self:flex-end">＋ New job</button></div>
       ${list.length ? `<div class="row" style="gap:8px"><button class="x" id="daysOpen" style="border-color:var(--navy);color:var(--navyDeep)">▾ Open all days</button><button class="x" id="daysClose" style="border-color:var(--navy);color:var(--navyDeep)">▸ Close all days</button><span class="hint">Tap a day to open or close it.</span></div>` : ''}
       ${S.sel.size ? `<div class="row" style="background:#FDF3F2;border-radius:10px;padding:8px 10px"><b style="flex:1">${S.sel.size} selected</b><button class="x" id="selNone" style="border-color:var(--navy);color:var(--navyDeep)">Clear</button><button class="x" id="selDel" style="background:var(--bad);color:#fff">🗑 Remove ${S.sel.size} ${S.sel.size === 1 ? 'job' : 'jobs'}</button></div>` : ''}
@@ -898,7 +910,7 @@
   // ---------- weekly backup: a dated copy of every job, saved by the office (e.g. to Google Drive) ----------
   const backupDays = () => S.backup && S.backup.at ? Math.floor((Date.now() - S.backup.at) / 86400000) : null;
   const backupFrom = () => { if (S.backup && S.backup.to){ const d = new Date(S.backup.to + 'T12:00:00'); d.setDate(d.getDate() - 1); return keyOf(d); } return '2026-01-01'; };
-  function backupBar(){ if (S.tab === 'export') return ''; const n = backupDays(); if (n != null && n < 7) return '';
+  function backupBar(){ if (S.tab !== 'export') return ''; const n = backupDays(); if (n != null && n < 7) return '';
     return `<div role="status" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#FFF4CC;border:1px solid #f0dc8a;border-radius:12px;padding:10px 14px;margin:12px auto 0;max-width:1100px;color:#6B5200;font-size:14px">
       <span style="font-size:20px">🗂</span><span style="flex:1;min-width:200px"><b>${n == null ? 'No backup yet' : 'Last backup ' + n + ' days ago'}</b> – save a copy of every job (e.g. to Google Drive) once a week.</span>
       <button class="btn navy" id="bkGo" style="width:auto">Back up now</button></div>`; }
@@ -938,7 +950,7 @@
       if ((S.tab === 'jobs' || S.tab === 'inv') && !(S.jobs || []).length) refreshJobs().then(() => render()).catch(() => {}); },
     render: () => render() });
   function render(){ if (!NAVON && !S.noAdmin && window.Cloud && window.Cloud.email && window.Cloud.email()){ NAVON = true; NAV.start(); }
-    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + backupBar() + (S.tab === 'jobs' ? vJobs() : S.tab === 'print' ? vPrint() : S.tab === 'mail' ? vMail() : S.tab === 'paper' ? vPaper() : S.tab === 'admins' && S.owner ? vAdmins() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
+    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + backupBar() + (S.tab === 'jobs' ? vJobs() : S.tab === 'print' ? vPrint() : S.tab === 'mail' ? vMail() : S.tab === 'techs' ? vTechs() : S.tab === 'paper' ? vPaper() : S.tab === 'admins' && S.owner ? vAdmins() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
   function wire(){
     const $ = id => document.getElementById(id);
     app.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { if (b.dataset.tab === 'mail') setTimeout(prepMail, 0); }));
@@ -983,7 +995,7 @@
     app.querySelectorAll('[data-tspdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.tspdf, 'ts', b));
     if (S.tab === 'jobs') loadProgress();
     wireInvAdd($);
-    wirePrint($); wireMail($); wirePaper($); wireAdmins($);
+    wirePrint($); wireMail($); wirePaper($); wireAdmins($); wireTechs($);
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
     app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b){ const j = newJob(); const n = (S.inv || []).filter(r => !r.errs.length).length; b.disabled = !(j.ready && !S.busy); b.textContent = schedLabel(j, n); } };
       el.oninput = upd; el.onchange = upd; });
@@ -1262,7 +1274,8 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
       <section class="card"><h2>📝 New paper job</h2>
         <span class="hint" style="font-size:14px;line-height:1.5">For a job that was done on paper. You fill in the client's inventory like the technician does, and the app makes the <b>inventory list</b>, the <b>certificates</b> and the <b>equipment for quote</b> in the normal layout.
           The certificates carry the <b>technician's name and signature</b> and the <b>date of the paper job</b>. Paper jobs are not in the print run or the exports – download them here when needed.</span>
-        <div class="field"><label for="pjTech">Technician who did the job</label><select id="pjTech" data-pj="tech"><option value="">Choose the technician…</option>${S.users.map(u => `<option value="${esc(u.uid)}" ${u.uid === n.tech ? 'selected' : ''}>${esc(u.name || u.email)} – ${esc(u.email)}</option>`).join('')}</select></div>
+        <div class="field"><label for="pjTech">Technician who did the job</label><select id="pjTech" data-pj="tech"><option value="">Choose the technician…</option>${(S.techs || []).map(t => `<option value="rec:${esc(t.id)}" ${'rec:' + t.id === n.tech ? 'selected' : ''}>${esc(t.name)}${t.lmi ? ' – LMI ' + esc(t.lmi) : ''}${t.email ? ' – ' + esc(t.email) : ''}</option>`).join('')}${S.users.filter(u => !techRecOf(u.email)).map(u => `<option value="${esc(u.uid)}" ${u.uid === n.tech ? 'selected' : ''}>${esc(u.name || u.email)} – ${esc(u.email)}</option>`).join('')}</select>
+          <span class="hint">Not in the list, or the LMI number is missing? Add or change it under <b>Technicians</b>.</span></div>
         <div class="row"><div class="field"><label for="pjJob">Job number</label><input id="pjJob" data-pj="job" value="${esc(n.job)}" placeholder="e.g. 7101" autocomplete="off"></div>
           <div class="field"><label for="pjDate">Date of the job (from the paper)</label><input id="pjDate" type="date" data-pj="date" value="${esc(n.date)}" max="${keyOf(new Date())}"></div></div>
         <div class="row"><div class="field"><label for="pjCust">Client</label><input id="pjCust" data-pj="customer" value="${esc(n.customer)}" autocomplete="off"></div>
@@ -1282,13 +1295,15 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
     app.querySelectorAll('[data-pj]').forEach(el => { const upd = () => { S.pj[el.dataset.pj] = el.value; const b = $('pjGo'), n = S.pj; if (b){ const ok = n.tech && n.job.trim() && n.customer.trim() && /^\d{4}-\d{2}-\d{2}$/.test(n.date); b.disabled = !ok; b.textContent = ok ? 'Start paper job → fill in the inventory' : 'Fill in the technician, job number, date and client'; } };
       el.oninput = upd; el.onchange = upd; });
     const go = $('pjGo'); if (go) go.onclick = async () => {
-      const n = S.pj, u = S.users.find(x => x.uid === n.tech); if (!u) return toast('Choose the technician');
+      const n = S.pj, rec = /^rec:/.test(n.tech) ? (S.techs || []).find(t => 'rec:' + t.id === n.tech) : null;
+      const u = rec ? S.users.find(x => rec.email && String(x.email).toLowerCase() === String(rec.email).toLowerCase()) : S.users.find(x => x.uid === n.tech); if (!rec && !u) return toast('Choose the technician');
       S.pjMaking = true; render();
       try {
-        const prof = await profOf(u.uid); const job = n.job.trim().toUpperCase().replace(/\s+/g, '');
+        const prof = u ? await profOf(u.uid) : {}; const job = n.job.trim().toUpperCase().replace(/\s+/g, '');
         const id = 'paper-' + job.replace(/[^\w-]+/g, '') + '-' + Date.now().toString(36);
-        const l = { id, paper:true, date:n.date, job, customer:n.customer.trim().toUpperCase(), location:n.site.trim(), rows:[], tech:prof.name || u.name || u.email, techUid:u.uid, techEmail:u.email,
-          techSig:prof.signature || '', ut:{ name:'', lmi:'', sig:'' }, by:window.Cloud.email(), createdAt:new Date().toISOString(), savedAt:Date.now() };
+        const l = { id, paper:true, date:n.date, job, customer:n.customer.trim().toUpperCase(), location:n.site.trim(), rows:[], tech:(rec && rec.name) || prof.name || (u && (u.name || u.email)) || '',
+          techUid:(u && u.uid) || '', techEmail:(rec && rec.email) || (u && u.email) || '', techRec:(rec && rec.id) || '', techLmi:(rec && rec.lmi) || '',
+          techSig:(rec && rec.sig) || prof.signature || '', ut:{ name:'', lmi:'', sig:'' }, by:window.Cloud.email(), createdAt:new Date().toISOString(), savedAt:Date.now() };
         if (!l.techSig) toast((l.tech || 'The technician') + ' has no signature saved – the certificates will have none');
         await window.Cloud.setItem(paperDoc(id), Object.assign({ kind:'paper' }, l));
         const m = paperLocal(); m[id] = l; paperKeep(m); S.pj = null;
@@ -1334,6 +1349,65 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
       m.querySelector('#arNo').onclick = () => m.remove();
       m.querySelector('#arYes').onclick = async () => { m.remove(); try { await window.Cloud.removeAdmin(em); toast(em + ' removed'); } catch(err){ toast('Could not remove – check the Firebase rules'); } loadAdmins(); }; });
   }
+
+  // ---------- technicians (the office's list): name, sign-in email if they use the app, own LMI number, signature ----------
+  // Saved in settings/technicians. Used for paper jobs, and a technician with an LMI number gets it under their name on load test certificates – no understudy.
+  async function loadTechs(){ try { const d = await window.Cloud.getSetting('technicians'); S.techs = (d && Array.isArray(d.list)) ? d.list : []; } catch(e){ S.techs = S.techs || []; } return S.techs; }
+  const techRecOf = email => { const e = String(email || '').trim().toLowerCase(); return e ? (S.techs || []).find(t => String(t.email || '').trim().toLowerCase() === e) || null : null; };
+  const lmiFor = email => { const t = techRecOf(email); return (t && String(t.lmi || '').trim()) || ''; };
+  async function saveTechs(list){ await window.Cloud.setSetting('technicians', { list, by:window.Cloud.email(), at:new Date().toISOString() }); S.techs = list; }
+  function vTechs(){
+    const list = (S.techs || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))), e = S.te;
+    const notIn = S.users.filter(u => !techRecOf(u.email));
+    const form = e ? `<section class="card" style="border:2px solid var(--navy)"><h2>${e.id ? 'Change technician' : 'New technician'}</h2>
+        <div class="row"><div class="field"><label for="teName">Name and surname</label><input id="teName" value="${esc(e.name || '')}" autocomplete="off"></div>
+          <div class="field"><label for="teLmi">Own LMI number <span style="font-weight:400">(empty = needs an understudy)</span></label><input id="teLmi" value="${esc(e.lmi || '')}" autocomplete="off" placeholder="e.g. 2007120060"></div></div>
+        <div class="field"><label for="teEmail">Sign-in email in the app <span style="font-weight:400">(only if they use the app)</span></label><input id="teEmail" type="email" value="${esc(e.email || '')}" autocomplete="off" placeholder="name@…"></div>
+        <div class="field"><label>Signature</label><div style="position:relative;border:1.5px dashed var(--field);border-radius:10px;background:#fff;height:130px"><canvas id="tePad" style="width:100%;height:100%;touch-action:none;display:block"></canvas>${e.sig ? '' : '<span class="hint" id="tePh" style="position:absolute;left:12px;top:54px;pointer-events:none">Sign here, or upload a picture of the signature</span>'}</div>
+          <div class="row" style="gap:8px"><button type="button" class="x" id="teUp" style="border-color:var(--navy);color:var(--navyDeep)">Upload signature</button><input type="file" id="teFile" accept="image/*" style="display:none"><button type="button" class="x" id="teClr" style="border-color:var(--navy);color:var(--navyDeep)">Clear</button>
+          ${e.email && S.users.some(u => String(u.email).toLowerCase() === String(e.email).toLowerCase()) ? '<button type="button" class="x" id="teApp" style="border-color:var(--navy);color:var(--navyDeep)">Use their app signature</button>' : ''}</div></div>
+        <div class="row"><button class="btn primary" id="teSave">Save technician</button><button class="btn secondary" id="teCancel">Cancel</button></div></section>` : '';
+    return `<main><div class="steps">${form}
+      <section class="card"><h2>👷 Technicians</h2>
+        <span class="hint" style="font-size:14px;line-height:1.5">The office's list of technicians, for <b>paper jobs</b> (also people who don't use the app) and for <b>LMI numbers</b>. A technician with their <b>own LMI number</b> gets it under their name on load test certificates (also forklift) and needs <b>no understudy</b> – on paper jobs and on their own jobs in the app.</span>
+        ${list.length ? list.map(t => `<div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap">
+            ${t.sig ? `<img src="${esc(t.sig)}" alt="" style="width:90px;height:40px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px">` : '<span class="hint" style="width:90px">No signature</span>'}
+            <span style="flex:1;min-width:200px"><b>${esc(t.name)}</b><div class="hint">${t.lmi ? '<b style="color:var(--ok)">LMI ' + esc(t.lmi) + '</b> – no understudy' : 'No LMI – needs an understudy'} · ${t.email ? esc(t.email) : 'no app account'}</div></span>
+            <button class="x" data-teed="${esc(t.id)}" style="border-color:var(--navy);color:var(--navyDeep)">✎ Edit</button><button class="x" data-tedel="${esc(t.id)}">🗑 Remove</button></div>`).join('') : '<span class="hint">No technicians yet.</span>'}
+        <button class="btn primary" id="teNew" style="width:auto">＋ Add technician</button>
+        ${notIn.length ? `<span class="hint">Signed in to the app but not on the list yet – tap to add (name and signature are taken over):</span><div class="row" style="gap:8px;flex-wrap:wrap">${notIn.map(u => `<button class="x" data-tefrom="${esc(u.uid)}" style="border-color:var(--navy);color:var(--navyDeep)">＋ ${esc(u.name || u.email)}</button>`).join('')}</div>` : ''}
+      </section></div></main>`;
+  }
+  function wireTechs($){
+    if (S.tab !== 'techs') return;
+    const open = t => { S.te = Object.assign({ id:'', name:'', email:'', lmi:'', sig:'' }, t || {}); render(); window.scrollTo(0, 0); };
+    const nw = $('teNew'); if (nw) nw.onclick = () => open();
+    app.querySelectorAll('[data-teed]').forEach(b => b.onclick = () => open((S.techs || []).find(t => t.id === b.dataset.teed)));
+    app.querySelectorAll('[data-tefrom]').forEach(b => b.onclick = async () => { const u = S.users.find(x => x.uid === b.dataset.tefrom); if (!u) return; const p = await profOf(u.uid); open({ name:p.name || u.name || '', email:u.email, sig:p.signature || '' }); });
+    app.querySelectorAll('[data-tedel]').forEach(b => b.onclick = () => { const t = (S.techs || []).find(x => x.id === b.dataset.tedel); if (!t) return;
+      const m = exportBox(`<h2>Remove ${esc(t.name)}?</h2><span class="hint" style="font-size:14px">Only from the office's list. Their app account and jobs stay; paper jobs already made keep the name and signature.</span><button class="btn primary" id="tdYes" style="background:var(--bad);border-color:var(--bad);color:#fff">Remove</button><button class="btn secondary" id="tdNo">Cancel</button>`);
+      m.querySelector('#tdNo').onclick = () => m.remove();
+      m.querySelector('#tdYes').onclick = async () => { m.remove(); try { await saveTechs((S.techs || []).filter(x => x.id !== t.id)); toast('Removed'); render(); } catch(e){ toast('Could not save – check the Firebase rules (settings)'); } }; });
+    const e = S.te; if (!e) return;
+    const nm = $('teName'), lm = $('teLmi'), em = $('teEmail'); nm.oninput = () => { e.name = nm.value; }; lm.oninput = () => { e.lmi = lm.value; }; em.oninput = () => { e.email = em.value; };
+    const c = $('tePad'), x = c.getContext('2d'); const r0 = c.getBoundingClientRect(), dp = window.devicePixelRatio || 1; c.width = r0.width * dp; c.height = r0.height * dp; x.setTransform(dp, 0, 0, dp, 0, 0); x.lineWidth = 2.4; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#13224F';
+    if (e.sig){ const im = new Image(); im.onload = () => { const sc = Math.min(r0.width / im.width, r0.height / im.height) * 0.9, w = im.width * sc, h = im.height * sc; x.drawImage(im, (r0.width - w) / 2, (r0.height - h) / 2, w, h); }; im.src = e.sig; }
+    let on = false, inked = false; const pt = ev => { const r = c.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; };
+    c.onpointerdown = ev => { on = true; c.setPointerCapture(ev.pointerId); if (!inked && e.sig) x.clearRect(0, 0, c.width, c.height); inked = true; const [a, b] = pt(ev); x.beginPath(); x.moveTo(a, b); const ph = $('tePh'); if (ph) ph.remove(); };
+    c.onpointermove = ev => { if (!on) return; const [a, b] = pt(ev); x.lineTo(a, b); x.stroke(); };
+    c.onpointerup = c.onpointercancel = () => { if (!on) return; on = false; e.sig = c.toDataURL('image/png'); };
+    $('teClr').onclick = () => { e.sig = ''; render(); };
+    $('teUp').onclick = () => $('teFile').click();
+    $('teFile').onchange = async ev => { const f = ev.target.files && ev.target.files[0]; if (!f) return; try { e.sig = await BC.fileToSig(f); render(); } catch(err){ toast('Could not read that picture'); } };
+    const ap = $('teApp'); if (ap) ap.onclick = async () => { const u = S.users.find(v => String(v.email).toLowerCase() === String(e.email).toLowerCase()); if (!u) return; const p = await profOf(u.uid); if (p.signature){ e.sig = p.signature; render(); } else toast('No signature in their app profile'); };
+    $('teCancel').onclick = () => { S.te = null; render(); };
+    $('teSave').onclick = async () => { const name = String(e.name || '').trim().replace(/\s+/g, ' '), email = String(e.email || '').trim().toLowerCase(), lmi = String(e.lmi || '').trim();
+      if (!name) return toast('Fill in the name and surname');
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return toast('That email does not look right');
+      const list = (S.techs || []).slice(); if (email && list.some(t => t.id !== e.id && String(t.email || '').toLowerCase() === email)) return toast('That email is already on the list');
+      const rec = { id:e.id || 't' + Date.now().toString(36), name, email, lmi, sig:e.sig || '' }; const k = list.findIndex(t => t.id === rec.id); if (k >= 0) list[k] = rec; else list.push(rec);
+      try { await saveTechs(list); S.te = null; toast(name + ' saved'); render(); } catch(err){ console.error(err); toast('Could not save – check the Firebase rules (settings)'); } };
+  }
   async function refreshUsers(){ try { S.users = (await window.Cloud.listUsers()).filter(u => u.email).sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))); } catch(e){ S.users = []; } }
 
   // after a restart (a tablet does this when a PDF is opened or shared) the page comes back as it was: tab, filters, scroll position, files
@@ -1350,7 +1424,8 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
     let shown = false; try { const c = JSON.parse(sessionStorage.getItem(cacheK) || 'null'); if (c && c.jobs){ S.jobs = c.jobs; S.users = c.users || []; render(); shown = true; if (savedView.y && savedView.tab === S.tab) window.scrollTo(0, savedView.y); } } catch(e){}
     try { S.backup = await window.Cloud.getItem('backup'); } catch(e){ S.backup = null; }
     try { const me = await window.Cloud.adminInfo(); S.owner = !!(me && me.owner); } catch(e){ S.owner = false; }
-    if (S.tab === 'admins' && !S.owner) S.tab = 'inv';
+    await loadTechs();
+    if (S.tab === 'admins' && !S.owner) S.tab = 'techs';
     await refreshUsers(); await refreshJobs(); const y0 = window.scrollY; render();
     try { sessionStorage.setItem(cacheK, JSON.stringify({ jobs:S.jobs, users:S.users.map(u => ({ uid:u.uid, email:u.email, name:u.name || '' })) })); } catch(e){}
     window.scrollTo(0, shown ? y0 : (savedView.tab === S.tab && savedView.y) || 0);
