@@ -99,6 +99,9 @@ window.Cloud = api;
     };
     // ---- shared: jobs loaded by the office, admin role, user directory ----
     api.email = () => String((auth.currentUser && auth.currentUser.email) || '').trim().toLowerCase();
+    // shared settings (settings/{id}): every signed-in technician reads them, only admins change them – e.g. 'email' = the Google script that sends the client emails
+    api.getSetting = async id => { try { const s = await F.getDoc(F.doc(fs, 'settings', id)); return s.exists() ? s.data() : null; } catch (e) { try { const c = await F.getDocFromCache(F.doc(fs, 'settings', id)); return c.exists() ? c.data() : null; } catch (_) { return null; } } };
+    api.setSetting = (id, data) => F.setDoc(F.doc(fs, 'settings', id), data);
     api.isAdmin = async () => { try { const s = await F.getDoc(F.doc(fs, 'admins', api.email())); return s.exists(); } catch (e) { return false; } };
     // admin accounts: the owner (admins/{email} with owner:true, set once in Firebase) adds and removes the others in Admin
     api.adminInfo = async () => { try { const s = await F.getDoc(F.doc(fs, 'admins', api.email())); return s.exists() ? Object.assign({ email: api.email() }, s.data()) : null; } catch (e) { return null; } };

@@ -130,6 +130,13 @@ Everything for a person is under `users/{uid}/items/`:
 - A job with an order nr from the office (Admin) is a quoted job: the time record starts switched off (the technician can switch it on).
 - The PDF (Report_and_time_card_…) is laid out like the paper card; it is in the job zip / whole-job PDF on the phone and in Admin (own button, Job PDF, All files).
 
+## Client email after sign-off (rule)
+
+- Straight after the client signs (Finish job / Save sign-off with an email address), the phone emails the client: the **inventory list**, the **client's reports** (forklift, crane / hoist, man cage – one PDF per kind, no technician's quote copies) and the **signed report & time card**. No certificates, no copy to the office.
+- Sent from the office's Google account by a small Google Apps Script web app (Admin → **Email** has the script with its secret key and the steps). Setting: `settings/email` = { url, key, fromName, replyTo } – read by every signed-in user, changed only by admins (firestore.rules). `BC.sendMail` posts the PDFs (base64) as text/plain JSON.
+- No signal or the script fails: `signoff.mail` stays `waiting` (with `mailErr`), and the inventory page tries again when opened or when the app comes back (`retryMail`, at most every 10 minutes per job). Sent: `mail = 'sent'`, `mailAt`.
+- Admin → Email lists the signed-off jobs of the last 30 days (✓ Emailed / ⏳ Waiting / no address) with **Send now / Send again** (Admin builds the same files; marks the job `mailSentAt`, `mailTo`).
+
 ## Backup (rule)
 
 - Admin shows a reminder bar when there is no backup or the last one is 7+ days old. Export jobs → Weekly backup → Back up now makes one zip of every job since a day before the last backup (first time: from 1 Jan 2026); it counts once the zip is saved. The last backup is kept per admin (users/{uid}/items/backup). Save the zip to Google Drive / OneDrive.

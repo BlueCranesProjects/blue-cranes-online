@@ -32,6 +32,12 @@ service cloud.firestore {
       allow delete: if isOwner() && email != myEmail();
     }
 
+    // shared settings, e.g. settings/email: the Google script that sends the client emails
+    match /settings/{id} {
+      allow read: if verified();
+      allow write: if isAdmin();
+    }
+
     match /jobs/{jobId} {
       allow read, write: if isAdmin();
       allow read: if verified() && resource.data.tech == myEmail();
