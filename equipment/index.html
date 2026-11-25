@@ -151,6 +151,7 @@
 (function(){
   'use strict';
   const LKEY = 'bco-equipment';          // all equipment lists, kept on the phone too
+  const EMB = /[?&]embed=1/.test(location.search);   // opened hidden by Admin: never use this computer's saved understudy
   const app = document.getElementById('app');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const today = () => { const d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
@@ -469,7 +470,14 @@
   // a forklift / stacker report's certificate gets the number of its line on the inventory
   function flCertNo(l, st){ if (!l || !st || !st.f) return null; const rid = st._rid || st.f.docno || '';
     const r = (st.row && (l.rows || []).find(x => x.id === st.row)) || (l.rows || []).find(x => x.fl && x.fl === rid); return r ? lineNos(l).get(r.id || r) || null : null; }
-  const withFlNo = (l, st) => { const n = flCertNo(l, st); if (n) st.f.cno = n; return st; };
+  const withFlNo = (l, st, ut) => { const n = flCertNo(l, st); if (n) st.f.cno = n; return withUt(l, st, ut); };
+  // a forklift load test certificate: the report's own understudy, else the job's understudy (Job details & understudy) – name, LMI number and signature
+  function withUt(l, st, ut){ if (!st || !st.f) return st; st.sig = st.sig || {};
+    const u = (ut && (ut.name || ut.sig)) ? ut : (l ? utFull(l) : null); if (!u || !(u.name || u.sig)) return st;
+    const same = !st.f.utName || !u.name || String(st.f.utName).trim().toLowerCase() === String(u.name).trim().toLowerCase();
+    if (!st.f.utName && !st.sig.sigUt){ st.f.utName = u.name || ''; st.f.utLmi = u.lmi || ''; st.sig.sigUt = u.sig || null; }
+    else if (same){ if (!st.sig.sigUt && u.sig) st.sig.sigUt = u.sig; if (!st.f.utLmi && u.lmi) st.f.utLmi = u.lmi; if (!st.f.utName && u.name) st.f.utName = u.name; }
+    return st; }
   const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
   const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
   function certLine(l, r, i){
@@ -505,9 +513,9 @@
   const UTK = 'bc-forklift-understudy';
   const utLocal = () => { try { return JSON.parse(localStorage.getItem(UTK) || '{}') || {}; } catch(e){ return {}; } };
   const needsUt = l => (l.rows || []).some(r => (isCertItem(r) && !isInspCert(r)) || isForklift(r));
-  function utOf(l){ if (!l.ut){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
+  function utOf(l){ if (!l.ut && !EMB){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
   // for the certificates: the job's understudy, with the signature / LMI number of the same person saved on this phone if the job has none
-  function utFull(l){ const u = utOf(l); if (!(u.name || u.sig)) return u; const sv = utLocal(), same = !u.name || !sv.name || String(sv.name).trim().toLowerCase() === String(u.name).trim().toLowerCase();
+  function utFull(l){ const u = utOf(l); if (EMB || !(u.name || u.sig)) return u; const sv = utLocal(), same = !u.name || !sv.name || String(sv.name).trim().toLowerCase() === String(u.name).trim().toLowerCase();
     return (same && (!u.sig || !u.lmi)) ? { name:u.name || sv.name || '', lmi:u.lmi || sv.lmi || '', sig:u.sig || sv.sig || '' } : u; }
   let utCloudT;
   function utSave(l, p){ l.ut = Object.assign(utOf(l), p); saveList(l); try { localStorage.setItem(UTK, JSON.stringify(Object.assign(utLocal(), { name:l.ut.name, lmi:l.ut.lmi, sig:l.ut.sig || null }))); } catch(e){}
@@ -633,7 +641,7 @@
       ${contCard(l)}
       ${(() => { const F = folds(); if (F.jd == null) F.jd = false;
         const sum = [l.customer, 'Job ' + (l.job || '–'), niceDate(l.date), l.location].filter(Boolean).map(esc).join(' · ');
-        return `<button type="button" class="fold jdh" data-fold="jd" aria-expanded="${!!F.jd}"><span>Job details &amp; understudy</span><span class="n${l.location ? ' full' : ''}">${l.location ? '✓ Done' : 'Site to fill in'}</span><span class="fch">${F.jd ? '▾' : '▸'}</span></button>
+        return `<button type="button" class="fold jdh" data-fold="jd" aria-expanded="${!!F.jd}"><span>Job details &amp; understudy</span>${(() => { const u = utOf(l), utMiss = needsUt(l) && !(u.name && u.sig); return `<span class="n${l.location && !utMiss ? ' full' : ''}"${utMiss ? ' style="background:#FDECEA;color:#B42318"' : ''}>${!l.location ? 'Site to fill in' : utMiss ? 'Understudy to fill in' : '✓ Done'}</span>`; })()}<span class="fch">${F.jd ? '▾' : '▸'}</span></button>
           ${F.jd ? '' : `<div class="hint" style="margin:-4px 4px 4px">${sum}</div>`}<div ${F.jd ? '' : 'style="display:none"'}>`; })()}
       <section class="card">
         <div class="field"><label for="fCust">Customer</label><input id="fCust" value="${esc(l.customer)}" readonly></div>
@@ -1557,7 +1565,7 @@
   if (new URLSearchParams(location.search).get('embed') === '1'){
     window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; }),
       certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), quoteDoc: (l, techName) => quoteDoc(l, { techName }), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
-      flCertNo: (l, st) => flCertNo(l, st), itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (ut && (ut.name || ut.sig)) ? ut : ((l.ut && (l.ut.name || l.ut.sig)) ? l.ut : null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
+      flCertNo: (l, st) => flCertNo(l, st), flCertSt: (l, st, ut) => withFlNo(l, st, ut), itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (ut && (ut.name || ut.sig)) ? ut : ((l.ut && (l.ut.name || l.ut.sig)) ? l.ut : null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else
   (async function start(){
     lsLoad(); S.profile = BC.cachedProfile();

@@ -926,6 +926,8 @@ function monthYear(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s||""))return(s||"").toUppe
 // certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
 const CERT_TOP=70,CERT_K=0.82;
 async function buildCert(st){
+  // no understudy on the report: the one saved on this phone (filled in on the client's inventory) – not when Admin makes it (it passes the job's own)
+  if(!EMBED&&st&&st.f){st.sig=st.sig||{};const u=utSaved();if(!st.f.utName&&!st.sig.sigUt&&(u.name||u.sig)){st.f.utName=u.name||"";st.f.utLmi=u.lmi||"";st.sig.sigUt=u.sig||null;}else if(st.f.utName&&!st.sig.sigUt&&u.sig&&(!u.name||String(u.name).trim().toLowerCase()===String(st.f.utName).trim().toLowerCase())){st.sig.sigUt=u.sig;if(!st.f.utLmi)st.f.utLmi=u.lmi||"";}}
   const {jsPDF}=window.jspdf,f=st.f,doc=new jsPDF({unit:"mm",format:"a4"});
   const NAVY=[27,47,110],YEL=[245,196,0],RED=[190,30,30],INK=[20,24,40],L=20,R=190;
   const dims={};for(const im of [st.sig.sigEng,st.sig.sigUt])if(im)dims[im]=await imgDims(im);
