@@ -79,7 +79,7 @@
   const hm = h => { const t = Math.round((Number(h) || 0) * 60), H = Math.floor(t / 60), M = t % 60; return H + ':' + pad(M); };
   const clockH = (a, b) => { const m = s => { const r = /^(\d{1,2})[:h.]?(\d{2})$/.exec(String(s || '').trim()); return r ? Number(r[1]) * 60 + Number(r[2]) : NaN; }; const x = m(a), y = m(b); if (isNaN(x) || isNaN(y)) return NaN; let d = y - x; if (d < 0) d += 1440; return d / 60; };
   let tt; function toast(m){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role','status'); document.body.appendChild(t); } t.textContent = m; clearTimeout(tt); tt = setTimeout(() => t.remove(), 3000); }
-  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
+  const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print','mail'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
   // ?printrun=auto: opened by the office computer's 6:00 print program – go straight to Print run and make the files
   const AUTOPRINT = (() => { try { return new URLSearchParams(location.search).get('printrun') === 'auto'; } catch(e){ return false; } })();
   const VIEWK = 'bco-admin-view'; const savedView = (() => { try { return JSON.parse(sessionStorage.getItem(VIEWK) || '{}') || {}; } catch(e){ return {}; } })();
@@ -333,7 +333,7 @@
   // ---------- views ----------
   function head(){ return `<header><img src="../icons/logo.png" alt="Blue Cranes" style="width:44px;height:44px;border-radius:50%;background:#fff;object-fit:contain">
       <div style="flex:1"><div class="sub">Blue Cranes Online</div><h1>Admin</h1></div><button type="button" id="admOut" style="border:1.5px solid rgba(255,255,255,.6);background:none;color:#fff;border-radius:10px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer">Sign out</button></header>
-      <nav class="seg" aria-label="Admin sections">${[['inv','Import jobs'],['jobs','Schedule jobs'],['print','Print run'],['export','Export jobs']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
+      <nav class="seg" aria-label="Admin sections">${[['inv','Import jobs'],['jobs','Schedule jobs'],['print','Print run'],['mail','Email'],['export','Export jobs']].map(([k, t]) => `<button data-tab="${k}" ${S.tab === k ? 'aria-current="page"' : ''}>${t}</button>`).join('')}</nav>`; }
   function vLoad(){
     const p = S.preview; const ok = p ? p.filter(r => !r.errs.length) : [];
     return `<main><div class="steps">
@@ -391,12 +391,12 @@
         const mc = j.card ? mcc[u.uid].filter(r => core(r.job || r.state.f.jobno) === core(j.card)) : [];
         if (mc.length){ const o = S.invProg[j.id] || {}; if ((o.mc || []).length !== mc.length) changed = true; S.invProg[j.id] = Object.assign(o, { mc, uid:u.uid }); }
         const l = cache[u.uid].find(x => x.sched === 'A_' + j.id) || (j.sheetDate ? cache[u.uid].find(x => x.id === listIdOf(j.sheetDate, j) || (x.also || []).includes(listIdOf(j.sheetDate, j))) : null); if (!l) continue;
-        if (l.signoff && l.signoff.sig && !S.signs[j.id]){ S.signs[j.id] = l.signoff; noteSign(l); changed = true; }
+        if (l.signoff && l.signoff.sig && (!S.signs[j.id] || S.signs[j.id].mail !== l.signoff.mail)){ S.signs[j.id] = l.signoff; noteSign(l); changed = true; }
         const rows = (l.rows || []).filter(r => r.serial || r.desc); if (!rows.length) continue;
         const g = { fl:(S.invProg[j.id] || {}).fl || [], cr:(S.invProg[j.id] || {}).cr || [], mc:(S.invProg[j.id] || {}).mc || [], total:rows.length, done:rows.filter(r => r.status).length, unsafe:rows.filter(r => r.status === 'UNSAFE').length, list:l, uid:u.uid }; g.open = g.total - g.done;
         const o = S.invProg[j.id]; if (!o || o.done !== g.done || o.total !== g.total || o.unsafe !== g.unsafe) changed = true; S.invProg[j.id] = g; }
     } finally { progBusy = false; }
-    if (changed && (S.tab === 'jobs' || S.tab === 'print')) render();
+    if (changed && (S.tab === 'jobs' || S.tab === 'print' || S.tab === 'mail')) render();
   }
   // the job's certificates, made by the inventory tool (hidden) from the technician's synced inventory
   function certTool(){
@@ -938,9 +938,10 @@
       if ((S.tab === 'jobs' || S.tab === 'inv') && !(S.jobs || []).length) refreshJobs().then(() => render()).catch(() => {}); },
     render: () => render() });
   function render(){ if (!NAVON && !S.noAdmin && window.Cloud && window.Cloud.email && window.Cloud.email()){ NAVON = true; NAV.start(); }
-    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + backupBar() + (S.tab === 'jobs' ? vJobs() : S.tab === 'print' ? vPrint() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
+    app.innerHTML = S.noAdmin ? vNoAdmin(S.noAdmin) : head() + backupBar() + (S.tab === 'jobs' ? vJobs() : S.tab === 'print' ? vPrint() : S.tab === 'mail' ? vMail() : S.tab === 'export' ? vExport() : S.tab === 'inv' ? vInv() : vLoad()); wire(); if (NAVON) NAV.note(); }
   function wire(){
     const $ = id => document.getElementById(id);
+    app.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { if (b.dataset.tab === 'mail') setTimeout(prepMail, 0); }));
     app.querySelectorAll('[data-tab]').forEach(b => b.onclick = async () => { S.tab = b.dataset.tab; try { sessionStorage.setItem('bco-admin-tab', S.tab); } catch(e){} if (S.tab === 'jobs' || S.tab === 'inv' || S.tab === 'print') await refreshJobs(); if ((S.tab === 'inv' || S.tab === 'export' || S.tab === 'print') && !S.users.length) await refreshUsers(); render(); if (S.tab === 'print') prepPrint(); });
     const tpl = $('tpl'); if (tpl) tpl.onclick = async () => { try { await xlsxReady();
       const wb = XLSX.utils.book_new(); const nx = new Date(Date.now() + 864e5); const ex = pad(nx.getDate()) + '/' + pad(nx.getMonth() + 1) + '/' + nx.getFullYear();
@@ -981,7 +982,7 @@
     app.querySelectorAll('[data-tspdf]').forEach(b => b.onclick = () => downloadJob(b.dataset.tspdf, 'ts', b));
     if (S.tab === 'jobs') loadProgress();
     wireInvAdd($);
-    wirePrint($);
+    wirePrint($); wireMail($);
     const ij = $('ij'); if (ij) ij.onchange = () => { S.invJob = ij.value; render(); };
     app.querySelectorAll('[data-nj]').forEach(el => { const upd = () => { S.nj[el.dataset.nj] = el.value; const b = $('iload'); if (b){ const j = newJob(); const n = (S.inv || []).filter(r => !r.errs.length).length; b.disabled = !(j.ready && !S.busy); b.textContent = schedLabel(j, n); } };
       el.oninput = upd; el.onchange = upd; });
@@ -1152,6 +1153,90 @@
     finally { btn.disabled = false; btn.innerHTML = old; }
   }
   const $v = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+
+  // ---------- client emails: the office's Google account sends them through a small Google script (settings/email = { url, key }) ----------
+  const mailScript = key => `// Blue Cranes Online – sends the client's reports after the job is signed off.
+// Runs in YOUR Google account, so the emails come from your Gmail address.
+const KEY = '${key}';   // the same key as in Admin → Email – keep it secret
+
+function doPost(e) {
+  try {
+    const d = JSON.parse(e.postData.contents);
+    if (d.key !== KEY) return reply({ ok: false, error: 'wrong key' });
+    const to = String(d.to || '').trim();
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(to)) return reply({ ok: false, error: 'bad email address' });
+    const files = (d.files || []).map(f => Utilities.newBlob(Utilities.base64Decode(f.data), f.type || 'application/pdf', f.name));
+    const opts = { attachments: files, name: d.fromName || 'Blue Cranes' };
+    if (d.html) opts.htmlBody = d.html;
+    if (d.replyTo) opts.replyTo = d.replyTo;
+    GmailApp.sendEmail(to, d.subject || 'Blue Cranes', d.text || '', opts);
+    return reply({ ok: true, left: MailApp.getRemainingDailyQuota() });
+  } catch (err) {
+    return reply({ ok: false, error: String(err) });
+  }
+}
+
+function doGet() { return reply({ ok: true, service: 'Blue Cranes email' }); }
+function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+`;
+  const newKey = () => { const a = new Uint8Array(18); crypto.getRandomValues(a); return 'bc-' + Array.from(a, b => b.toString(36).padStart(2, '0')).join('').slice(0, 28); };
+  async function prepMail(){ try { S.mailCfg = (await window.Cloud.getSetting('email')) || {}; } catch(e){ S.mailCfg = {}; } if (!S.mailCfg.key) S.mailKey = S.mailKey || newKey(); S.mailReady = true;
+    if (S.tab === 'mail') render(); progAt = 0; loadProgress(); }
+  const mailState = j => { const so = S.signs[j.id]; if (!so) return null; if (j.mailSentAt || so.mail === 'sent') return 'sent'; return so.email ? 'waiting' : 'none'; };
+  function vMail(){
+    const c = S.mailCfg || {}, key = c.key || S.mailKey || '', on = !!(c.url && c.key);
+    const from = keyOf(new Date(Date.now() - 30 * 864e5)); const list = S.jobs.filter(j => (j.date || '') >= from && S.signs[j.id]).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    const row = j => { const so = S.signs[j.id], st = mailState(j);
+      return `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap"><span style="flex:1;min-width:220px"><b>${esc(j.customer || 'Job')}</b> <span class="hint">· Job ${esc(j.card || '–')} · ${esc(niceDate(j.date))} · ${esc(nameOf(j.tech) || j.tech || '')}</span>
+        <div class="hint">${st === 'sent' ? `<span style="color:var(--ok);font-weight:700">✓ Emailed</span> to ${esc(j.mailTo || so.email)}` : st === 'waiting' ? `<span style="color:var(--warn);font-weight:700">⏳ Waiting</span> to ${esc(so.email)}${so.mailErr ? ' – ' + esc(so.mailErr) : ''}` : 'No email address given at sign-off'}</div></span>
+        ${st === 'waiting' && on ? `<button class="btn secondary" data-mailnow="${esc(j.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto">Send now</button>` : ''}${st === 'sent' && on ? `<button class="btn secondary" data-mailnow="${esc(j.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto">Send again</button>` : ''}</div>`; };
+    return `<main><div class="steps">
+      <section class="card"><h2>✉ Client emails</h2>
+        <span class="hint" style="font-size:14px;line-height:1.5">When the client signs off a job, the technician's phone emails the client the <b>inventory list</b>, the <b>reports</b> (forklift, crane / hoist, man cage) and the <b>signed report &amp; time card</b>. No signal: it goes as soon as the phone has signal and the inventory is opened.</span>
+        <div style="font-size:15px;font-weight:700;color:${on ? 'var(--ok)' : 'var(--bad)'}">${on ? '✓ Email is switched on' : '✕ Not set up yet – follow the steps below once'}</div>
+        <div class="field"><label for="mlUrl">Web app URL (from step 4)</label><input id="mlUrl" value="${esc(S.mlUrl != null ? S.mlUrl : (c.url || ''))}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></div>
+        <div class="row"><div class="field"><label for="mlFrom">Sender name</label><input id="mlFrom" value="${esc(S.mlFrom != null ? S.mlFrom : (c.fromName || 'Blue Cranes'))}"></div>
+          <div class="field"><label for="mlReply">Replies go to (optional)</label><input id="mlReply" type="email" value="${esc(S.mlReply != null ? S.mlReply : (c.replyTo || ''))}" placeholder="office@…"></div></div>
+        <div class="row"><button class="btn primary" id="mlSave">Save</button><button class="btn secondary" id="mlTest" ${on ? '' : 'disabled'}>Send a test email to me</button></div>
+      </section>
+      <section class="card"><h2>Set up (once, about 5 minutes)</h2>
+        <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.7">
+          <li>On the computer, sign in to the <b>Google account the emails must come from</b> and open <b>script.google.com</b> → <b>New project</b>.</li>
+          <li>Delete what is there, then paste the script: <button class="x" id="mlCopy" style="border-color:var(--navy);color:var(--navyDeep)">📋 Copy the script</button> Click 💾 Save.</li>
+          <li><b>Deploy</b> → <b>New deployment</b> → ⚙ <b>Web app</b>. Execute as: <b>Me</b>. Who has access: <b>Anyone</b>. Click <b>Deploy</b>, then <b>Authorize access</b> and allow it (Advanced → Go to project, if Google warns).</li>
+          <li>Copy the <b>Web app URL</b>, paste it above and click <b>Save</b>. Then <b>Send a test email to me</b>.</li></ol>
+        <span class="hint">The script has its own secret key (${esc(key.slice(0, 6))}…) – only this app can use it. Gmail sends up to about 100 emails a day this way.</span>
+      </section>
+      <section class="card wide"><h2>Signed-off jobs (last 30 days)</h2>
+        ${!S.mailReady ? '<span class="hint">Loading…</span>' : list.length ? `<div>${list.map(row).join('')}</div>` : '<span class="hint">No signed-off jobs yet.</span>'}
+      </section></div></main>`;
+  }
+  function mailBodyFor(j, so, files){
+    const first = String((so && so.name) || '').trim().split(/\s+/)[0] || '', c = (so && so.card) || {};
+    const what = { 'Inspection':'inspection', 'Service':'service', 'Load test':'load test' }[c.type] || 'work';
+    const lines = [`Good day${first ? ' ' + first : ''},`, '', `Please find attached the reports for the ${what} Blue Cranes did on ${niceDate(j.date)}${j.site ? ' at ' + j.site : ''} (job ${j.card || ''}).`, '', 'Attached:', ...files.map(f => '• ' + f.name), '', 'Kind regards', c.tech || nameOf(j.tech) || '', 'Blue Cranes – Material Handling & Lifting Equipment'];
+    return { subject:`Blue Cranes – ${c.type || 'Job'} reports – Job ${j.card || ''} – ${j.customer || ''}`, text:lines.join('\n'), html:'<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">' + lines.map(x => x === '' ? '<br>' : esc(x) + '<br>').join('') + '</div>' };
+  }
+  function wireMail($){
+    if (S.tab !== 'mail') return;
+    [['mlUrl', 'mlUrl'], ['mlFrom', 'mlFrom'], ['mlReply', 'mlReply']].forEach(([id, k]) => { const e = $(id); if (e) e.oninput = () => { S[k] = e.value; }; });
+    const cp = $('mlCopy'); if (cp) cp.onclick = async () => { const key = (S.mailCfg && S.mailCfg.key) || S.mailKey; try { await navigator.clipboard.writeText(mailScript(key)); toast('Script copied – paste it in script.google.com'); }
+      catch(e){ exportBox(`<h2>Copy the script</h2><textarea style="width:100%;height:280px;font:12px monospace">${esc(mailScript(key))}</textarea><button class="btn secondary" id="xbClose">Close</button>`).querySelector('#xbClose').onclick = e2 => e2.target.closest('.xbox').remove(); } };
+    const sv = $('mlSave'); if (sv) sv.onclick = async () => { const c = S.mailCfg || {}; const url = String(S.mlUrl != null ? S.mlUrl : (c.url || '')).trim();
+      if (url && !/^https:\/\/script\.google(usercontent)?\.com\/.+/.test(url)){ toast('Paste the Web app URL from Google (https://script.google.com/macros/s/…/exec)'); return; }
+      const cfg = { url, key:c.key || S.mailKey, fromName:String(S.mlFrom != null ? S.mlFrom : (c.fromName || 'Blue Cranes')).trim() || 'Blue Cranes', replyTo:String(S.mlReply != null ? S.mlReply : (c.replyTo || '')).trim(), by:window.Cloud.email(), at:new Date().toISOString() };
+      try { await window.Cloud.setSetting('email', cfg); S.mailCfg = cfg; S.mlUrl = S.mlFrom = S.mlReply = null; toast(url ? 'Saved – email is switched on' : 'Saved'); render(); } catch(e){ console.error(e); toast('Could not save – check the Firebase rules (settings)'); } };
+    const ts = $('mlTest'); if (ts) ts.onclick = async () => { ts.disabled = true; ts.textContent = 'Sending…';
+      const r = await BC.sendMail(S.mailCfg, { to:window.Cloud.email(), subject:'Blue Cranes Online – test email', text:'This is a test from Blue Cranes Online. Client emails after sign-off are working.', test:true });
+      toast(r.ok ? '✓ Test email sent to ' + window.Cloud.email() : 'Not sent: ' + r.error); ts.disabled = false; ts.textContent = 'Send a test email to me'; };
+    app.querySelectorAll('[data-mailnow]').forEach(b => b.onclick = async () => { const j = S.jobs.find(x => x.id === b.dataset.mailnow), so = j && S.signs[j.id]; if (!so || !so.email) return;
+      const old = b.textContent; b.disabled = true; b.textContent = 'Making the PDFs…';
+      try { const files = []; for (const w of ['inv', 'card', 'fl', 'cr', 'mc']){ try { (await jobFiles(j.id, w)).forEach(f => { if (!/^TECHNICIAN_/.test(f.name)) files.push(f); }); } catch(e){ console.error(w, e); } }
+        b.textContent = 'Sending…'; const r = await BC.sendMail(S.mailCfg, Object.assign({ to:so.email, files }, mailBodyFor(j, so, files)));
+        if (r.ok){ const now = new Date().toISOString(); await window.Cloud.putJobs([{ id:j.id, mailSentAt:now, mailTo:so.email, updatedAt:now }]); j.mailSentAt = now; j.mailTo = so.email; toast('✓ Emailed to ' + so.email); render(); }
+        else toast('Not sent: ' + r.error);
+      } catch(e){ console.error(e); toast('Could not send'); } finally { b.disabled = false; b.textContent = old; } });
+  }
   async function refreshUsers(){ try { S.users = (await window.Cloud.listUsers()).filter(u => u.email).sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))); } catch(e){ S.users = []; } }
 
   // after a restart (a tablet does this when a PDF is opened or shared) the page comes back as it was: tab, filters, scroll position, files
@@ -1171,6 +1256,7 @@
     try { sessionStorage.setItem(cacheK, JSON.stringify({ jobs:S.jobs, users:S.users.map(u => ({ uid:u.uid, email:u.email, name:u.name || '' })) })); } catch(e){}
     window.scrollTo(0, shown ? y0 : (savedView.tab === S.tab && savedView.y) || 0);
     { const kf = await keptFiles(); if (kf) phoneFiles(kf.map(f => ({ blob:f.blob, name:f.name, type:f.type })), true); }
+    if (S.tab === 'mail') prepMail();
     if (S.tab === 'print'){ await prepPrint(); if (AUTOPRINT) runPrint(null, true); }
     try { const x = sessionStorage.getItem('bco-admin-export'); if (x){ sessionStorage.removeItem('bco-admin-export');
       exportBox(`<h2>The export stopped</h2><span class="hint" style="font-size:14px">The page restarted while the export was busy (${esc(x)}). This happens when a phone runs out of memory. Try a shorter period or one technician, or do the export on the computer.</span><button class="btn secondary" id="xbClose">Close</button>`).querySelector('#xbClose').onclick = e => e.target.closest('.xbox').remove(); } } catch(e){}
