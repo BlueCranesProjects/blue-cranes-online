@@ -1,7 +1,7 @@
 # Blue Cranes - morning print run
 # Prints the files that Admin > Print run saves in Downloads:
 #   ..._1-CLIENT.pdf  client's copies (inventory, reports)      -> white paper, one side
-#   ..._2-TECH.pdf    technician's copies (time card, quotes)   -> white paper, both sides
+#   ..._2-TECH.pdf    technician's copies (time card, quotes)   -> white paper, one side
 #   ..._3-BLUE.pdf    certificates                              -> blue paper, one side
 # Printed files move to C:\BlueCranes\Printed\<date>, failed ones to C:\BlueCranes\Failed.
 # The log of each day is in C:\BlueCranes\Logs.
@@ -11,7 +11,7 @@ param([switch]$NoChrome)
 $Printer     = 'Groot printer'   # exactly as in Windows Settings > Printers & scanners
 $WhiteTray   = ''                # e.g. 'Tray 1'. Empty = the printer's normal tray
 $BlueTray    = ''                # e.g. 'Tray 2'. Fill in after the blue paper test
-$TechSides   = 'duplexlong'      # technician's copies: 'duplexlong' = both sides (flip on long edge), 'simplex' = one side
+$TechSides   = 'simplex'         # technician's copies: 'simplex' = one side (no back to back), 'duplexlong' = both sides
 $AdminUrl    = 'https://bluecranesprojects.github.io/blue-cranes-online/admin/?printrun=auto'
 $ChromeProfile = ''              # Chrome profile folder if Admin is signed in on another profile, e.g. 'Profile 1'
 $WaitMinutes = 15                # how long to wait for Admin to make the files

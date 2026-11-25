@@ -729,7 +729,7 @@
   }
   // ---------- Print run: the finished jobs' files for the office printer ----------
   // White paper: everything except the certificates (the Job PDF). Blue paper: the certificates.
-  // Files go to Downloads as BC-PRINT_<when>_<nn>_<job>_<client>_1-CLIENT.pdf (one-sided) / _2-TECH.pdf (both sides) / _3-BLUE.pdf (certificates), then BC-PRINT_DONE_<when>.txt;
+  // Files go to Downloads as BC-PRINT_<when>_<nn>_<job>_<client>_1-CLIENT.pdf / _2-TECH.pdf (both one-sided) / _3-BLUE.pdf (certificates), then BC-PRINT_DONE_<when>.txt;
   // the print program on the office computer (print/bc-print.ps1) prints them and moves them to C:\BlueCranes\Printed.
   // A job printed once gets printedAt and is not printed again unless asked.
   const printable = j => j.status === 'done' && !!S.invProg[j.id] && !!(S.invProg[j.id].list || (S.invProg[j.id].fl || []).length || (S.invProg[j.id].cr || []).length || (S.invProg[j.id].mc || []).length);
@@ -747,7 +747,7 @@
       ${again ? `<div class="hint">Printed ${esc(new Date(j.printedAt).toLocaleString('en-ZA', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }))}</div>` : ''}</span>
       ${again ? `<button class="btn secondary" data-pragain="${esc(j.id)}" ${busy ? 'disabled' : ''} style="padding:6px 14px;width:auto;flex:0 0 auto">Print again</button>` : ''}</label>`;
     return `<main><section class="card wide"><h2>🖨 Print run</h2>
-      <span class="hint" style="font-size:14px;line-height:1.5">Finished jobs ready for the office printer. <b>Client's copies</b> (inventory, reports) on white paper, one side only. <b>Technician's copies</b> (time card, time sheet, quote pages, equipment for quote) on white paper, both sides. <b>Certificates</b> on the blue paper, one side.
+      <span class="hint" style="font-size:14px;line-height:1.5">Finished jobs ready for the office printer. <b>Client's copies</b> (inventory, reports) on white paper, one side only. <b>Technician's copies</b> (time card, time sheet, quote pages, equipment for quote) on white paper, one side only. <b>Certificates</b> on the blue paper, one side.
         Every weekday at 05:55 the office computer opens this page by itself, makes the files and prints them. You can also make them now and print with <b>Blue Cranes – Print now</b> on the desktop.</span>
       ${!S.prReady ? '<span class="hint">Looking for finished jobs…</span>' : wait.length ? `<div>${wait.map(j => row(j, false)).join('')}</div>` : '<span class="hint" style="font-size:14px">✓ Nothing waiting – every finished job has been printed.</span>'}
       ${wait.length ? `<button class="btn primary" id="prMake" ${busy || !n ? 'disabled' : ''}>${busy ? esc(S.prMsg || 'Working…') : `⬇ Make print files (${n} ${n === 1 ? 'job' : 'jobs'})`}</button>` : ''}
@@ -760,7 +760,7 @@
         <li>Download the print program below, open the zip, and run <b>Install print program</b>. It makes the folder C:\\BlueCranes and a <b>Blue Cranes – Print now</b> file on the desktop.</li>
         <li>Test: tick one job above, <b>Make print files</b>, then double-click <b>Blue Cranes – Print now</b>.</li>
         <li>When the test prints right, run <b>Switch on 6am print</b> once.</li></ol>
-      <span class="hint">Printer and trays are set at the top of C:\\BlueCranes\\bc-print.ps1 (now: Groot printer; client's copies and certificates one-sided, technician's copies both sides; normal tray until the blue tray is known). After an update of the print program, download the zip again and run Install print program again.. In Chrome, turn off "Ask where to save each file" and allow this site to download several files.</span>
+      <span class="hint">Printer and trays are set at the top of C:\\BlueCranes\\bc-print.ps1 (now: Groot printer; everything one-sided, no back to back; normal tray until the blue tray is known). After an update of the print program, download the zip again and run Install print program again.. In Chrome, turn off "Ask where to save each file" and allow this site to download several files.</span>
       <button class="btn secondary" id="prZip">⬇ Print program (zip)</button></section></main>`;
   }
   async function runPrint(ids, auto){
