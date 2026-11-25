@@ -90,7 +90,7 @@ window.Cloud = api;
     };
     api.deleteItem = id => { track(F.deleteDoc(F.doc(itemsCol(), id))).catch(report); return Promise.resolve(); };
     api.putItem = (id, data) => { const ref = F.doc(itemsCol(), id);
-      (data && data.kind === 'equipment' && Array.isArray(data.rows) ? putList(ref, auth.currentUser.uid + '/' + id, data) : track(F.setDoc(ref, data))).catch(report); return Promise.resolve(); };
+      (data && (data.kind === 'equipment' || data.kind === 'paper') && Array.isArray(data.rows) ? putList(ref, auth.currentUser.uid + '/' + id, data) : track(F.setDoc(ref, data))).catch(report); return Promise.resolve(); };
     // all documents of one kind, e.g. 'forklift'
     api.listKind = async kind => {
       const q = F.query(itemsCol(), F.where('kind', '==', kind)); let s;
@@ -100,6 +100,11 @@ window.Cloud = api;
     // ---- shared: jobs loaded by the office, admin role, user directory ----
     api.email = () => String((auth.currentUser && auth.currentUser.email) || '').trim().toLowerCase();
     api.isAdmin = async () => { try { const s = await F.getDoc(F.doc(fs, 'admins', api.email())); return s.exists(); } catch (e) { return false; } };
+    // admin accounts: the owner (admins/{email} with owner:true, set once in Firebase) adds and removes the others in Admin
+    api.adminInfo = async () => { try { const s = await F.getDoc(F.doc(fs, 'admins', api.email())); return s.exists() ? Object.assign({ email: api.email() }, s.data()) : null; } catch (e) { return null; } };
+    api.listAdmins = async () => (await F.getDocs(F.collection(fs, 'admins'))).docs.map(d => Object.assign({ email: d.id }, d.data()));
+    api.addAdmin = (email, data) => F.setDoc(F.doc(fs, 'admins', String(email).trim().toLowerCase()), data || {});
+    api.removeAdmin = email => F.deleteDoc(F.doc(fs, 'admins', String(email).trim().toLowerCase()));
     api.saveUser = data => { const u = auth.currentUser; if (!u) return Promise.resolve(); return F.setDoc(F.doc(fs, 'users', u.uid), data, { merge:true }).catch(() => {}); };
     // a technician's jobs (null when they can't be read, e.g. rules not set up yet)
     api.myJobs = async () => {

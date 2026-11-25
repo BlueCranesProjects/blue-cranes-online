@@ -51,7 +51,9 @@ Everything for a person is under `users/{uid}/items/`:
 
 - `jobs/{id}` – jobs loaded by the office: date, time, card, customer, contact, notes, `tech` (email, lower case), status (planned / busy / done).
 - `users/{uid}` – name and email of everyone who has signed in (for the admin's technician list).
-- `admins/{email}` – an empty document whose ID is the admin's email in lower case makes that account an admin.
+- `admins/{email}` – a document whose ID is the admin's email in lower case makes that account an admin (fields: name, addedBy, added).
+- The **owner** is the admin document with the field `owner: true` (boolean), set once by hand in Firebase. Only the owner sees Admin → **Admins** and adds or removes other admins there; nobody can make another owner or change the owner's own document (firestore.rules).
+- Admins see the Admin tile **and** the technician tools on the home screen; the tool pages no longer send admins to Admin.
 - Technicians read the jobs with their email and can only change the progress fields.
 
 ## Firebase settings that must stay in place
@@ -60,6 +62,17 @@ Everything for a person is under `users/{uid}/items/`:
 - Authentication → Settings → Authorized domains → **bluecranesprojects.github.io**
 - Firestore → Rules → contents of `firestore.rules`
 - Firestore → `admins` collection → one document per admin, ID = email in lower case
+- Firestore → `admins` → the owner's document has the field `owner` = true (boolean)
+
+## Paper jobs (rule)
+
+- For jobs that were done on paper in the past. Admin → **Paper jobs**: choose the technician who did the job, the job number, the date from the paper, the client and the site, then **Start paper job**.
+- The inventory page opens in paper mode (`equipment/?paper=<id>`): the client's inventory with Safe / Unsafe and reasons, and the understudy typed in for that job. No reports (crane, forklift, man cage), no time card or time sheet, no client sign-off.
+- Downloads: certificates PDF, inventory PDF and Excel, equipment for quote – the same layout as a technician's job.
+- Certificates: the **technician's name and signature** (from their profile, refreshed when the job is opened) and the **paper job's date** (test date, next test and 6-monthly inspection dates worked out from it).
+- The understudy belongs only to that paper job – it is not remembered for the next job.
+- Stored in the admin's own account: kind `paper`, id `eq-paper-<job>-<code>`, and on the computer in `bco-paper` (kept apart from `bco-equipment`).
+- Paper jobs are **not** in the print run, Schedule jobs or the exports – they are downloaded by hand.
 
 ## Certificates (rule)
 

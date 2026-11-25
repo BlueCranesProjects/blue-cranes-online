@@ -3,6 +3,8 @@ rules_version = '2';
 // - Each person can read and write their own time sheets, reports and inventories.
 // - Admins (an "admins" document whose ID is their email, lower case) can read everyone's data
 //   and load jobs for technicians.
+// - The owner (the admins document with owner: true, set once by hand in Firebase) adds and removes the other admins in Admin.
+//   Nobody can make another owner, and the owner's own document can't be changed from the app.
 // - A technician can read the jobs loaded for their email and only update the job's progress.
 // - Jobs and Admin need a confirmed email (the link sent when the account is made).
 service cloud.firestore {
@@ -12,6 +14,7 @@ service cloud.firestore {
     // a confirmed email (the person opened the link sent when the account was made)
     function verified() { return signedIn() && request.auth.token.email != null && request.auth.token.email_verified == true; }
     function isAdmin() { return verified() && exists(/databases/$(database)/documents/admins/$(myEmail())); }
+    function isOwner() { return isAdmin() && get(/databases/$(database)/documents/admins/$(myEmail())).data.get('owner', false) == true; }
 
     match /users/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
@@ -24,6 +27,9 @@ service cloud.firestore {
 
     match /admins/{email} {
       allow read: if signedIn() && request.auth.token.email != null && myEmail() == email;
+      allow read: if isAdmin();
+      allow create, update: if isOwner() && email != myEmail() && request.resource.data.get('owner', false) != true;
+      allow delete: if isOwner() && email != myEmail();
     }
 
     match /jobs/{jobId} {
