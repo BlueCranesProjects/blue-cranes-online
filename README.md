@@ -61,6 +61,12 @@ Everything for a person is under `users/{uid}/items/`:
 - Firestore → Rules → contents of `firestore.rules`
 - Firestore → `admins` collection → one document per admin, ID = email in lower case
 
+## Downloads on a tablet (rule)
+
+- Android may restart the Admin page when a PDF is opened or shared. Admin keeps the files it just made for 30 minutes (IndexedDB `bc-admin-files`) and shows the **Files ready** box again after the restart ("Still here"); Close removes them.
+- After a restart Admin shows the same tab, technician filter, period and open days, with this tab's last copy of the jobs straight away (sessionStorage `bco-admin-cache`, `bco-admin-view`), then the latest.
+- After any download or share the app does not redraw the page when you come back (`BC.justDownloaded`, 2 minutes).
+
 ## Import the inventory afterwards (rule)
 
 - Admin → Schedule jobs: every job that is not done has **⬆ Add inventory** (or **⬆ Inventory (n)** when it has items). Choose the client's file (census layout or their own list – the same reader as Import jobs), check the preview, **Add n items**.

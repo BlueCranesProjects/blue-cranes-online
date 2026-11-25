@@ -82,6 +82,7 @@
   const savedTab = (() => { try { const t = sessionStorage.getItem('bco-admin-tab'); return ['jobs','inv','export','print'].includes(t) ? t : 'inv'; } catch(e){ return 'inv'; } })();
   // ?printrun=auto: opened by the office computer's 6:00 print program – go straight to Print run and make the files
   const AUTOPRINT = (() => { try { return new URLSearchParams(location.search).get('printrun') === 'auto'; } catch(e){ return false; } })();
+  const VIEWK = 'bco-admin-view'; const savedView = (() => { try { return JSON.parse(sessionStorage.getItem(VIEWK) || '{}') || {}; } catch(e){ return {}; } })();
   const S = { tab:AUTOPRINT ? 'print' : savedTab, users:[], jobs:[], preview:null, fileName:'', busy:false, techFilter:'', editJob:null, ed:{}, sel:new Set(), allJobs:false, inv:null, invFile:'', invJob:'', invSite:'', invCust:'', invSkip:[], nj:{}, invProg:{} };
   const nameOf = email => { const u = S.users.find(x => x.email === email); return u ? (u.name || email) : ''; };
 
@@ -555,18 +556,26 @@
   }
   // phones (also the installed app): a plain download often goes nowhere, so offer the share menu (open with a PDF viewer, WhatsApp, email, Drive, Files)
   const isPhone = () => { try { return !!(navigator.canShare && navigator.share && navigator.canShare({ files:[new File(['x'], 'x.pdf', { type:'application/pdf' })] })) && (matchMedia('(pointer:coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent)); } catch(e){ return false; } };
-  function phoneFiles(files){
+  // the files just made are kept on this device for 30 minutes: when the tablet restarts the page after opening or sharing a PDF,
+  // the "Files ready" box comes back with the same files – nothing has to be made again
+  const FDB = () => new Promise((res, rej) => { const q = indexedDB.open('bc-admin-files', 1); q.onupgradeneeded = () => q.result.createObjectStore('f'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+  async function keepFiles(files){ try { const db = await FDB(); await new Promise(r => { const t = db.transaction('f', 'readwrite'); t.objectStore('f').put({ at:Date.now(), files:files.map(f => ({ blob:f.blob, name:f.name, type:f.type || f.blob.type || '' })) }, 'last'); t.oncomplete = t.onerror = () => r(); }); db.close(); sessionStorage.setItem('bco-admin-files', '1'); } catch(e){} }
+  async function keptFiles(){ try { if (!sessionStorage.getItem('bco-admin-files')) return null; const db = await FDB(); const v = await new Promise(r => { const g = db.transaction('f').objectStore('f').get('last'); g.onsuccess = () => r(g.result); g.onerror = () => r(null); }); db.close();
+      return v && Date.now() - v.at < 30 * 60000 && v.files && v.files.length ? v.files : null; } catch(e){ return null; } }
+  async function dropFiles(){ try { sessionStorage.removeItem('bco-admin-files'); const db = await FDB(); await new Promise(r => { const t = db.transaction('f', 'readwrite'); t.objectStore('f').delete('last'); t.oncomplete = t.onerror = () => r(); }); db.close(); } catch(e){} }
+  function phoneFiles(files, again){
+    if (!again) keepFiles(files);
     const list = files.map(f => new File([f.blob], f.name, { type:f.type || f.blob.type || 'application/pdf' }));
     const can = x => { try { return navigator.canShare({ files:x }); } catch(e){ return false; } };
     const share = can(list) ? list : list.filter(f => can([f])); const rest = files.filter(f => !share.some(x => x.name === f.name));
     const m = document.createElement('div'); m.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center;padding:16px';
-    m.innerHTML = `<div class="card" style="max-width:480px;width:100%;gap:10px"><h2>${files.length === 1 ? 'File ready' : files.length + ' files ready'}</h2>
+    m.innerHTML = `<div class="card" style="max-width:480px;width:100%;gap:10px"><h2>${files.length === 1 ? 'File ready' : files.length + ' files ready'}</h2>${again ? '<span class="hint" style="font-size:13.5px">Still here – you can open, share or save them again.</span>' : ''}
       <div class="hint" style="font-size:13.5px;line-height:1.5">${files.map(f => esc(f.name)).join('<br>')}</div>
       ${share.length ? `<button class="btn primary" id="pfShare">Open / share ${share.length === 1 ? 'the PDF' : share.length + ' files'} – WhatsApp, email, Drive, Files…</button>` : ''}
       <button class="btn secondary" id="pfDl">⬇ Save to Downloads${rest.length && share.length ? ' (' + rest.map(f => esc(f.name.replace(/^.*\./, '').toUpperCase())).join(', ') + ')' : ''}</button>
       <button class="btn secondary" id="pfNo">Close</button></div>`;
     document.body.appendChild(m);
-    m.querySelector('#pfNo').onclick = () => m.remove();
+    m.querySelector('#pfNo').onclick = () => { m.remove(); dropFiles(); };
     const sh = m.querySelector('#pfShare'); if (sh) sh.onclick = async () => { try { await navigator.share({ files:share, title:share.length === 1 ? share[0].name : 'Blue Cranes files' }); } catch(e){ if (!(e && e.name === 'AbortError')) toast('Could not share – use Save to Downloads'); } };
     m.querySelector('#pfDl').onclick = () => { (rest.length && share.length ? rest : files).forEach((f, i) => setTimeout(() => dlFile(f), i * 400)); toast('Saved to Downloads – open the Files app'); };
   }
@@ -989,7 +998,7 @@
         toast(isNew ? 'Job scheduled for ' + (nameOf(job.tech) || job.tech) + (ok.length ? ' with ' + ok.length + ' items' : '') : ok.length + ' items loaded for ' + (job.customer || job.card)); if (isNew){ S.nj = {}; S.invJob = ''; S.tab = 'jobs'; } S.inv = null; S.invFile = ''; S.invSite = ''; S.invCust = ''; S.invSkip = []; await refreshJobs();
       } catch(e){ console.error(e); toast('Loading failed' + (e && e.code ? ' (' + e.code + ')' : '') + ' – check the Firebase rules'); }
       S.busy = false; render(); };
-    const tf = $('tf'); if (tf) tf.onchange = () => { S.techFilter = tf.value; render(); };
+    const tf = $('tf'); if (tf) tf.onchange = () => { S.techFilter = tf.value; keepView(); render(); };
     const rf = $('refresh'); if (rf) rf.onclick = async () => { await refreshJobs(); progAt = 0; render(); toast('Updated'); };
     app.querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => { const j = S.jobs.find(x => x.id === b.dataset.edit); if (!j) return;
       if (!S.users.length) await refreshUsers();
@@ -1023,7 +1032,7 @@
     const sa = $('selAll'); if (sa) sa.onchange = () => { app.querySelectorAll('[data-sel]').forEach(c => sa.checked ? S.sel.add(c.dataset.sel) : S.sel.delete(c.dataset.sel)); render(); };
     const sn = $('selNone'); if (sn) sn.onclick = () => { S.sel.clear(); render(); };
     const sd = $('selDel'); if (sd) sd.onclick = () => removeJobs([...S.sel]);
-    const per = $('per'); if (per) per.onchange = () => { S.allJobs = per.value === 'all'; render(); };
+    const per = $('per'); if (per) per.onchange = () => { S.allJobs = per.value === 'all'; keepView(); render(); };
     const ef = $('ef'), et = $('et'); if (ef){ ef.onchange = () => S.ef = ef.value; et.onchange = () => S.et = et.value; }
     const ei = $('expInv'); if (ei) ei.onclick = () => exportInv(ei);
     const ec = $('expCen'); if (ec) ec.onclick = () => exportCensus(ec);
@@ -1145,12 +1154,23 @@
   const $v = id => { const e = document.getElementById(id); return e ? e.value : ''; };
   async function refreshUsers(){ try { S.users = (await window.Cloud.listUsers()).filter(u => u.email).sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))); } catch(e){ S.users = []; } }
 
+  // after a restart (a tablet does this when a PDF is opened or shared) the page comes back as it was: tab, filters, scroll position, files
+  if (savedView.techFilter) S.techFilter = savedView.techFilter; if (savedView.allJobs) S.allJobs = true;
+  const keepView = () => { try { sessionStorage.setItem(VIEWK, JSON.stringify({ techFilter:S.techFilter || '', allJobs:!!S.allJobs, tab:S.tab, y:window.scrollY })); } catch(e){} };
+  let kvT; window.addEventListener('scroll', () => { clearTimeout(kvT); kvT = setTimeout(keepView, 300); }, { passive:true });
+  window.addEventListener('pagehide', keepView); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') keepView(); });
+  const cacheK = 'bco-admin-cache';
   (async function start(){
     const w = await BC.requireUser();
     if (!w.user){ S.noAdmin = 'Cloud saving must be set up to use the admin page.'; render(); return; }
     if (!(await window.Cloud.isAdmin())){ S.noAdmin = `This page is for the office. Your account (${esc(window.Cloud.email())}) is not an admin.<br><br>To make an account an admin: in Firebase → Firestore → start a collection called <b>admins</b> and add a document whose ID is the email address (lower case).`; render(); return; }
+    // show the last jobs straight away (this tab's copy), then fetch the latest
+    let shown = false; try { const c = JSON.parse(sessionStorage.getItem(cacheK) || 'null'); if (c && c.jobs){ S.jobs = c.jobs; S.users = c.users || []; render(); shown = true; if (savedView.y && savedView.tab === S.tab) window.scrollTo(0, savedView.y); } } catch(e){}
     try { S.backup = await window.Cloud.getItem('backup'); } catch(e){ S.backup = null; }
-    await refreshUsers(); await refreshJobs(); render();
+    await refreshUsers(); await refreshJobs(); const y0 = window.scrollY; render();
+    try { sessionStorage.setItem(cacheK, JSON.stringify({ jobs:S.jobs, users:S.users.map(u => ({ uid:u.uid, email:u.email, name:u.name || '' })) })); } catch(e){}
+    window.scrollTo(0, shown ? y0 : (savedView.tab === S.tab && savedView.y) || 0);
+    { const kf = await keptFiles(); if (kf) phoneFiles(kf.map(f => ({ blob:f.blob, name:f.name, type:f.type })), true); }
     if (S.tab === 'print'){ await prepPrint(); if (AUTOPRINT) runPrint(null, true); }
     try { const x = sessionStorage.getItem('bco-admin-export'); if (x){ sessionStorage.removeItem('bco-admin-export');
       exportBox(`<h2>The export stopped</h2><span class="hint" style="font-size:14px">The page restarted while the export was busy (${esc(x)}). This happens when a phone runs out of memory. Try a shorter period or one technician, or do the export on the computer.</span><button class="btn secondary" id="xbClose">Close</button>`).querySelector('#xbClose').onclick = e => e.target.closest('.xbox').remove(); } } catch(e){}
