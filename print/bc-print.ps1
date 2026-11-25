@@ -1,7 +1,8 @@
 # Blue Cranes - morning print run
 # Prints the files that Admin > Print run saves in Downloads:
-#   ..._1-WHITE.pdf  reports, inventory, time card  -> normal paper
-#   ..._2-BLUE.pdf   certificates                    -> blue paper
+#   ..._1-CLIENT.pdf  client's copies (inventory, reports)      -> white paper, one side
+#   ..._2-TECH.pdf    technician's copies (time card, quotes)   -> white paper, both sides
+#   ..._3-BLUE.pdf    certificates                              -> blue paper, one side
 # Printed files move to C:\BlueCranes\Printed\<date>, failed ones to C:\BlueCranes\Failed.
 # The log of each day is in C:\BlueCranes\Logs.
 param([switch]$NoChrome)
@@ -10,6 +11,7 @@ param([switch]$NoChrome)
 $Printer     = 'Groot printer'   # exactly as in Windows Settings > Printers & scanners
 $WhiteTray   = ''                # e.g. 'Tray 1'. Empty = the printer's normal tray
 $BlueTray    = ''                # e.g. 'Tray 2'. Fill in after the blue paper test
+$TechSides   = 'duplexlong'      # technician's copies: 'duplexlong' = both sides (flip on long edge), 'simplex' = one side
 $AdminUrl    = 'https://bluecranesprojects.github.io/blue-cranes-online/admin/?printrun=auto'
 $ChromeProfile = ''              # Chrome profile folder if Admin is signed in on another profile, e.g. 'Profile 1'
 $WaitMinutes = 15                # how long to wait for Admin to make the files
@@ -47,11 +49,13 @@ try {
   if ($files.Count -eq 0) { Write-Host 'Nothing to print.' }
   foreach ($f in $files) {
     $blue = $f.Name -like '*-BLUE.pdf'
+    $tech = $f.Name -like '*-TECH.pdf'
     $tray = if ($blue) { $BlueTray } else { $WhiteTray }
-    $settings = 'noscale'
+    $sides = if ($tech) { $TechSides } else { 'simplex' }
+    $settings = "noscale,$sides"
     if ($tray) { $settings += ",bin=$tray" }
     $where = if ($tray) { $tray } else { 'normal tray' }
-    Write-Host ("Printing {0}  ->  {1}, {2}" -f $f.Name, $Printer, $where)
+    Write-Host ("Printing {0}  ->  {1}, {2}, {3}" -f $f.Name, $Printer, $where, $sides)
     $p = Start-Process -FilePath $Sumatra -Wait -PassThru -ArgumentList @(
       '-print-to', "`"$Printer`"", '-print-settings', "`"$settings`"", '-silent', '-exit-on-print', "`"$($f.FullName)`"")
     if ($p.ExitCode -eq 0) { Move-Item -Force -LiteralPath $f.FullName -Destination "$Base\Printed\$Day\" }

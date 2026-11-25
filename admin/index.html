@@ -436,13 +436,15 @@
   const packName = (what, l) => `${what}_${String((l && l.job) || 'job').replace(/[^\w\-]+/g, '_')}_${String((l && l.customer) || '').replace(/[^\w\-]+/g, '_')}_${(l && l.date) || ''}.pdf`.replace(/_+\.pdf$/, '.pdf');
   // ---- Job PDF: everything for one job except the certificates, in one PDF to print with one click ----
   // inventory → forklift reports → crane / hoist reports (client's) → technician's quote pages → the day's time sheet
-  async function jobPdf(id){
+  // only: 'client' = the client's copies (inventory, client reports), 'tech' = the technician's / office copies
+  // (time card, quote pages, equipment for quote, time sheet); left out = everything
+  async function jobPdf(id, only){
     const g = S.invProg[id]; const j = S.jobs.find(x => x.id === id); if (!g || !j) return null;
-    const parts = [];   // { blob, from } – from = first page to take (quote pages only)
+    const parts = [];   // { blob, from, tech } – from = first page to take (quote pages only); tech = technician's / office copy
     const own = async b => new Blob([new Uint8Array(await b.arrayBuffer())], { type:'application/pdf' });
     if (g.list){ const t = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
       try { const f = await t.api.listDoc(JSON.parse(JSON.stringify(g.list))); parts.push({ blob:await own(f.blob) });
-        if (t.api.timeCard && g.list.signoff && g.list.signoff.card){ const c = await t.api.timeCard(JSON.parse(JSON.stringify(g.list))); if (c) parts.unshift({ blob:await own(c.blob) }); } } finally { t.done(); } }
+        if (t.api.timeCard && g.list.signoff && g.list.signoff.card){ const c = await t.api.timeCard(JSON.parse(JSON.stringify(g.list))); if (c) parts.unshift({ blob:await own(c.blob), tech:true }); } } finally { t.done(); } }
     if ((g.fl || []).length){ const t = await hiddenTool('../forklift/?embed=1', w => w.BCF && w.jspdf && w.BCF);
       try { for (const r of g.fl.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
           const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) }); } }
@@ -450,19 +452,20 @@
     if ((g.mc || []).length){ const t = await hiddenTool('../mancage/?embed=1', w => w.BCM && w.jspdf && w.BCM);
       try { for (const r of g.mc.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true }))){
           const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) }); const n = a.doc.getNumberOfPages();
-          if (t.api.needsTech && t.api.needsTech(r.state)){ const b = await t.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); if (b.doc.getNumberOfPages() > n) parts.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), from:n }); } } }
+          if (t.api.needsTech && t.api.needsTech(r.state)){ const b = await t.api.buildTechPdf(JSON.parse(JSON.stringify(r.state))); if (b.doc.getNumberOfPages() > n) parts.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), from:n, tech:true }); } } }
       finally { t.done(); } }
     if ((g.cr || []).length){ const t = await hiddenTool('../crane/?embed=1', w => w.BCC && w.jspdf && w.BCC);
       try { const reps = g.cr.slice().sort((a, b) => String(a.state.f.docno).localeCompare(String(b.state.f.docno), undefined, { numeric:true })), quote = [];
         for (const r of reps){ const a = await t.api.buildPdf(JSON.parse(JSON.stringify(r.state))); const n = a.doc.getNumberOfPages();
           parts.push({ blob:new Blob([a.doc.output('arraybuffer')], { type:'application/pdf' }) });
           if (t.api.buildTechPdf && t.api.needsTech && t.api.needsTech(r.state)){ const b = await t.api.buildTechPdf(JSON.parse(JSON.stringify(r.state)));
-            if (b.doc.getNumberOfPages() > n) quote.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), from:n }); } }
+            if (b.doc.getNumberOfPages() > n) quote.push({ blob:new Blob([b.doc.output('arraybuffer')], { type:'application/pdf' }), from:n, tech:true }); } }
         parts.push(...quote); }
       finally { t.done(); } }
     if (g.list){ const t = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE);
-      try { const f = t.api.quoteDoc && await t.api.quoteDoc(JSON.parse(JSON.stringify(g.list)), nameOf(j.tech) || ''); if (f) parts.push({ blob:await own(f.blob) }); } finally { t.done(); } }
-    { const f = await sheetFileOf(g.uid, j.sheetDate || j.date, j); if (f) parts.push({ blob:f.blob }); }
+      try { const f = t.api.quoteDoc && await t.api.quoteDoc(JSON.parse(JSON.stringify(g.list)), nameOf(j.tech) || ''); if (f) parts.push({ blob:await own(f.blob), tech:true }); } finally { t.done(); } }
+    { const f = await sheetFileOf(g.uid, j.sheetDate || j.date, j); if (f) parts.push({ blob:f.blob, tech:true }); }
+    if (only === 'client' || only === 'tech'){ for (let i = parts.length - 1; i >= 0; i--) if (!!parts[i].tech !== (only === 'tech')) parts.splice(i, 1); }
     if (!parts.length) return null;
     const P = await pdfLib(); const out = await P.PDFDocument.create();
     for (const p of parts){ const src = await P.PDFDocument.load(new Uint8Array(await p.blob.arrayBuffer())); const idx = src.getPageIndices().filter(i => i >= (p.from || 0));
@@ -713,7 +716,7 @@
   }
   // ---------- Print run: the finished jobs' files for the office printer ----------
   // White paper: everything except the certificates (the Job PDF). Blue paper: the certificates.
-  // Files go to Downloads as BC-PRINT_<when>_<nn>_<job>_<client>_1-WHITE.pdf / _2-BLUE.pdf, then BC-PRINT_DONE_<when>.txt;
+  // Files go to Downloads as BC-PRINT_<when>_<nn>_<job>_<client>_1-CLIENT.pdf (one-sided) / _2-TECH.pdf (both sides) / _3-BLUE.pdf (certificates), then BC-PRINT_DONE_<when>.txt;
   // the print program on the office computer (print/bc-print.ps1) prints them and moves them to C:\BlueCranes\Printed.
   // A job printed once gets printedAt and is not printed again unless asked.
   const printable = j => j.status === 'done' && !!S.invProg[j.id] && !!(S.invProg[j.id].list || (S.invProg[j.id].fl || []).length || (S.invProg[j.id].cr || []).length || (S.invProg[j.id].mc || []).length);
@@ -731,7 +734,7 @@
       ${again ? `<div class="hint">Printed ${esc(new Date(j.printedAt).toLocaleString('en-ZA', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }))}</div>` : ''}</span>
       ${again ? `<button class="btn secondary" data-pragain="${esc(j.id)}" ${busy ? 'disabled' : ''} style="padding:6px 14px;width:auto;flex:0 0 auto">Print again</button>` : ''}</label>`;
     return `<main><section class="card wide"><h2>🖨 Print run</h2>
-      <span class="hint" style="font-size:14px;line-height:1.5">Finished jobs ready for the office printer. <b>White paper:</b> inventory, reports, time card, equipment for quote. <b>Blue paper:</b> the certificates.
+      <span class="hint" style="font-size:14px;line-height:1.5">Finished jobs ready for the office printer. <b>Client's copies</b> (inventory, reports) on white paper, one side only. <b>Technician's copies</b> (time card, time sheet, quote pages, equipment for quote) on white paper, both sides. <b>Certificates</b> on the blue paper, one side.
         Every weekday at 05:55 the office computer opens this page by itself, makes the files and prints them. You can also make them now and print with <b>Blue Cranes – Print now</b> on the desktop.</span>
       ${!S.prReady ? '<span class="hint">Looking for finished jobs…</span>' : wait.length ? `<div>${wait.map(j => row(j, false)).join('')}</div>` : '<span class="hint" style="font-size:14px">✓ Nothing waiting – every finished job has been printed.</span>'}
       ${wait.length ? `<button class="btn primary" id="prMake" ${busy || !n ? 'disabled' : ''}>${busy ? esc(S.prMsg || 'Working…') : `⬇ Make print files (${n} ${n === 1 ? 'job' : 'jobs'})`}</button>` : ''}
@@ -744,7 +747,7 @@
         <li>Download the print program below, open the zip, and run <b>Install print program</b>. It makes the folder C:\\BlueCranes and a <b>Blue Cranes – Print now</b> file on the desktop.</li>
         <li>Test: tick one job above, <b>Make print files</b>, then double-click <b>Blue Cranes – Print now</b>.</li>
         <li>When the test prints right, run <b>Switch on 6am print</b> once.</li></ol>
-      <span class="hint">Printer and trays are set at the top of C:\\BlueCranes\\bc-print.ps1 (now: Groot printer, normal tray for both until the blue tray is known). In Chrome, turn off "Ask where to save each file" and allow this site to download several files.</span>
+      <span class="hint">Printer and trays are set at the top of C:\\BlueCranes\\bc-print.ps1 (now: Groot printer; client's copies and certificates one-sided, technician's copies both sides; normal tray until the blue tray is known). After an update of the print program, download the zip again and run Install print program again.. In Chrome, turn off "Ask where to save each file" and allow this site to download several files.</span>
       <button class="btn secondary" id="prZip">⬇ Print program (zip)</button></section></main>`;
   }
   async function runPrint(ids, auto){
@@ -755,12 +758,14 @@
     const say = m => { S.prMsg = m; if (S.tab === 'print') render(); };
     try {
       for (const j of jobs){ k++; say(`Job ${k} of ${jobs.length}: ${j.customer || j.card || ''}…`);
-        const base = `BC-PRINT_${stamp}_${pad(k)}_${safe(j.card) || 'job'}_${safe(j.customer)}`; let w = null, b = null;
-        try { w = await jobPdf(j.id); } catch(e){ console.error('white', e); }
+        const base = `BC-PRINT_${stamp}_${pad(k)}_${safe(j.card) || 'job'}_${safe(j.customer)}`; let w = null, t = null, b = null;
+        try { w = await jobPdf(j.id, 'client'); } catch(e){ console.error('client', e); }
+        try { t = await jobPdf(j.id, 'tech'); } catch(e){ console.error('tech', e); }
         try { b = (await jobFiles(j.id, 'certs'))[0] || null; } catch(e){ console.error('blue', e); }
-        if (w){ dlFile({ blob:w.blob, name:base + '_1-WHITE.pdf' }); await new Promise(r => setTimeout(r, 700)); }
-        if (b){ dlFile({ blob:b.blob, name:base + '_2-BLUE.pdf' }); await new Promise(r => setTimeout(r, 700)); }
-        if (w || b){ made.push(j); lines.push(`${j.card || '-'} ${j.customer || ''}: ${w ? 'white' : ''}${w && b ? ' + ' : ''}${b ? 'blue' : ''}`);
+        if (w){ dlFile({ blob:w.blob, name:base + '_1-CLIENT.pdf' }); await new Promise(r => setTimeout(r, 700)); }
+        if (t){ dlFile({ blob:t.blob, name:base + '_2-TECH.pdf' }); await new Promise(r => setTimeout(r, 700)); }
+        if (b){ dlFile({ blob:b.blob, name:base + '_3-BLUE.pdf' }); await new Promise(r => setTimeout(r, 700)); }
+        if (w || t || b){ made.push(j); lines.push(`${j.card || '-'} ${j.customer || ''}: ${[w ? 'client' : '', t ? 'tech' : '', b ? 'blue' : ''].filter(Boolean).join(' + ')}`);
           const at = new Date().toISOString(); j.printedAt = at; try { await window.Cloud.updateJob(j.id, { printedAt:at, printedBy:(window.Cloud.email && window.Cloud.email()) || '' }); } catch(e){ console.error(e); } }
         else lines.push(`${j.card || '-'} ${j.customer || ''}: no files`);
       }
