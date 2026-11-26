@@ -921,7 +921,7 @@ const UTKEY="bc-forklift-understudy";
 function utSaved(){try{return JSON.parse(load(UTKEY)||"{}")}catch(e){return{}}}
 let utCloudT;function utStore(p){store(UTKEY,JSON.stringify(Object.assign(utSaved(),p)));clearTimeout(utCloudT);utCloudT=setTimeout(()=>{try{if(cloudOK()){const u=utSaved();window.Cloud.putItem("understudy",{kind:"understudy",name:u.name||"",lmi:u.lmi||"",sig:u.sig||"",updated:new Date().toISOString()});}}catch(e){}},1000);}
 // the certificate number is the item's own number on the client's inventory (f.cno); older reports: the report number
-function certNo(f){const d=parseDoc(f.docno);if(d&&f.cno)return `C${d.job}/${f.cno}`;return d?`C${d.job}/${d.n}`:(f.docno?"C"+String(f.docno).replace(".","/"):"");}
+function certNo(f){if(f&&f.certNoText)return f.certNoText;const d=parseDoc(f.docno);if(d&&f.cno)return `C${d.job}/${f.cno}`;return d?`C${d.job}/${d.n}`:(f.docno?"C"+String(f.docno).replace(".","/"):"");}
 function monthYear(s){if(!/^\d{4}-\d{2}-\d{2}$/.test(s||""))return(s||"").toUpperCase();const [y,m]=s.split("-");return ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"][+m-1]+" "+y;}
 // certificates are printed on the company letterhead: the text starts 65 mm from the top, spacing tightened to fit
 const CERT_TOP=70,CERT_K=0.82;

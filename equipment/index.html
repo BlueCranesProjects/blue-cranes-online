@@ -489,10 +489,20 @@
     return st; }
   const certJob = l => jobCore(l.job) || String(l.date || '').replace(/-/g, '').slice(2);
   const certNoOf = (l, i) => 'C' + certJob(l) + '/' + certN(l, i);
+  // a paper job (Admin → Paper jobs) has no reports: forklifts get their certificate from the inventory too, and
+  // an INSPECTION paper job gives lifting machinery (forklifts too) an inspection certificate instead of a load test one
+  const paperInsp = l => !!(l && l.paper && l.paperType === 'INSPECTION');
+  const certItemOf = (l, r) => isCertItem(r) || !!(l && l.paper && isForklift(r) && (r.desc || r.serial));
+  function flPaperBox(r, i){ const opts = ['', 'Side shift', 'Paper grab', 'Bin tip', 'Bin rotator', 'Multi-pallet handler'];
+    return `<div class="card" style="gap:8px;background:var(--ground, #f4f6fa);padding:10px"><b style="font-size:13px">Forklift details for the load test certificate (from the paper)</b>
+      <div class="grid2"><div class="field"><label for="flc${i}">Load centre (mm)</label><input id="flc${i}" data-f="flc" value="${esc(r.flc || '')}" inputmode="numeric" placeholder="e.g. 500"></div>
+        <div class="field"><label for="fat${i}">Attachment</label><select id="fat${i}" data-f="fat">${opts.map(o => `<option value="${esc(o)}" ${(r.fat || '') === o ? 'selected' : ''}>${o || 'None'}</option>`).join('')}</select></div></div>
+      ${r.fat ? `<div class="grid2"><div class="field"><label for="fas${i}">Attachment serial nr</label><input id="fas${i}" data-f="fas" value="${esc(r.fas || '')}" placeholder="or N/A"></div>
+        <div class="field"><label for="faswl${i}">Attachment SWL (kg)</label><input id="faswl${i}" data-f="faswl" value="${esc(r.faswl || '')}" placeholder="or N/A"></div></div>` : ''}</div>`; }
   function certLine(l, r, i){
-    if (!isCertItem(r)) return '';
+    if (!certItemOf(l, r)) return '';
     if (r.status === 'REFURB') return `<div class="certbar off"><span>📄 Certificate: <b>N/A</b> – for refurbishment</span></div>`;
-    const kind = isInspCert(r) ? 'inspection' : 'load test';
+    const kind = isInspCert(r) || paperInsp(l) ? 'inspection' : 'load test';
     if (r.noCert) return `<div class="certbar off"><span>📄 No ${kind} certificate for this item</span><button type="button" class="linkbtn" style="color:var(--navy)" data-certon="${i}">Add certificate</button></div>`;
     return `${isHarness(r) ? `<div class="field"><label for="dom${i}">Date of manufacture</label><input id="dom${i}" data-f="dom" value="${esc(r.dom || '')}" placeholder="e.g. 15/12/2022 – O-190"></div>` : ''}<div class="certbar"><span>📄 ${isInspCert(r) ? 'Inspection' : 'Load test'} certificate <b>${esc(certNoOf(l, i))}</b>${r.status ? '' : ' · mark Safe or Unsafe first'}</span><span class="row" style="gap:6px;flex-wrap:nowrap">
       <button type="button" class="flb" data-certview="${i}" ${r.status ? '' : 'disabled style="opacity:.5"'}>View</button><button type="button" class="linkbtn" data-certoff="${i}">${isInspCert(r) ? 'No certificate' : 'Not tested'}</button></span></div>`;
@@ -523,7 +533,7 @@
   const utLocal = () => { try { return JSON.parse(localStorage.getItem(UTK) || '{}') || {}; } catch(e){ return {}; } };
   // a technician with their own LMI number (Admin → Technicians) tests without an understudy
   const techLmiOf = l => String((PAPER ? (l && l.techLmi) : EMB ? (l && l.techLmi) : (window.BC && BC.myLmi ? BC.myLmi() : '')) || '').trim();
-  const needsUt = l => !techLmiOf(l) && (l.rows || []).some(r => (isCertItem(r) && !isInspCert(r)) || isForklift(r));
+  const needsUt = l => !techLmiOf(l) && !paperInsp(l) && (l.rows || []).some(r => (isCertItem(r) && !isInspCert(r)) || isForklift(r));
   function utOf(l){ if (!l.ut && !PAPER && !EMB){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
   // for the certificates: the job's understudy, with the signature / LMI number of the same person saved on this phone if the job has none
   function utFull(l){ const u = utOf(l); if (PAPER || EMB || !(u.name || u.sig)) return u; const sv = utLocal(), same = !u.name || !sv.name || String(sv.name).trim().toLowerCase() === String(u.name).trim().toLowerCase();
@@ -593,9 +603,21 @@
   // inventory items → one part per certificate (so they can be put in number order with the forklift ones)
   async function itemCertParts(l, opts){ const parts = []; opts = opts || {};
     if (opts.ut === undefined){ const u = utFull(l); if (u && (u.name || u.sig)) opts.ut = u; }
-    for (const i of (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; })){
-      const f = await certDoc(l, [i], opts); if (f) parts.push({ no:certNoOf(l, i), blob:f.blob, name:f.name }); }
+    let ft = null;
+    try {
+      for (const i of (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return certItemOf(l, r) && !r.noCert && r.status && r.status !== 'REFURB'; })){
+        const r = l.rows[i];
+        if (l.paper && isForklift(r) && !paperInsp(l)){ ft = ft || await forkliftTools(); const c = await ft.api.buildCert(paperFlState(l, r, i, opts)); parts.push({ no:certNoOf(l, i), blob:new Blob([c.doc.output('arraybuffer')], { type:'application/pdf' }), name:c.name }); continue; }
+        const f = await certDoc(l, [i], opts); if (f) parts.push({ no:certNoOf(l, i), blob:f.blob, name:f.name }); }
+    } finally { if (ft) ft.done(); }
     return parts; }
+  // the forklift load test certificate of a paper job, from the inventory item and the forklift details typed in from the paper
+  function paperFlState(l, r, i, opts){ opts = opts || {}; const tech = opts.tech || S.profile || {}, tl = String(tech.lmi || techLmiOf(l) || '').trim(), u = tl ? {} : utFull(l), d = r.at || l.date, unsafe = r.status === 'UNSAFE';
+    const val = []; val[34] = r.fat || '';
+    return { type:'LOAD TEST', machine:isStacker(r) ? 'STACKER' : 'FORKLIFT', status:r.status, wr:{ insp:unsafe, load:unsafe }, val, res:[], note:[], photo:{},
+      f:{ certNoText:certNoOf(l, i), customer:l.customer, site:l.location, location:r.loc || '', serial:r.serial || '', swl:String(r.swl || '').replace(/\s/g, ''), lc:r.flc || '', aserial:r.fas || '', aswl:r.faswl || '', alc:'',
+        make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), model:'', date:d, nextLoad:addMonths(d, 12), nextInsp:addMonths(d, 6), prevLoad:'', engName:tech.name || l.tech || '', engLmi:tl, utName:u.name || '', utLmi:u.lmi || '', jobno:l.job },
+      sig:{ sigEng:tech.signature || null, sigUt:u.sig || null } }; }
   function activeJob(){
     try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && !a.edit && a.date !== today())) return null;
       const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null');
@@ -665,7 +687,8 @@
     const sel = S.sel || null; const OPEN = openSet(); (l.rows || []).forEach(r => { if (!r.id) r.id = rowId(); });
     return head((PAPER ? 'Paper job · ' : '') + 'Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Client's inventory", PAPER ? backBtn('../admin/', 'Back to Admin') : backBtn('../timesheet/', 'Back to the time sheet'),
         PAPER ? '' : `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main class="wide">
-      ${PAPER ? `<section class="card" style="gap:4px;background:#FFF8D6;border-color:#F5B826"><b>📝 Paper job – typed in by the office</b><span class="hint" style="font-size:13.5px">Certificates in the name of <b>${esc(l.tech || '–')}</b>${l.techLmi ? ' – LMI ' + esc(l.techLmi) + ', no understudy' : ''}${l.techSig ? ' (with their signature)' : ' – <span style="color:var(--bad)">no signature saved for this technician</span>'}, dated ${esc(niceDate(l.date))}. Not in the print run – download below.</span></section>` : ''}
+      ${PAPER ? `<section class="card" style="gap:4px;background:#FFF8D6;border-color:#F5B826"><b>📝 Paper job – typed in by the office</b><span class="hint" style="font-size:13.5px">Certificates in the name of <b>${esc(l.tech || '–')}</b>${l.techLmi ? ' – LMI ' + esc(l.techLmi) + ', no understudy' : ''}${l.techSig ? ' (with their signature)' : ' – <span style="color:var(--bad)">no signature saved for this technician</span>'}, dated ${esc(niceDate(l.date))}. Not in the print run – download below.</span>
+        <div class="row" style="gap:8px;margin-top:4px"><span class="hint" style="align-self:center">Lifting machinery:</span>${[['INSPECTION', 'Inspection'], ['LOAD TEST', 'Load test']].map(([k, t]) => `<button type="button" class="btn ${(l.paperType || 'LOAD TEST') === k ? 'primary' : 'secondary'} small" data-ptype="${k}" style="width:auto;padding:0 14px">${t}</button>`).join('')}</div></section>` : ''}
       ${contCard(l)}
       ${(() => { const F = folds(); if (F.jd == null) F.jd = false;
         const sum = [l.customer, 'Job ' + (l.job || '–'), niceDate(l.date), l.location].filter(Boolean).map(esc).join(' · ');
@@ -708,6 +731,7 @@
           ${summary}
           ${r.office && !r.status ? `<div class="from" style="background:#FFF3B0;color:var(--navyDeep)"><span>Loaded by the office – check it and mark <b>Safe</b> or <b>Unsafe</b></span></div>` : ''}
           ${r.note ? `<span class="hint"><b>Office note:</b> ${esc(r.note)}</span>` : ''}
+          ${PAPER && isForklift(r) && !paperInsp(l) ? flPaperBox(r, i) : ''}
           ${!PAPER && isForklift(r) ? `<div class="flbar"><span>${FL} ${isStacker(r) ? 'Stacker' : 'Forklift'} – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${!PAPER && isManCage(r) ? `<div class="flbar"><span>🧺 Man cage – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-mcopen="${i}">Inspection</button></div></div>` : ''}
           ${!PAPER && isCrane(r) ? `<div class="flbar"><span>🏗 Crane / hoist – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-cropen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-cropen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
@@ -1117,6 +1141,7 @@
         if (inp.dataset.f === 'swl' || inp.dataset.f === 'len' || inp.dataset.f === 'hol'){ const c = v.replace(/[^\d.,]/g, '').replace(',', '.'); if (c !== v){ v = c; inp.value = c; } }
         l.rows[i][inp.dataset.f] = v; saveList(l); };
       // a description that makes it a sling (or no longer one) shows / hides the length box
+      if (inp.dataset.f === 'fat') inp.onchange = () => render();
       if (inp.dataset.f === 'desc') inp.onchange = () => { const i = Number(inp.closest('.item').dataset.i), r = l.rows[i]; if (!!document.getElementById('ln' + i) !== isSling(r) || !!document.getElementById('hol' + i) !== isFallArrest(r)) render(); };
       if (inp.dataset.f === 'serial') inp.onchange = () => { inp.value = inp.value.toUpperCase(); render(); const n = document.getElementById('d' + inp.closest('.item').dataset.i); if (n && !n.value) n.focus(); };
     });
@@ -1138,6 +1163,7 @@
     const curLoc = () => (l.curLoc && l.curLoc !== '__none') ? l.curLoc : '';
     $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'', loc:curLoc() });
     const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'', loc:curLoc() || p.loc || '' }); };
+    app.querySelectorAll('[data-ptype]').forEach(b => b.onclick = () => { l.paperType = b.dataset.ptype; saveList(l); render(); toast(b.dataset.ptype === 'INSPECTION' ? 'Inspection job – lifting machinery gets inspection certificates' : 'Load test job – lifting machinery gets load test certificates'); });
     app.querySelectorAll('[data-loc]').forEach(b => b.onclick = () => { l.curLoc = b.dataset.loc; saveList(l); render(); });
     $('newLocBtn').onclick = () => askLocation(l, 'Add a location', v => { if (v){ l.curLoc = v; saveList(l, true); render(); toast(v + ' added – new items go here'); } });
     app.querySelectorAll('[data-setloc]').forEach(b => b.onclick = () => { const i = Number(b.dataset.setloc);
@@ -1432,14 +1458,14 @@
     if (gs) try { doc.restoreGraphicsState(); } catch(e){}
     doc.setTextColor(0, 0, 0);
   }
-  function harnessPage(doc, l, r, no, tech, sigImg, dots){
-    const kind = isManCage(r) ? 'mc' : isHarness(r) ? 'h' : isTackle(r) ? 't' : 'g', tackle = kind === 't';
+  function harnessPage(doc, l, r, no, tech, sigImg, dots, forceKind, techLmi){
+    const kind = forceKind || (isManCage(r) ? 'mc' : isHarness(r) ? 'h' : isTackle(r) ? 't' : 'g'), tackle = kind === 't';
     const INK = [20, 24, 40], RED = [190, 30, 30], GREEN = [0, 0, 0], L = 20, R = 190, U = s => String(s || '').toUpperCase(), unsafe = r.status === 'UNSAFE';
     if (isCondemned(r)) condemnedStamp(doc);
     let y = CERT_TOP; doc.setFont('times', 'bold'); doc.setTextColor(...INK); doc.setFontSize(20); doc.text('INSPECTION CERTIFICATE', 105, y, { align:'center' });
-    y += 7 * CERT_K; doc.setFontSize(14); doc.text({ mc:'Man Cage (Work Platform)', h:'Safety Harnesses', t:'Lifting Tackle', g:'Equipment' }[kind], 105, y, { align:'center' });
+    y += 7 * CERT_K; doc.setFontSize(14); doc.text({ mc:'Man Cage (Work Platform)', h:'Safety Harnesses', t:'Lifting Tackle', g:'Equipment', lm:'Lifting Machinery' }[kind], 105, y, { align:'center' });
     y += 8 * CERT_K; doc.setFontSize(9.5); doc.text(doc.splitTextToSize({ t:'CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993 DRIVEN MACHINERY REGULATION 18(10 e).', h:'CERTIFICATE OF TEST AND INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993, CONSTRUCTION REGULATION 10(d).',
-      mc:'CERTIFICATE OF INSPECTION IN ACCORDANCE WITH SANS 583:2015 AND THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993.', g:'CERTIFICATE OF INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993.' }[kind], R - L), L, y);
+      mc:'CERTIFICATE OF INSPECTION IN ACCORDANCE WITH SANS 583:2015 AND THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993.', g:'CERTIFICATE OF INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993.', lm:'CERTIFICATE OF THOROUGH INSPECTION IN ACCORDANCE WITH THE OCCUPATIONAL HEALTH AND SAFETY ACT 85 OF 1993 DRIVEN MACHINERY REGULATIONS.' }[kind], R - L), L, y);
     y += 13 * CERT_K; const VX = L + 68, W = R - VX;
     const row = (a, v, color) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); if (color) doc.setTextColor(...color);
       const lines = doc.splitTextToSize(String(v || ''), W).slice(0, 4); doc.text(lines, VX, y); doc.setTextColor(...INK); y += 7.9 * CERT_K + (Math.max(1, lines.length) - 1) * 5; };
@@ -1459,6 +1485,7 @@
     else row('REMARKS', unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' + (r.reason ? ' – ' + U(r.reason) : '') : 'SAFE FOR USE AT TIME OF INSPECTION', unsafe ? RED : GREEN);
     y += (22 - 7.9) * CERT_K; doc.setFontSize(12.5);
     doc.text('INSPECTED BY', L, y); doc.text('NAME: ' + U(tech.name || l.tech), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(tech.signature, L + 138, y);
+    if (kind === 'lm' && techLmi){ doc.setFontSize(8.5); doc.text('LMI : ' + techLmi, L + 58, y + 4.5); doc.setFontSize(12.5); }
     y += 15 * CERT_K; doc.text('INSPECTION DATE', L, y); doc.text(dmy(r.at || l.date), L + 44, y);
     doc.setFontSize(11);
     // items that can't be repaired (shackles, round / web slings, eye bolts, eye nuts…) get no further inspections once unsafe;
@@ -1482,7 +1509,7 @@
     let pages = 0; const nos = [];
     for (const i of idx){
       const r = l.rows[i]; if (!r) continue; if (!r.cno){ r.cno = certN(l, i); } const no = certNoOf(l, i); nos.push(no);
-      if (isInspCert(r)){ if (pages++) doc.addPage(); harnessPage(doc, l, r, no, tech, sigImg, dots); continue; }
+      if (isInspCert(r) || paperInsp(l)){ if (pages++) doc.addPage(); harnessPage(doc, l, r, no, tech, sigImg, dots, isInspCert(r) ? null : 'lm', techLmi); continue; }
       if (pages++) doc.addPage();
       let y = CERT_TOP; doc.setFont('times', 'bold'); doc.setFontSize(20); doc.setTextColor(...INK); doc.text('ANNUAL STATUTORY LOAD TEST CERTIFICATE', 105, y, { align:'center' });
       y += 7 * CERT_K; doc.setFontSize(14); doc.text('Lifting Machinery', 105, y, { align:'center' });
@@ -1668,7 +1695,7 @@
   // ---------- start ----------
   // opened hidden by the Admin page: only offer the certificate maker
   if (new URLSearchParams(location.search).get('embed') === '1'){
-    window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return isCertItem(r) && !r.noCert && r.status && r.status !== 'REFURB'; }),
+    window.BCE = { certIdx: l => (l.rows || []).map((r, i) => i).filter(i => { const r = l.rows[i]; return certItemOf(l, r) && !r.noCert && r.status && r.status !== 'REFURB'; }),
       certDoc: (l, idx, tech, ut) => certDoc(l, idx, { tech, ut: ut || null, noSave:true }), listDoc: l => listDoc(l), listXlsx: l => listXlsx(l), quoteDoc: (l, techName) => quoteDoc(l, { techName }), timeCard: l => l && l.signoff && l.signoff.card ? timeCardDoc(l) : null,
       flCertNo: (l, st) => flCertNo(l, st), flCertSt: (l, st, ut) => withFlNo(l, st, ut), itemCertParts: (l, tech, ut) => itemCertParts(l, { tech, noSave:true, ut: (ut && (ut.name || ut.sig)) ? ut : ((l.ut && (l.ut.name || l.ut.sig)) ? l.ut : null) }), mergeCerts: (l, parts) => mergeCerts(l, parts) };
   } else

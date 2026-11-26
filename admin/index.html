@@ -1266,8 +1266,8 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
     S.pjBusy = false; if (S.tab === 'paper') render();
   }
   function vPaper(){
-    const n = S.pj || (S.pj = { tech:'', job:'', customer:'', site:'', date:'' }), list = S.papers || [];
-    const ready = n.tech && n.job.trim() && n.customer.trim() && /^\d{4}-\d{2}-\d{2}$/.test(n.date);
+    const n = S.pj || (S.pj = { tech:'', job:'', customer:'', site:'', date:'', type:'' }), list = S.papers || [];
+    const ready = n.tech && n.job.trim() && n.customer.trim() && /^\d{4}-\d{2}-\d{2}$/.test(n.date) && n.type;
     const stat = l => { const rs = (l.rows || []).filter(r => r.serial || r.desc), un = rs.filter(r => r.status === 'UNSAFE').length, dn = rs.filter(r => r.status).length;
       return rs.length + (rs.length === 1 ? ' item' : ' items') + ' · ' + dn + ' marked' + (un ? ` · <span style="color:var(--bad);font-weight:700">${un} unsafe</span>` : ''); };
     return `<main><div class="steps">
@@ -1278,12 +1278,14 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
           <span class="hint">Not in the list, or the LMI number is missing? Add or change it under <b>Technicians</b>.</span></div>
         <div class="row"><div class="field"><label for="pjJob">Job number</label><input id="pjJob" data-pj="job" value="${esc(n.job)}" placeholder="e.g. 7101" autocomplete="off"></div>
           <div class="field"><label for="pjDate">Date of the job (from the paper)</label><input id="pjDate" type="date" data-pj="date" value="${esc(n.date)}" max="${keyOf(new Date())}"></div></div>
+        <div class="field"><label>Lifting machinery on this job</label><div class="row" style="gap:8px">${[['INSPECTION', 'Inspection', 'inspection certificates'], ['LOAD TEST', 'Load test', 'load test certificates']].map(([k, t, h]) => `<button type="button" class="btn ${n.type === k ? 'primary' : 'secondary'}" data-pjtype="${k}" style="flex:1;flex-direction:column;height:auto;padding:10px 12px;gap:2px"><b>${t}</b><span style="font-size:12px;font-weight:500">Cranes, hoists, forklifts… get ${h}</span></button>`).join('')}</div>
+          <span class="hint">Lifting tackle, harnesses and safety gear always get their inspection certificate.</span></div>
         <div class="row"><div class="field"><label for="pjCust">Client</label><input id="pjCust" data-pj="customer" value="${esc(n.customer)}" autocomplete="off"></div>
           <div class="field"><label for="pjSite">Site</label><input id="pjSite" data-pj="site" value="${esc(n.site)}" placeholder="e.g. Paarl" autocomplete="off"></div></div>
         ${(() => { const pi = S.pjInv, ok = pi ? pi.rows.filter(r => !r.errs.length) : []; return `<div class="field"><label>Client's inventory <span style="font-weight:400">(optional – their digital census or list)</span></label>
           <label class="drop" for="pjFile" style="padding:12px"><b>${pi ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word or PDF${pi ? ' · ' + esc(pi.file) : ''}</span></label><input type="file" id="pjFile" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
           ${pi ? `<span class="hint" style="font-size:14px"><b style="color:var(--ok)">${ok.length} ${ok.length === 1 ? 'item' : 'items'}</b> will be on the inventory${pi.rows.length - ok.length ? ` · <span style="color:var(--bad)">${pi.rows.length - ok.length} with problems left out</span>` : ''} – then mark each one Safe or Unsafe as on the paper. <button type="button" class="x" id="pjFileX">Remove file</button></span>` : ''}</div>`; })()}
-        <button class="btn primary" id="pjGo" ${ready && !S.pjMaking ? '' : 'disabled'}>${S.pjMaking ? 'Starting…' : ready ? 'Start paper job → fill in the inventory' : 'Fill in the technician, job number, date and client'}</button>
+        <button class="btn primary" id="pjGo" ${ready && !S.pjMaking ? '' : 'disabled'}>${S.pjMaking ? 'Starting…' : ready ? 'Start paper job → fill in the inventory' : n.tech && n.job.trim() && n.customer.trim() && n.date && !n.type ? 'Choose Inspection or Load test' : 'Fill in the technician, job number, date and client'}</button>
       </section>
       ${(() => { const id = S.pjImp, l = id && list.find(x => x.id === id); if (!l) return ''; const ia = S.pjIa || {}, p = ia.rows;
         const have = new Set((l.rows || []).filter(r => r.serial || r.desc).map(invKey)), ok = p ? p.filter(r => !r.errs.length) : [], fresh = ok.filter(r => !have.has(invKey(r)));
@@ -1295,7 +1297,7 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
           <button class="btn primary" id="piSave" ${fresh.length ? '' : 'disabled'}>${fresh.length ? `Add ${fresh.length} ${fresh.length === 1 ? 'item' : 'items'} to the paper job` : "Choose the client's file first"}</button></section>`; })()}
       <section class="card"><h2>Paper jobs</h2>
         ${S.pjBusy && !list.length ? '<span class="hint">Looking for paper jobs…</span>' : list.length ? `<div>${list.map(l => `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap">
-            <span style="flex:1;min-width:220px"><b>${esc(l.customer || 'Client')}</b> <span class="hint">· Job ${esc(l.job || '–')} · ${esc(niceDate(l.date))} · ${esc(l.tech || '')}</span><div class="hint">${stat(l)}</div></span>
+            <span style="flex:1;min-width:220px"><b>${esc(l.customer || 'Client')}</b> <span class="hint">· Job ${esc(l.job || '–')} · ${esc(niceDate(l.date))} · ${esc(l.tech || '')} · ${l.paperType === 'INSPECTION' ? 'Inspection' : 'Load test'}</span><div class="hint">${stat(l)}</div></span>
             <a class="btn primary" href="../equipment/?paper=${encodeURIComponent(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto;text-decoration:none">Open</a>
             <button class="btn secondary" data-pjimp="${esc(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto">⬆ Import inventory</button>
             <button class="btn secondary" data-pjdel="${esc(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto;color:var(--bad);border-color:var(--bad)">Delete</button></div>`).join('')}</div>`
@@ -1325,7 +1327,8 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
       try { window.Cloud.putItem(paperDoc(l.id), Object.assign({ kind:'paper' }, JSON.parse(JSON.stringify(l)))); m[l.id] = l; paperKeep(m); S.papers = (S.papers || []).map(x => x.id === l.id ? l : x);
         toast(add.length + (add.length === 1 ? ' item' : ' items') + ' added to ' + l.customer); S.pjImp = null; S.pjIa = null; render(); }
       catch(e){ console.error(e); toast('Could not save'); ps.disabled = false; } };
-    app.querySelectorAll('[data-pj]').forEach(el => { const upd = () => { S.pj[el.dataset.pj] = el.value; const b = $('pjGo'), n = S.pj; if (b){ const ok = n.tech && n.job.trim() && n.customer.trim() && /^\d{4}-\d{2}-\d{2}$/.test(n.date); b.disabled = !ok; b.textContent = ok ? 'Start paper job → fill in the inventory' : 'Fill in the technician, job number, date and client'; } };
+    app.querySelectorAll('[data-pjtype]').forEach(b => b.onclick = () => { S.pj.type = b.dataset.pjtype; render(); });
+    app.querySelectorAll('[data-pj]').forEach(el => { const upd = () => { S.pj[el.dataset.pj] = el.value; const b = $('pjGo'), n = S.pj; if (b){ const ok = n.tech && n.job.trim() && n.customer.trim() && /^\d{4}-\d{2}-\d{2}$/.test(n.date) && n.type; b.disabled = !ok; b.textContent = ok ? 'Start paper job → fill in the inventory' : n.tech && n.job.trim() && n.customer.trim() && n.date && !n.type ? 'Choose Inspection or Load test' : 'Fill in the technician, job number, date and client'; } };
       el.oninput = upd; el.onchange = upd; });
     const go = $('pjGo'); if (go) go.onclick = async () => {
       const n = S.pj, rec = /^rec:/.test(n.tech) ? (S.techs || []).find(t => 'rec:' + t.id === n.tech) : null;
@@ -1334,7 +1337,7 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
       try {
         const prof = u ? await profOf(u.uid) : {}; const job = n.job.trim().toUpperCase().replace(/\s+/g, '');
         const id = 'paper-' + job.replace(/[^\w-]+/g, '') + '-' + Date.now().toString(36);
-        const l = { id, paper:true, date:n.date, job, customer:n.customer.trim().toUpperCase(), location:n.site.trim(), rows:[], tech:(rec && rec.name) || prof.name || (u && (u.name || u.email)) || '',
+        const l = { id, paper:true, paperType:n.type || 'LOAD TEST', date:n.date, job, customer:n.customer.trim().toUpperCase(), location:n.site.trim(), rows:[], tech:(rec && rec.name) || prof.name || (u && (u.name || u.email)) || '',
           techUid:(u && u.uid) || '', techEmail:(rec && rec.email) || (u && u.email) || '', techRec:(rec && rec.id) || '', techLmi:(rec && rec.lmi) || '',
           techSig:(rec && rec.sig) || prof.signature || '', ut:{ name:'', lmi:'', sig:'' }, by:window.Cloud.email(), createdAt:new Date().toISOString(), savedAt:Date.now() };
         if (S.pjInv){ l.rows = invRows(S.pjInv.rows); l.locs = locsOfRows(l.rows); }
