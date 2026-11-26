@@ -151,7 +151,7 @@ Everything for a person is under `users/{uid}/items/`:
 
 - Straight after the client signs (Finish job / Save sign-off with an email address), the phone emails the client: the **inventory list**, the **client's reports** (forklift, crane / hoist, man cage – one PDF per kind, no technician's quote copies) and the **signed report & time card**. No certificates, no copy to the office.
 - Sent from the office's Google account by a small Google Apps Script web app (Admin → **Email** has the script with its secret key and the steps). Setting: `settings/email` = { url, key, fromName, replyTo } – read by every signed-in user, changed only by admins (firestore.rules). `BC.sendMail` posts the PDFs (base64) as text/plain JSON.
-- No signal or the script fails: `signoff.mail` stays `waiting` (with `mailErr`), and the inventory page tries again when opened or when the app comes back (`retryMail`, at most every 10 minutes per job). Sent: `mail = 'sent'`, `mailAt`.
+- No signal or the script fails: `signoff.mail` stays `waiting` (with `mailErr`), and the inventory page tries again when opened or when the app comes back (`retryMail`: 20 s after the inventory opens, one job per visit; the try is saved before the PDFs are made, so a phone that restarts the page doesn't loop; at most 3 tries, 6 hours apart; a job the office already sent from Admin (`mailSentAt`) is marked sent without making PDFs). Sent: `mail = 'sent'`, `mailAt`.
 - Admin → Email lists the signed-off jobs of the last 30 days (✓ Emailed / ⏳ Waiting / no address) with **Send now / Send again** (Admin builds the same files; marks the job `mailSentAt`, `mailTo`).
 
 ## Backup (rule)
