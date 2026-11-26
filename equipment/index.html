@@ -652,6 +652,7 @@
   function refreshSuggestions(){
     const d = new Set(['Chain block','Lever hoist','Electric chain hoist','Wire rope hoist','Beam trolley','Beam clamp','Shackle','Web sling','Round sling','Chain sling','Wire rope sling','Spreader beam','Lifting clamp','Eye bolt','Gantry crane','Overhead crane','Jib crane','Pallet jack','Engine crane']);
     Object.values(S.lists).forEach(l => (l.rows || []).forEach(r => { if (r.desc) d.add(r.desc); }));
+    S.descs = [...new Map([...d].map(x => [String(x).trim().toUpperCase(), String(x).trim()])).values()].sort((a, b) => a.localeCompare(b));
     document.getElementById('descList').innerHTML = [...d].sort().map(x => `<option value="${esc(x)}">`).join('');
 
   }
@@ -753,7 +754,7 @@
           ${dupes[k] > 1 ? '<span class="warn">This serial nr is on the list more than once.</span>' : ''}
           ${seen ? `<span class="hint" style="color:var(--ok)">Already in ${esc(l.customer)}'s inventory (job ${esc(known[k].job)}, ${esc(niceDate(known[k].date))}).</span>` : ''}
           <div class="field"><label>Location</label><button type="button" class="btn secondary small" data-setloc="${i}" style="width:100%;justify-content:space-between;height:44px;font-size:15px;padding:0 12px"><span>${r.loc ? '📍 ' + esc(r.loc) : '📍 Choose location'}</span><span>›</span></button></div>
-          <div class="field"><label for="d${i}">Description</label><input id="d${i}" data-f="desc" value="${esc(r.desc)}" list="descList" placeholder="e.g. Chain block" ${ro}></div>
+          <div class="field"><label for="d${i}">Description</label>${r.auto ? '' : `<select data-descpick="${i}" aria-label="Choose the description" style="height:44px;border-radius:10px;border:1.5px solid #c9d2e3;background:#fff;padding:0 10px;font:inherit;font-size:15px;width:100%"><option value="">Choose from the list…</option>${(S.descs || []).map(x => `<option value="${esc(x)}" ${String(r.desc || '').trim().toUpperCase() === x.toUpperCase() ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`}<input id="d${i}" data-f="desc" value="${esc(r.desc)}" list="descList" placeholder="or type it, e.g. Chain block 1T" ${ro}></div>
           <div class="grid2">
             <div class="field"><label for="m${i}">Manufacturer</label><select id="m${i}" data-make="${i}" ${r.auto ? 'disabled' : ''}>
                 ${r.make ? '' : '<option value="" selected disabled>Choose…</option>'}${MK.map(x => `<option value="${esc(x)}" ${x === r.make ? 'selected' : ''}>${esc(x)}</option>`).join('')}
@@ -1183,6 +1184,7 @@
     const curLoc = () => (l.curLoc && l.curLoc !== '__none') ? l.curLoc : '';
     $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'', loc:curLoc() });
     const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'', loc:curLoc() || p.loc || '' }); };
+    app.querySelectorAll('[data-descpick]').forEach(sel => sel.onchange = () => { const r = l.rows[Number(sel.dataset.descpick)]; if (!sel.value) return; r.desc = sel.value; r.t = Date.now(); saveList(l); render(); const sw = document.getElementById('w' + sel.dataset.descpick); if (sw && !sw.value) sw.focus(); });
     app.querySelectorAll('[data-rep]').forEach(inp => inp.oninput = () => { const r = l.rows[Number(inp.dataset.rep)]; const v = inp.value.toUpperCase().trim();
       if (v) r.report = Object.assign({}, r.report || {}, { no:v, type:(r.report && r.report.type) || (isForklift(r) ? 'Forklift report' : isManCage(r) ? 'Man cage report' : 'Crane / hoist report') }); else delete r.report; r.t = Date.now(); saveList(l); });
     { const pj = document.getElementById('ptJob'); if (pj) pj.oninput = () => { l.prevTest = pj.value; saveList(l); }; }

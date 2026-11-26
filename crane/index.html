@@ -187,6 +187,10 @@
   .phbox{margin:8px 0 0 34px;padding:10px;border-radius:10px;background:#f4f6fb;display:flex;flex-direction:column;gap:8px}
   .phbox.miss{background:#fdecec;border:1px solid #f3c2c2}
   .qbox{margin:8px 0 0 34px;padding:10px;border-radius:10px;background:#FFF8DC;border:1px solid #F0D98A;display:flex;flex-direction:column;gap:8px}
+  .qbox .qh.tog{cursor:pointer;border:0;background:none;width:100%;text-align:left;font:inherit;font-weight:800;padding:2px 0}
+  .qbox .qsum{font-weight:600;font-size:12px;color:#6B5200}
+  .qsel{grid-column:1/-1;height:40px;border-radius:8px;border:1px solid #E5CF84;background:#fff;font:inherit;font-size:14px;padding:0 8px}
+  .secup{display:block;width:100%;margin:6px 0 2px;padding:10px;border:1.5px dashed #c9d2e3;border-radius:10px;background:#fff;color:var(--navy);font:inherit;font-weight:800;font-size:13px;cursor:pointer}
   .qbox .qh{font-weight:800;font-size:13px;color:#6B5200;display:flex;justify-content:space-between;align-items:center;gap:8px}
   .qbox .qh small{font-weight:600;color:#8a7430}
   .qbox label{font-size:12px;font-weight:700;color:#4a5068;margin-bottom:-4px}
@@ -377,7 +381,7 @@ function build(){
   $("parts").querySelectorAll("[data-part]").forEach(c=>c.onchange=()=>{state.parts[c.dataset.part]=c.checked;render();save();});
   let sec="",h="";
   ROWS.forEach(r=>{if(r.ui===false)return;
-    if(r.sec!==sec){if(sec)h+=`</div></div>`;sec=r.sec;h+=`<div class="secw"><button type="button" class="sech" data-sec="${sec}" aria-expanded="false"><span>${sec}</span><span class="sc" id="sc-${sec}"></span><span class="chev">▾</span></button><div class="secbody" id="sb-${sec}">`;}
+    if(r.sec!==sec){if(sec)h+=`<button type="button" class="secup" data-secup="${sec}">▴ Fold up this section</button></div></div>`;sec=r.sec;h+=`<div class="secw"><button type="button" class="sech" data-sec="${sec}" aria-expanded="false"><span>${sec}</span><span class="sc" id="sc-${sec}"></span><span class="chev">▾</span></button><div class="secbody" id="sb-${sec}">`;}
     h+=`<div class="item" id="it-${r.id}"><div class="row"><span class="num">${r.no}</span><span class="name"><span id="nm-${r.id}">${esc(r.name)}</span><span class="mixed" id="mx-${r.id}">different per part</span></span>
       ${r.kind==="meas"?"":optBtns(`data-r="${r.id}"`,r.name)}</div>`;
     if(r.n===11)h+=`<div class="sub"><select id="loadSel" class="ysel"><option value="">Rope or chain? Choose…</option><option value="rope">Rope</option><option value="chain">Chain</option></select></div>`;
@@ -386,7 +390,8 @@ function build(){
     if(r.kind!=="meas")h+=`<div class="qbox" id="qb-${r.id}" style="display:none"></div>`;
     h+=`<div class="sub notewrap" style="display:none"><input data-note="${r.id}" placeholder="Note / defect for item ${r.no}"></div><button class="notebtn" data-addnote="${r.id}">+ Add note</button></div>`;
   });
-  itemsEl.innerHTML=h+(sec?"</div></div>":"");wirePhotos(itemsEl);
+  itemsEl.innerHTML=h+(sec?`<button type="button" class="secup" data-secup="${sec}">▴ Fold up this section</button></div></div>`:"");wirePhotos(itemsEl);
+  itemsEl.querySelectorAll("[data-secup]").forEach(b=>b.onclick=()=>{const k=b.dataset.secup;openSec.delete(k);keepOpen();render();const hd=itemsEl.querySelector(`[data-sec="${k}"]`);if(hd)hd.scrollIntoView({behavior:"smooth",block:"start"});});
   itemsEl.querySelectorAll("[data-sec]").forEach(b=>b.onclick=()=>{const k=b.dataset.sec;if(openSec.has(k))openSec.delete(k);else openSec.add(k);keepOpen();render();if(openSec.has(k))b.scrollIntoView({behavior:"smooth",block:"start"});});
   $("loadSel").onchange=()=>{state.load=$("loadSel").value;render();save();};
   itemsEl.querySelectorAll(".opts button").forEach(b=>b.onclick=()=>{
@@ -677,10 +682,19 @@ const valsOf=(r,st)=>r.kind==="four"?activeCols(r.n,st).map(c=>(st.res||{})[r.id
 const EXTRAS=["Scaffolding","Cherry picker","Scissor lift","Crane hire","Forklift","After hours / shutdown"];
 function qOf(id,make){const q=(state.quote||{})[id];if(q||!make)return q||{parts:[],notes:"",extra:[],other:"",photos:[]};state.quote=state.quote||{};return state.quote[id]={parts:[],notes:"",extra:[],other:"",photos:[]};}
 function hasQuote(q){return !!(q&&((q.parts||[]).some(p=>p.d||p.n||p.q)||q.notes||(q.extra||[]).length||q.other||(q.photos||[]).length));}
+// the yellow box folds to one line (tap to open); parts are picked from a list (or typed under "Other")
+const PARTS=['HOOK LATCH', 'HOOK', 'LOAD CHAIN', 'CHAIN GUIDE', 'CHAIN CONTAINER', 'WIRE ROPE', 'ROPE DRUM', 'ROPE GUIDE', 'SHEAVE', 'BOTTOM BLOCK', 'BRAKE PADS', 'BRAKE COIL', 'LIMIT SWITCH', 'PENDANT CONTROL', 'PENDANT CABLE', 'CONTACTOR', 'EMERGENCY STOP', 'ISOLATOR', 'CONDUCTOR BAR / DOWNSHOP LEAD', 'CURRENT COLLECTOR', 'FESTOON CABLE', 'TROLLEY WHEELS', 'END CARRIAGE WHEELS', 'BEARINGS', 'GEARBOX OIL', 'END STOPS', 'BUFFERS', 'WARNING HORN', 'SWL SIGNS', 'TRAVEL MOTOR', 'HOIST MOTOR'];
+const qOpen=new Set();
+function partsList(){let own=[];try{own=JSON.parse(localStorage.getItem("bc-parts-own")||"[]");}catch(e){}return [...new Set(PARTS.concat(own))];}
+function keepPart(v){v=String(v||"").trim().toUpperCase();if(!v||PARTS.includes(v))return;try{const own=JSON.parse(localStorage.getItem("bc-parts-own")||"[]");if(!own.includes(v)){own.push(v);localStorage.setItem("bc-parts-own",JSON.stringify(own.slice(-60)));}}catch(e){}}
 function fillQuote(id){const b=$("qb-"+id);if(!b)return;b.dataset.on="1";const q=qOf(id);const parts=q.parts&&q.parts.length?q.parts:[{q:"",d:"",n:""}];
-  b.innerHTML=`<div class="qh">🧾 For quote<small>Only on the technician's report</small></div>
+  if(!qOpen.has(id)){const np=(q.parts||[]).filter(p=>p.d||p.n||p.q).length,nph=(q.photos||[]).length,bits=[np?np+(np===1?" part":" parts"):"",q.notes?"notes":"",(q.extra||[]).length||q.other?"equipment":"",nph?nph+(nph===1?" photo":" photos"):""].filter(Boolean);
+    b.innerHTML=`<button type="button" class="qh tog" data-qtog>🧾 For quote <span class="qsum">${bits.length?"· "+bits.join(" · "):"· tap to add parts, notes, photos"}</span><span>▸</span></button>`;
+    b.querySelector("[data-qtog]").onclick=()=>{qOpen.add(id);fillQuote(id);};return;}
+  const PL=partsList();
+  b.innerHTML=`<button type="button" class="qh tog" data-qtog>🧾 For quote<small>Only on the technician's report</small><span>▴</span></button>
     <label>Parts needed</label>
-    ${parts.map((p,k)=>`<div class="qpart"><input data-qp="${k}" data-qk="q" inputmode="numeric" placeholder="Qty" value="${esc(p.q||"")}" aria-label="Quantity"><input data-qp="${k}" data-qk="d" placeholder="Part / description" value="${esc(p.d||"")}" aria-label="Part description"><input data-qp="${k}" data-qk="n" placeholder="Part / model no" value="${esc(p.n||"")}" aria-label="Part or model number"><button type="button" data-qdel="${k}" aria-label="Remove part">✕</button></div>`).join("")}
+    ${parts.map((p,k)=>`<div class="qpart"><select class="qsel" data-qsel="${k}" aria-label="Choose the part"><option value="">Choose a part…</option>${PL.map(x=>`<option value="${esc(x)}" ${String(p.d||"").toUpperCase()===x?"selected":""}>${esc(x)}</option>`).join("")}<option value="__other" ${p.o||(p.d&&!PL.includes(String(p.d).toUpperCase()))?"selected":""}>Other – type it below</option></select><input data-qp="${k}" data-qk="q" inputmode="numeric" placeholder="Qty" value="${esc(p.q||"")}" aria-label="Quantity"><input data-qp="${k}" data-qk="d" ${p.o||(p.d&&!PL.includes(String(p.d).toUpperCase()))?"":'style="display:none"'} placeholder="Type the part" value="${esc(p.d||"")}" aria-label="Part description"><input data-qp="${k}" data-qk="n" placeholder="Part / model no" value="${esc(p.n||"")}" aria-label="Part or model number"><button type="button" data-qdel="${k}" aria-label="Remove part">✕</button></div>`).join("")}
     <button type="button" class="qadd" data-qadd>+ Add part</button>
     <label>Repair notes</label><textarea data-qn placeholder="What is wrong and what must be done">${esc(q.notes||"")}</textarea>
     <label>Extra equipment</label><div class="qchips">${EXTRAS.map(x=>`<button type="button" data-qx="${esc(x)}" class="${(q.extra||[]).includes(x)?"on":""}">${esc(x)}</button>`).join("")}</div>
@@ -688,6 +702,9 @@ function fillQuote(id){const b=$("qb-"+id);if(!b)return;b.dataset.on="1";const q
     <label>Photos for the repair</label>
     ${(q.photos||[]).length?`<div class="qphotos">${q.photos.map((p,k)=>`<div class="qp"><img src="${p.src}" alt="Repair photo ${k+1}"><button type="button" data-qpdel="${k}" aria-label="Remove photo ${k+1}">✕</button></div>`).join("")}</div>`:""}
     <div class="qcams"><label class="qcam"><input type="file" accept="image/*" capture="environment" data-qcam aria-label="Take a repair photo with the camera">📷 Take photo</label><label class="qcam"><input type="file" accept="image/*" data-qcam multiple aria-label="Add repair photos from the gallery">🖼 From gallery</label></div>`;
+  b.querySelector("[data-qtog]").onclick=()=>{qOpen.delete(id);fillQuote(id);};
+  b.querySelectorAll("[data-qsel]").forEach(sel=>sel.onchange=()=>{const k=+sel.dataset.qsel,qq=qOf(id,true);qq.parts=qq.parts&&qq.parts.length?qq.parts:[{q:"",d:"",n:""}];while(qq.parts.length<=k)qq.parts.push({q:"",d:"",n:""});if(sel.value==="__other"){qq.parts[k].o=true;if(PL.includes(String(qq.parts[k].d||"").toUpperCase()))qq.parts[k].d="";}else{qq.parts[k].d=sel.value;delete qq.parts[k].o;}save();fillQuote(id);if(sel.value==="__other"){const ins=b.querySelectorAll('[data-qk="d"]');if(ins[k])ins[k].focus();}});
+  b.querySelectorAll('[data-qk="d"]').forEach(inp=>inp.addEventListener("change",()=>keepPart(inp.value)));
   b.querySelectorAll("[data-qp]").forEach(inp=>inp.oninput=()=>{const qq=qOf(id,true);qq.parts=qq.parts||[];while(qq.parts.length<=+inp.dataset.qp)qq.parts.push({q:"",d:"",n:""});qq.parts[+inp.dataset.qp][inp.dataset.qk]=inp.value;save();});
   b.querySelector("[data-qadd]").onclick=()=>{const qq=qOf(id,true);qq.parts=(qq.parts&&qq.parts.length?qq.parts:[{q:"",d:"",n:""}]);qq.parts.push({q:"",d:"",n:""});save();fillQuote(id);const ins=b.querySelectorAll('[data-qk="d"]');ins[ins.length-1].focus();};
   b.querySelectorAll("[data-qdel]").forEach(x=>x.onclick=()=>{const qq=qOf(id,true);(qq.parts||[]).splice(+x.dataset.qdel,1);save();fillQuote(id);});
