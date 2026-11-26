@@ -1280,18 +1280,51 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
           <div class="field"><label for="pjDate">Date of the job (from the paper)</label><input id="pjDate" type="date" data-pj="date" value="${esc(n.date)}" max="${keyOf(new Date())}"></div></div>
         <div class="row"><div class="field"><label for="pjCust">Client</label><input id="pjCust" data-pj="customer" value="${esc(n.customer)}" autocomplete="off"></div>
           <div class="field"><label for="pjSite">Site</label><input id="pjSite" data-pj="site" value="${esc(n.site)}" placeholder="e.g. Paarl" autocomplete="off"></div></div>
+        ${(() => { const pi = S.pjInv, ok = pi ? pi.rows.filter(r => !r.errs.length) : []; return `<div class="field"><label>Client's inventory <span style="font-weight:400">(optional – their digital census or list)</span></label>
+          <label class="drop" for="pjFile" style="padding:12px"><b>${pi ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word or PDF${pi ? ' · ' + esc(pi.file) : ''}</span></label><input type="file" id="pjFile" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
+          ${pi ? `<span class="hint" style="font-size:14px"><b style="color:var(--ok)">${ok.length} ${ok.length === 1 ? 'item' : 'items'}</b> will be on the inventory${pi.rows.length - ok.length ? ` · <span style="color:var(--bad)">${pi.rows.length - ok.length} with problems left out</span>` : ''} – then mark each one Safe or Unsafe as on the paper. <button type="button" class="x" id="pjFileX">Remove file</button></span>` : ''}</div>`; })()}
         <button class="btn primary" id="pjGo" ${ready && !S.pjMaking ? '' : 'disabled'}>${S.pjMaking ? 'Starting…' : ready ? 'Start paper job → fill in the inventory' : 'Fill in the technician, job number, date and client'}</button>
       </section>
+      ${(() => { const id = S.pjImp, l = id && list.find(x => x.id === id); if (!l) return ''; const ia = S.pjIa || {}, p = ia.rows;
+        const have = new Set((l.rows || []).filter(r => r.serial || r.desc).map(invKey)), ok = p ? p.filter(r => !r.errs.length) : [], fresh = ok.filter(r => !have.has(invKey(r)));
+        return `<section class="card wide" style="border:2px solid var(--navy)"><div class="row" style="justify-content:space-between"><h2>⬆ Import the client's inventory</h2><button class="x" id="piClose" style="border-color:var(--navy);color:var(--navyDeep)">✕ Close</button></div>
+          <div style="font-size:15px"><b>${esc(l.customer)}</b> <span class="hint">· Job ${esc(l.job)} · ${esc(niceDate(l.date))} · ${esc(l.tech || '')} · ${(l.rows || []).filter(r => r.serial || r.desc).length} items now</span></div>
+          <label class="drop" for="piFile"><b>${ia.file ? 'Choose another file' : 'Choose file'}</b><br><span class="hint">Excel, CSV, Word or PDF${ia.file ? ' · ' + esc(ia.file) : ''}</span></label><input type="file" id="piFile" accept=".xlsx,.xls,.csv,.docx,.doc,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/pdf" style="display:none">
+          ${p ? `<b>${fresh.length} new ${fresh.length === 1 ? 'item' : 'items'} to add</b>${ok.length - fresh.length ? `<span class="hint">${ok.length - fresh.length} already on the inventory – left out</span>` : ''}${p.length - ok.length ? `<span class="hint" style="color:var(--bad)">${p.length - ok.length} with problems – left out</span>` : ''}
+            ${ia.cust && up(ia.cust) !== up(l.customer) ? `<span class="warn">The file says customer <b>${esc(ia.cust)}</b> but the paper job is for <b>${esc(l.customer)}</b>. Check that this is the right file.</span>` : ''}` : ''}
+          <button class="btn primary" id="piSave" ${fresh.length ? '' : 'disabled'}>${fresh.length ? `Add ${fresh.length} ${fresh.length === 1 ? 'item' : 'items'} to the paper job` : "Choose the client's file first"}</button></section>`; })()}
       <section class="card"><h2>Paper jobs</h2>
         ${S.pjBusy && !list.length ? '<span class="hint">Looking for paper jobs…</span>' : list.length ? `<div>${list.map(l => `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap">
             <span style="flex:1;min-width:220px"><b>${esc(l.customer || 'Client')}</b> <span class="hint">· Job ${esc(l.job || '–')} · ${esc(niceDate(l.date))} · ${esc(l.tech || '')}</span><div class="hint">${stat(l)}</div></span>
             <a class="btn primary" href="../equipment/?paper=${encodeURIComponent(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto;text-decoration:none">Open</a>
+            <button class="btn secondary" data-pjimp="${esc(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto">⬆ Import inventory</button>
             <button class="btn secondary" data-pjdel="${esc(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto;color:var(--bad);border-color:var(--bad)">Delete</button></div>`).join('')}</div>`
           : '<span class="hint" style="font-size:14px">No paper jobs yet.</span>'}
       </section></div></main>`;
   }
+  const invRows = list => list.filter(r => !r.errs.length).map((r, k) => { const o = { id:'r' + Date.now().toString(36) + k.toString(36) + Math.random().toString(36).slice(2, 4), serial:r.serial || '', desc:r.desc || '', make:r.make || '', swl:String(r.swl == null ? '' : r.swl), loc:r.loc || '', status:'', office:true, t:Date.now() }; if (r.note) o.note = r.note; return o; });
+  const locsOfRows = rows => [...new Set(rows.map(r => r.loc).filter(Boolean))];
   function wirePaper($){
     if (S.tab !== 'paper') return;
+    const pf = $('pjFile'); if (pf) pf.onchange = async () => { const file = pf.files && pf.files[0]; pf.value = ''; if (!file) return;
+      try { const r = await readInv(file); S.pjInv = { rows:r.rows, file:file.name, site:r.site || '', cust:r.customer || '' };
+        if (r.customer && !S.pj.customer) S.pj.customer = r.customer; if (r.site && !S.pj.site) S.pj.site = r.site;
+        { const nrs = [...new Set(r.rows.map(x => String(x.job || '').trim()).filter(Boolean))]; if (nrs.length === 1 && !S.pj.job) S.pj.job = nrs[0]; }
+        if (!r.rows.length) toast(r.noHead ? 'Could not find the headings (Item no, Description…)' : 'No items found in that file'); render(); }
+      catch(e){ console.error(e); toast(e && e.userMsg ? e.userMsg : 'Could not read that file – check it is an Excel, Word (.docx) or PDF file with a table'); } };
+    const px = $('pjFileX'); if (px) px.onclick = () => { S.pjInv = null; render(); };
+    app.querySelectorAll('[data-pjimp]').forEach(b => b.onclick = () => { S.pjImp = b.dataset.pjimp; S.pjIa = {}; render(); window.scrollTo(0, 0); });
+    const pc = $('piClose'); if (pc) pc.onclick = () => { S.pjImp = null; S.pjIa = null; render(); };
+    const pi = $('piFile'); if (pi) pi.onchange = async () => { const file = pi.files && pi.files[0]; pi.value = ''; if (!file) return;
+      try { const r = await readInv(file); S.pjIa = { rows:r.rows, file:file.name, cust:r.customer || '' }; if (!r.rows.length) toast(r.noHead ? 'Could not find the headings (Item no, Description…)' : 'No items found in that file'); render(); }
+      catch(e){ console.error(e); toast(e && e.userMsg ? e.userMsg : 'Could not read that file – check it is an Excel, Word (.docx) or PDF file with a table'); } };
+    const ps = $('piSave'); if (ps) ps.onclick = async () => { const m = paperLocal(), l = m[S.pjImp] || (S.papers || []).find(x => x.id === S.pjImp); if (!l) return;
+      const have = new Set((l.rows || []).filter(r => r.serial || r.desc).map(invKey)); const add = invRows(((S.pjIa || {}).rows || []).filter(r => !r.errs.length && !have.has(invKey(r))));
+      if (!add.length) return; ps.disabled = true; ps.textContent = 'Adding…';
+      l.rows = (l.rows || []).filter(r => r.serial || r.desc || r.status).concat(add); l.locs = [...new Set((l.locs || []).concat(locsOfRows(add)))]; l.savedAt = Date.now();
+      try { window.Cloud.putItem(paperDoc(l.id), Object.assign({ kind:'paper' }, JSON.parse(JSON.stringify(l)))); m[l.id] = l; paperKeep(m); S.papers = (S.papers || []).map(x => x.id === l.id ? l : x);
+        toast(add.length + (add.length === 1 ? ' item' : ' items') + ' added to ' + l.customer); S.pjImp = null; S.pjIa = null; render(); }
+      catch(e){ console.error(e); toast('Could not save'); ps.disabled = false; } };
     app.querySelectorAll('[data-pj]').forEach(el => { const upd = () => { S.pj[el.dataset.pj] = el.value; const b = $('pjGo'), n = S.pj; if (b){ const ok = n.tech && n.job.trim() && n.customer.trim() && /^\d{4}-\d{2}-\d{2}$/.test(n.date); b.disabled = !ok; b.textContent = ok ? 'Start paper job → fill in the inventory' : 'Fill in the technician, job number, date and client'; } };
       el.oninput = upd; el.onchange = upd; });
     const go = $('pjGo'); if (go) go.onclick = async () => {
@@ -1304,9 +1337,10 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
         const l = { id, paper:true, date:n.date, job, customer:n.customer.trim().toUpperCase(), location:n.site.trim(), rows:[], tech:(rec && rec.name) || prof.name || (u && (u.name || u.email)) || '',
           techUid:(u && u.uid) || '', techEmail:(rec && rec.email) || (u && u.email) || '', techRec:(rec && rec.id) || '', techLmi:(rec && rec.lmi) || '',
           techSig:(rec && rec.sig) || prof.signature || '', ut:{ name:'', lmi:'', sig:'' }, by:window.Cloud.email(), createdAt:new Date().toISOString(), savedAt:Date.now() };
+        if (S.pjInv){ l.rows = invRows(S.pjInv.rows); l.locs = locsOfRows(l.rows); }
         if (!l.techSig) toast((l.tech || 'The technician') + ' has no signature saved – the certificates will have none');
         await window.Cloud.setItem(paperDoc(id), Object.assign({ kind:'paper' }, l));
-        const m = paperLocal(); m[id] = l; paperKeep(m); S.pj = null;
+        const m = paperLocal(); m[id] = l; paperKeep(m); S.pj = null; S.pjInv = null;
         location.href = '../equipment/?paper=' + encodeURIComponent(id);
       } catch(e){ console.error(e); toast('Could not start the paper job'); S.pjMaking = false; render(); }
     };
