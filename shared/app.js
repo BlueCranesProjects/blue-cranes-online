@@ -97,7 +97,11 @@
   // ---------- client emails: sent from the office's Google account by a small Google script (Admin → Email has the setup) ----------
   // cfg = { url, key } (settings/email); mail = { to, subject, text, html, files:[{ blob, name, type }] } → { ok, error }
   const b64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+  // several addresses ("a@x.co.za, b@y.co.za" – comma, semicolon or space): one email to each, so the Google script stays the same
+  BC.mailList = v => String(v || '').split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
   BC.sendMail = async (cfg, mail) => {
+    const tos = BC.mailList(mail && mail.to);
+    if (tos.length > 1){ for (const t of tos){ const r = await BC.sendMail(cfg, Object.assign({}, mail, { to:t })); if (!r.ok) return r; } return { ok:true }; }
     if (!cfg || !cfg.url || !cfg.key) return { ok:false, error:'Email is not set up yet (Admin → Email)' };
     // no navigator.onLine check: some browsers (VPN, private mode) say offline while the internet works – just try
     try {

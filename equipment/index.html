@@ -861,9 +861,9 @@
   function schedEmail(l){ try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const sx = ts && l.sched && ts.schedule && ts.schedule[l.sched]; return (sx && sx.email) || ''; } catch(e){ return ''; } }
   const idbAll = name => new Promise(res => { try { const rq = indexedDB.open(name, 1); rq.onupgradeneeded = () => rq.result.createObjectStore('reports', { keyPath:'id' });
       rq.onsuccess = () => { try { const g = rq.result.transaction('reports', 'readonly').objectStore('reports').getAll(); g.onsuccess = () => res(g.result || []); g.onerror = () => res([]); } catch(e){ res([]); } }; rq.onerror = () => res([]); } catch(e){ res([]); } });
-  const okEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
+  const okEmail = v => { const l = BC.mailList(v); return l.length > 0 && l.every(x => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x)); };
   // ---------- client sign-off: the Technician's Report and Time Card (same as the paper card) ----------
-  const CARD_TYPES = ['Inspection', 'Service', 'Load test'];
+  const CARD_TYPES = ['Inspection', 'Service', 'Load test', 'N/A'];  // N/A: other work (breakdown, repair …)
   const hm = h => { const t = Math.round((Number(h) || 0) * 60); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
   const hmIn = v => { const m = /^\s*(\d{1,2})(?:[:h.,](\d{1,2}))?\s*$/.exec(String(v || '')); if (!m) return null; const mm = Number(m[2] || 0); return Number(m[1]) + (m[2] && m[2].length === 1 && /[.,]/.test(v) ? mm / 10 : mm / 60); };
   function schedOf(l){ try { const ts = JSON.parse(localStorage.getItem('dts-v1') || 'null'); const sid = l.sched || (S.active && S.active.sched); return (sid && ts && ts.schedule && ts.schedule[sid]) || null; } catch(e){ return null; } }
@@ -885,6 +885,7 @@
   function cardEquip(l){ const rows = (l.rows || []).filter(r => r.serial || r.desc); const g = groupRows(rows.map((r, i) => [r, i]));
     return rows.length + (rows.length === 1 ? ' item' : ' items') + (g.length ? ': ' + g.slice(0, 6).map(([n, rs]) => n.toLowerCase() + ' (' + rs.length + ')').join(', ') + (g.length > 6 ? ', …' : '') : ''); }
   function cardWork(l, type, reps){ const rows = (l.rows || []).filter(r => r.serial || r.desc), safe = rows.filter(r => r.status === 'SAFE').length, uns = rows.filter(r => r.status === 'UNSAFE').length, rf = rows.filter(r => r.status === 'REFURB').length;
+    if (type === 'N/A') return reps ? 'Reports: ' + reps + '.' : '';
     const verb = { Inspection:'Inspected', Service:'Serviced', 'Load test':'Load tested' }[type] || 'Inspected';
     return verb + ' ' + rows.length + (rows.length === 1 ? ' item' : ' items') + ' of lifting equipment' + (safe + uns + rf ? ': ' + [safe ? safe + ' safe' : '', uns ? uns + ' unsafe' : '', rf ? rf + ' for refurbishment' : ''].filter(Boolean).join(', ') + ' (see the inventory).' : '.') + (reps ? '\nReports: ' + reps + '.' : ''); }
   function vSignoff(l){
@@ -930,7 +931,7 @@
         <div class="field"><label>Customer's signature</label><div style="position:relative;border:1.5px dashed var(--line);border-radius:10px;background:#fff;height:150px"><canvas id="soPad" style="width:100%;height:100%;touch-action:none;display:block"></canvas>
           ${d.sig ? '' : '<span class="hint" id="soPh" style="position:absolute;left:12px;top:62px;pointer-events:none">Sign here</span>'}</div>
           <div class="row" style="gap:8px"><button type="button" class="btn secondary small" id="soClr">Clear</button></div></div>
-        <div class="field"><label for="soEmail">Email the reports to</label><input id="soEmail" type="email" inputmode="email" autocomplete="off" placeholder="name@company.co.za" value="${esc(d.email)}">
+        <div class="field"><label for="soEmail">Email the reports to</label><input id="soEmail" type="text" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="name@company.co.za, other@company.co.za" value="${esc(d.email)}"><div class="hint">More than one person: put a comma between the addresses.</div>
           <span class="hint">The client's reports, the inventory and this card go to this address. Admin can fill it in on the job.</span></div>
         <div class="hint" id="soReps"></div></section>
       <button class="btn primary" id="soSign" style="height:58px;font-size:18px">✓ ${SIGN_FIN ? 'Sign &amp; finish job' : 'Save sign-off'}</button>
@@ -1005,7 +1006,7 @@
   function mailText(l, files){
     const so = l.signoff || {}, c = so.card || {}, first = String(so.name || '').trim().split(/\s+/)[0] || '', tech = c.tech || l.tech || (S.profile && S.profile.name) || '';
     const what = { 'Inspection':'inspection', 'Service':'service', 'Load test':'load test' }[c.type] || 'work';
-    const sub = `Blue Cranes – ${c.type || 'Job'} reports – Job ${l.job || ''} – ${l.customer || ''}`.replace(/\s+–\s*$/, '');
+    const sub = `Blue Cranes – ${c.type && c.type !== 'N/A' ? c.type : 'Job'} reports – Job ${l.job || ''} – ${l.customer || ''}`.replace(/\s+–\s*$/, '');
     const lines = [`Good day${first ? ' ' + first : ''},`, '', `Please find attached the reports for the ${what} Blue Cranes did on ${niceDate(l.date)}${l.location ? ' at ' + l.location : ''} (job ${l.job || ''}).`, '',
       'Attached:', ...files.map(f => '• ' + f.name), '', 'Kind regards', tech, 'Blue Cranes – Material Handling & Lifting Equipment'].filter(x => x !== undefined);
     const html = lines.map(x => x === '' ? '<br>' : esc(x) + '<br>').join('');
@@ -1051,7 +1052,7 @@
       if (t.length > 1){ doc.setFontSize(7.5); t = doc.splitTextToSize(U(val), w - 3).slice(0, 2); if (doc.splitTextToSize(U(val), w - 3).length > 2) t[1] = t[1].replace(/.{0,2}$/, '…'); doc.text(t, x + 1.5, yy + 6.6); } else doc.text(t[0] || '', x + 1.5, yy + 8.6); };
     const dd = String(l.date || '').split('-'); const dmy = dd.length === 3 ? dd[2] + '/' + dd[1] + '/' + dd[0] : '';
     [[['CUSTOMER:', l.customer], ['JOB NO:', l.job]], [['SITE:', c.site || l.location], ['ORDER NO:', c.order]], [['TECHNICIAN:', c.tech || l.tech], ['REPORT TO:', c.reportTo]],
-     [['EQUIPMENT:', (c.type ? c.type + ' – ' : '') + (c.equipment || '')], ['DATE:', dmy]]].forEach((row, k) => { cell(L, y + k * rh, cw[0], ...row[0]); cell(L + cw[0], y + k * rh, cw[1], ...row[1]); });
+     [['EQUIPMENT:', (c.type && c.type !== 'N/A' ? c.type + ' – ' : '') + (c.equipment || '')], ['DATE:', dmy]]].forEach((row, k) => { cell(L, y + k * rh, cw[0], ...row[0]); cell(L + cw[0], y + k * rh, cw[1], ...row[1]); });
     { const x = L + 140; doc.rect(x, y, cw[2], rh * 4); doc.setTextColor(...INK); doc.setFontSize(7.5); let yy = y + 5;
       [['CAPE TOWN', '021 556 0498'], ['SALDANHA', '022 714 2207'], ['VREDENDAL', '027 217 2217'], ['NAMIBIA', '00264 812 50 6220']].forEach(([t, n]) => { doc.setFont('helvetica', 'bold'); doc.text(t, x + 2, yy); doc.text('TEL: ' + n, x + 2, yy + 3.8); yy += 10; }); }
     y += rh * 4;

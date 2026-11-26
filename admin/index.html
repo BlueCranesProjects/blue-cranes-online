@@ -304,7 +304,7 @@
         <div class="field"><label for="njCon">Contact</label><input id="njCon" data-nj="contact" value="${esc(j.contact)}"></div></div>
       <div class="row"><div class="field"><label for="njOrder">Order nr</label><input id="njOrder" data-nj="order" value="${esc(j.order)}" autocomplete="off"></div>
         <div class="field"><label for="njSite">Site <span style="font-weight:400">(town / site – fills the site on the inventory and reports)</span></label><input id="njSite" data-nj="site" value="${esc(j.site)}" placeholder="e.g. Ceres" autocomplete="off"></div></div>
-      <div class="field"><label for="njEmail">Client email <span style="font-weight:400">(the signed reports go here)</span></label><input id="njEmail" type="email" inputmode="email" data-nj="email" value="${esc(j.email)}" placeholder="name@company.co.za"></div>
+      <div class="field"><label for="njEmail">Client email <span style="font-weight:400">(the signed reports go here)</span></label><input id="njEmail" type="text" inputmode="email" autocapitalize="off" spellcheck="false" data-nj="email" value="${esc(j.email)}" placeholder="name@company.co.za, other@company.co.za"></div>
       <div class="field"><label for="njNotes">Notes</label><input id="njNotes" data-nj="notes" value="${esc(j.notes)}"></div>
       <span class="hint">Technicians show here once they have signed in to the app.</span>`; }
   const schedLabel = (job, n) => !job.ready ? 'Fill in the date, technician and customer' : `Schedule the job for ${nameOf(job.tech) || job.tech}${n ? ' with ' + n + (n === 1 ? ' item' : ' items') : ''}`;
@@ -765,7 +765,7 @@
         <div class="field"><label for="edCon">Contact</label><input id="edCon" data-ed="contact" value="${esc(e.contact)}"></div></div>
       <div class="row"><div class="field"><label for="edOrder">Order nr</label><input id="edOrder" data-ed="order" value="${esc(e.order || '')}" autocomplete="off"></div>
         <div class="field"><label for="edSite">Site <span style="font-weight:400">(town / site – fills the site on the inventory and reports)</span></label><input id="edSite" data-ed="site" value="${esc(e.site || '')}" placeholder="e.g. Ceres" autocomplete="off"></div></div>
-      <div class="field"><label for="edEmail">Client email <span style="font-weight:400">(the signed reports go here)</span></label><input id="edEmail" type="email" inputmode="email" data-ed="email" value="${esc(e.email || '')}" placeholder="name@company.co.za"></div>
+      <div class="field"><label for="edEmail">Client email <span style="font-weight:400">(the signed reports go here)</span></label><input id="edEmail" type="text" inputmode="email" autocapitalize="off" spellcheck="false" data-ed="email" value="${esc(e.email || '')}" placeholder="name@company.co.za, other@company.co.za"></div>
       <div class="field"><label for="edNotes">Notes</label><input id="edNotes" data-ed="notes" value="${esc(e.notes)}"></div>
       <div class="row"><button class="btn primary" id="edSave" style="flex:1">${S.busy ? 'Saving…' : isNew ? 'Schedule the job' : 'Save changes'}</button><button class="btn secondary" id="edCancel" style="flex:1">Cancel</button></div>
       <span class="hint">${isNew ? 'The technician sees the job on their schedule the next time they open the app. To add a client\'s inventory, use the <b>Import jobs</b> tab.' : 'The technician sees the change the next time they open the app. Inventory items and progress stay with the job.'}</span></section>`;
@@ -1228,7 +1228,7 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
     const first = String((so && so.name) || '').trim().split(/\s+/)[0] || '', c = (so && so.card) || {};
     const what = { 'Inspection':'inspection', 'Service':'service', 'Load test':'load test' }[c.type] || 'work';
     const lines = [`Good day${first ? ' ' + first : ''},`, '', `Please find attached the reports for the ${what} Blue Cranes did on ${niceDate(j.date)}${j.site ? ' at ' + j.site : ''} (job ${j.card || ''}).`, '', 'Attached:', ...files.map(f => '• ' + f.name), '', 'Kind regards', c.tech || nameOf(j.tech) || '', 'Blue Cranes – Material Handling & Lifting Equipment'];
-    return { subject:`Blue Cranes – ${c.type || 'Job'} reports – Job ${j.card || ''} – ${j.customer || ''}`, text:lines.join('\n'), html:'<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">' + lines.map(x => x === '' ? '<br>' : esc(x) + '<br>').join('') + '</div>' };
+    return { subject:`Blue Cranes – ${c.type && c.type !== 'N/A' ? c.type : 'Job'} reports – Job ${j.card || ''} – ${j.customer || ''}`, text:lines.join('\n'), html:'<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">' + lines.map(x => x === '' ? '<br>' : esc(x) + '<br>').join('') + '</div>' };
   }
   function wireMail($){
     if (S.tab !== 'mail') return;
