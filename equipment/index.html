@@ -248,7 +248,7 @@
   const docId = id => 'eq-' + String(id).replace(/\//g, '_');
   let saveT;
   // coming back to the app / "Sync now": fetch the inventories again (combined item by item) – not while typing
-  window.addEventListener('bc-sync', async () => { if (cloudOK() && S.lists && !(window.BC && BC.busyTyping())){ try { await syncCloud(); } catch(e){} setTimeout(retryMail, 2000); } if (window.BC) BC.syncDone(); }); if (window.BC) BC._syncHandled = true;
+  window.addEventListener('bc-sync', async () => { if (cloudOK() && S.lists && !(window.BC && BC.busyTyping())){ try { await syncCloud(); } catch(e){} setTimeout(retryMail, 20000); } if (window.BC) BC.syncDone(); }); if (window.BC) BC._syncHandled = true;
   function saveList(l, now){
     stampList(l); l.savedAt = Date.now(); S.lists[l.id] = l; lsSave();
     clearTimeout(saveT); const push = () => { pending = null; if (cloudOK()) Cloud.putItem(docId(l.id), Object.assign({ kind:KIND }, JSON.parse(JSON.stringify(l)))); };
@@ -1021,10 +1021,18 @@
   }
   // emails still waiting (no signal at sign-off): send them quietly when this page is open
   let mailRetrying = false;
-  async function retryMail(){ if (mailRetrying || !cloudOK()) return; mailRetrying = true;
-    try { for (const l of Object.values(S.lists || {})){ const so = l && l.signoff; if (!so || !so.email || so.mail !== 'waiting') continue;
-        if (so.mailTry && Date.now() - Date.parse(so.mailTry) < 10 * 60000) continue;
-        const r = await mailJob(l); if (r === 'sent'){ toast('✓ Reports emailed to ' + so.email); if (S.view === 'signoff' && S.cur === l) render(); } else if (r === 'nocfg' || r === 'offline') break; } }
+  // Making the PDFs is heavy for a phone: an attempt is saved BEFORE it starts, so a phone that restarts the page in the middle
+  // doesn't start it again at once (which kept reloading the page). At most 3 tries, 6 hours apart, one job per visit;
+  // after that, or once the office has sent it (Admin → Email → Send now), the phone leaves it.
+  async function retryMail(){ if (mailRetrying || !cloudOK() || S.view !== 'list') return; mailRetrying = true;
+    try { let jobs = null; try { jobs = Cloud.myJobs ? await Cloud.myJobs() : null; } catch(e){}
+      for (const l of Object.values(S.lists || {})){ const so = l && l.signoff; if (!so || !so.email || so.mail !== 'waiting') continue;
+        const jb = jobs && l.sched && /^A_/.test(l.sched) ? jobs.find(j => j.id === l.sched.slice(2)) : null;
+        if (jb && jb.mailSentAt){ so.mail = 'sent'; so.mailAt = jb.mailSentAt; so.mailBy = 'office'; saveList(l, true); continue; }
+        if ((so.mailTries || 0) >= 3) continue;
+        if (so.mailTry && Date.now() - Date.parse(so.mailTry) < 6 * 3600000) continue;
+        so.mailTry = new Date().toISOString(); so.mailTries = (so.mailTries || 0) + 1; saveList(l, true); await new Promise(r => setTimeout(r, 1500));
+        const r = await mailJob(l); if (r === 'sent'){ toast('✓ Reports emailed to ' + so.email); if (S.view === 'signoff' && S.cur === l) render(); } break; } }
     catch(e){ console.error('mail retry', e); } finally { mailRetrying = false; } }
   // the signed card as a PDF, laid out like the paper Technicians Report and Time Card
   async function timeCardDoc(l){
@@ -1752,7 +1760,7 @@
     if (window.Cloud) Cloud.onError = () => toast('Cloud save failed – kept on this phone');
     await syncCloud();
     loadOffice();
-    setTimeout(retryMail, 4000);
+    setTimeout(retryMail, 20000);
     repairFromReports();
   })();
 })();
