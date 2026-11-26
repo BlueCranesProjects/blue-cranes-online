@@ -1299,6 +1299,7 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
         ${S.pjBusy && !list.length ? '<span class="hint">Looking for paper jobs…</span>' : list.length ? `<div>${list.map(l => `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap">
             <span style="flex:1;min-width:220px"><b>${esc(l.customer || 'Client')}</b> <span class="hint">· Job ${esc(l.job || '–')} · ${esc(niceDate(l.date))} · ${esc(l.tech || '')} · ${l.paperType === 'INSPECTION' ? 'Inspection' : 'Load test'}</span><div class="hint">${stat(l)}</div></span>
             <a class="btn primary" href="../equipment/?paper=${encodeURIComponent(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto;text-decoration:none">Open</a>
+            <span style="flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap">${[['inv', '⬇ Inventory'], ['xls', '⬇ Excel'], ['certs', '⬇ Certificates'], ['quote', '⬇ Equipment for quote'], ['all', '⬇ All files (zip)']].map(([w, t]) => `<button class="x" data-pjdl="${esc(l.id)}" data-w="${w}" style="border-color:var(--navy);color:var(--navyDeep)">${t}</button>`).join('')}</span>
             <button class="btn secondary" data-pjimp="${esc(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto">⬆ Import inventory</button>
             <button class="btn secondary" data-pjdel="${esc(l.id)}" style="padding:6px 14px;width:auto;flex:0 0 auto;color:var(--bad);border-color:var(--bad)">Delete</button></div>`).join('')}</div>`
           : '<span class="hint" style="font-size:14px">No paper jobs yet.</span>'}
@@ -1306,8 +1307,29 @@ function reply(o) { return ContentService.createTextOutput(JSON.stringify(o)).se
   }
   const invRows = list => list.filter(r => !r.errs.length).map((r, k) => { const o = { id:'r' + Date.now().toString(36) + k.toString(36) + Math.random().toString(36).slice(2, 4), serial:r.serial || '', desc:r.desc || '', make:r.make || '', swl:String(r.swl == null ? '' : r.swl), loc:r.loc || '', status:'', office:true, t:Date.now() }; if (r.note) o.note = r.note; return o; });
   const locsOfRows = rows => [...new Set(rows.map(r => r.loc).filter(Boolean))];
+  // a paper job's files, made the same way as a technician's job: inventory (census layout), Excel, certificates, equipment for quote, or all in a zip
+  async function paperFiles(l, which){
+    const t = await hiddenTool('../equipment/?embed=1', w => w.BCE && w.jspdf && w.BCE); const files = [];
+    try { const x = JSON.parse(JSON.stringify(l)), tech = { name:x.tech || '', signature:x.techSig || '', lmi:x.techLmi || '' };
+      if (which === 'inv' || which === 'all') files.push(await t.api.listDoc(x));
+      if (which === 'xls' || which === 'all'){ try { files.push(await t.api.listXlsx(x)); } catch(e){ console.error(e); } }
+      if (which === 'certs' || which === 'all'){ const parts = await t.api.itemCertParts(x, tech, x.techLmi ? null : (x.ut && (x.ut.name || x.ut.sig) ? x.ut : null)); const c = parts.length ? await t.api.mergeCerts(x, parts) : null; if (c) files.push(c); }
+      if ((which === 'quote' || which === 'all') && t.api.quoteDoc){ const q = await t.api.quoteDoc(x, x.tech || ''); if (q) files.push(q); }
+      for (const f of files) f.blob = new Blob([new Uint8Array(await f.blob.arrayBuffer())], { type:f.type || f.blob.type || 'application/pdf' });
+    } finally { t.done(); }
+    return files; }
   function wirePaper($){
     if (S.tab !== 'paper') return;
+    app.querySelectorAll('[data-pjdl]').forEach(b => b.onclick = async () => { const l = paperLocal()[b.dataset.pjdl] || (S.papers || []).find(x => x.id === b.dataset.pjdl); if (!l) return;
+      const w = b.dataset.w, old = b.textContent; b.disabled = true; b.textContent = 'Working…';
+      try { const files = await paperFiles(l, w);
+        if (!files.length){ toast(w === 'certs' ? 'No certificates yet – mark the items Safe or Unsafe first' : w === 'quote' ? 'Nothing to quote – no unsafe items' : 'Nothing to download yet'); return; }
+        if (isPhone()) return phoneFiles(files);
+        if (w === 'all'){ for (let i = 0; i < 50 && !window.JSZip; i++){ if (!document.getElementById('jszipS')){ const sc = document.createElement('script'); sc.id = 'jszipS'; sc.src = '../vendor/jszip.min.js'; document.head.appendChild(sc); } await new Promise(r => setTimeout(r, 100)); }
+          const folder = BC.zipDir(l.job, l.customer), zip = new JSZip(), dir = zip.folder(folder); files.forEach(f => dir.file(BC.zipFile(f.name), f.blob));
+          dlFile({ blob:await zip.generateAsync({ type:'blob' }), name:folder + '.zip' }); toast(files.length + ' files in the zip folder'); }
+        else { files.forEach((f, i) => setTimeout(() => dlFile(f), i * 400)); toast(files.length === 1 ? 'Downloaded' : files.length + ' files downloaded'); }
+      } catch(e){ console.error(e); toast('Could not make the files'); } finally { b.disabled = false; b.textContent = old; } });
     const pf = $('pjFile'); if (pf) pf.onchange = async () => { const file = pf.files && pf.files[0]; pf.value = ''; if (!file) return;
       try { const r = await readInv(file); S.pjInv = { rows:r.rows, file:file.name, site:r.site || '', cust:r.customer || '' };
         if (r.customer && !S.pj.customer) S.pj.customer = r.customer; if (r.site && !S.pj.site) S.pj.site = r.site;
