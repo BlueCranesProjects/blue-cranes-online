@@ -493,6 +493,9 @@
   // an INSPECTION paper job gives lifting machinery (forklifts too) an inspection certificate instead of a load test one
   const paperInsp = l => !!(l && l.paper && l.paperType === 'INSPECTION');
   const certItemOf = (l, r) => isCertItem(r) || !!(l && l.paper && isForklift(r) && (r.desc || r.serial));
+  // the previous test date on a paper job's load test certificates: the item's own, else the job's (typed as on the paper)
+  const prevTestOf = (l, r) => String((r && r.prevTest) || (l && l.paper && l.prevTest) || '').trim();
+  function prevBox(l, r, i){ return `<div class="field"><label for="pt${i}">Previous test date <span style="font-weight:400">(empty = the job's${l.prevTest ? ': ' + esc(l.prevTest) : ''})</span></label><input id="pt${i}" data-f="prevTest" value="${esc(r.prevTest || '')}" placeholder="e.g. 14/05/2025"></div>`; }
   function flPaperBox(r, i){ const opts = ['', 'Side shift', 'Paper grab', 'Bin tip', 'Bin rotator', 'Multi-pallet handler'];
     return `<div class="card" style="gap:8px;background:var(--ground, #f4f6fa);padding:10px"><b style="font-size:13px">Forklift details for the load test certificate (from the paper)</b>
       <div class="grid2"><div class="field"><label for="flc${i}">Load centre (mm)</label><input id="flc${i}" data-f="flc" value="${esc(r.flc || '')}" inputmode="numeric" placeholder="e.g. 500"></div>
@@ -534,12 +537,18 @@
   // a technician with their own LMI number (Admin → Technicians) tests without an understudy
   const techLmiOf = l => String((PAPER ? (l && l.techLmi) : EMB ? (l && l.techLmi) : (window.BC && BC.myLmi ? BC.myLmi() : '')) || '').trim();
   const needsUt = l => !techLmiOf(l) && !paperInsp(l) && (l.rows || []).some(r => (isCertItem(r) && !isInspCert(r)) || isForklift(r));
-  function utOf(l){ if (!l.ut && !PAPER && !EMB){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
+  const PUTK = 'bco-paper-ut', putKey = l => String((l && (l.techRec || l.techEmail || l.tech)) || '').trim().toLowerCase();
+  const paperUts = () => { try { return JSON.parse(localStorage.getItem(PUTK) || '{}') || {}; } catch(e){ return {}; } };
+  function paperUtOf(l){ const m = paperUts(), u = m[putKey(l)] || m._last; return u && (u.name || u.sig) ? { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' } : null; }
+  let putT; function paperUtKeep(l){ if (!l || !l.ut || !l.ut.name) return; const m = paperUts(), u = { name:l.ut.name, lmi:l.ut.lmi || '', sig:l.ut.sig || '', at:Date.now() }; m[putKey(l)] = u; m._last = u;
+    try { localStorage.setItem(PUTK, JSON.stringify(m)); } catch(e){} clearTimeout(putT); putT = setTimeout(() => { try { if (cloudOK()) Cloud.putItem('paper-ut', { kind:'paperut', map:m }); } catch(e){} }, 1000); }
+  function utOf(l){ if (PAPER && l && !l.utCleared && (!l.ut || !(l.ut.name || l.ut.sig))){ const u = paperUtOf(l); if (u){ l.ut = u; try { saveList(l); } catch(e){} } }
+    if (!l.ut && !PAPER && !EMB){ const u = utLocal(); if (u.name || u.sig) l.ut = { name:u.name || '', lmi:u.lmi || '', sig:u.sig || '' }; } return l.ut || { name:'', lmi:'', sig:'' }; }
   // for the certificates: the job's understudy, with the signature / LMI number of the same person saved on this phone if the job has none
   function utFull(l){ const u = utOf(l); if (PAPER || EMB || !(u.name || u.sig)) return u; const sv = utLocal(), same = !u.name || !sv.name || String(sv.name).trim().toLowerCase() === String(u.name).trim().toLowerCase();
     return (same && (!u.sig || !u.lmi)) ? { name:u.name || sv.name || '', lmi:u.lmi || sv.lmi || '', sig:u.sig || sv.sig || '' } : u; }
   let utCloudT;
-  function utSave(l, p){ l.ut = Object.assign(utOf(l), p); saveList(l); if (PAPER) return;   // a paper job's understudy stays with that job
+  function utSave(l, p){ l.ut = Object.assign(utOf(l), p); if (l.ut.name) delete l.utCleared; saveList(l); if (PAPER){ paperUtKeep(l); return; }   // paper jobs: kept for the next paper jobs (per technician) until the office changes it
     try { localStorage.setItem(UTK, JSON.stringify(Object.assign(utLocal(), { name:l.ut.name, lmi:l.ut.lmi, sig:l.ut.sig || null }))); } catch(e){}
     clearTimeout(utCloudT); utCloudT = setTimeout(() => { try { if (cloudOK()) Cloud.putItem('understudy', { kind:'understudy', name:l.ut.name || '', lmi:l.ut.lmi || '', sig:l.ut.sig || '', updated:new Date().toISOString() }); } catch(e){} }, 1000); }
   // understudies used before (this phone's jobs and the saved one) – pick one instead of typing and signing again
@@ -566,7 +575,7 @@
     const $ = id => document.getElementById(id);
     const ed = $('utEdit'); if (ed) ed.onclick = () => { S.utOpen = true; render(); };
     // another person: empty name, LMI number and signature (the old signature must not stay with a new name)
-    const nw = $('utNew'); if (nw) nw.onclick = () => { l.ut = { name:'', lmi:'', sig:'' }; saveList(l); S.utOpen = true; render(); setTimeout(() => { const n = $('utName'); if (n) n.focus(); }, 60); };
+    const nw = $('utNew'); if (nw) nw.onclick = () => { l.ut = { name:'', lmi:'', sig:'' }; l.utCleared = true; saveList(l); S.utOpen = true; render(); setTimeout(() => { const n = $('utName'); if (n) n.focus(); }, 60); };
     const known = utKnown(l); app.querySelectorAll('[data-utpick]').forEach(b => b.onclick = () => { const k = known[Number(b.dataset.utpick)]; if (!k) return; utSave(l, { name:k.name, lmi:k.lmi, sig:k.sig }); S.utOpen = false; render(); toast(k.name + ' is the understudy for this job'); });
     const dn = $('utDone'); if (dn) dn.onclick = () => { const u = utOf(l); if (!u.name){ toast('Fill in the understudy\'s name'); return; } if (!u.sig){ toast('The understudy still has to sign'); return; } S.utOpen = false; render(); };
     const nm = $('utName'); if (!nm) return;
@@ -616,7 +625,7 @@
     const val = []; val[34] = r.fat || '';
     return { type:'LOAD TEST', machine:isStacker(r) ? 'STACKER' : 'FORKLIFT', status:r.status, wr:{ insp:unsafe, load:unsafe }, val, res:[], note:[], photo:{},
       f:{ certNoText:certNoOf(l, i), customer:l.customer, site:l.location, location:r.loc || '', serial:r.serial || '', swl:String(r.swl || '').replace(/\s/g, ''), lc:r.flc || '', aserial:r.fas || '', aswl:r.faswl || '', alc:'',
-        make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), model:'', date:d, nextLoad:addMonths(d, 12), nextInsp:addMonths(d, 6), prevLoad:'', engName:tech.name || l.tech || '', engLmi:tl, utName:u.name || '', utLmi:u.lmi || '', jobno:l.job },
+        make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), model:'', date:d, nextLoad:addMonths(d, 12), nextInsp:addMonths(d, 6), prevLoad:prevTestOf(l, r).toUpperCase(), engName:tech.name || l.tech || '', engLmi:tl, utName:u.name || '', utLmi:u.lmi || '', jobno:l.job },
       sig:{ sigEng:tech.signature || null, sigUt:u.sig || null } }; }
   function activeJob(){
     try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && !a.edit && a.date !== today())) return null;
@@ -688,6 +697,7 @@
     return head((PAPER ? 'Paper job · ' : '') + 'Job ' + (l.job || '–') + ' · ' + niceDate(l.date), "Client's inventory", PAPER ? backBtn('../admin/', 'Back to Admin') : backBtn('../timesheet/', 'Back to the time sheet'),
         PAPER ? '' : `<button class="ib" id="toInv" aria-label="All client inventories">${ICON.list}</button>`) + `<main class="wide">
       ${PAPER ? `<section class="card" style="gap:4px;background:#FFF8D6;border-color:#F5B826"><b>📝 Paper job – typed in by the office</b><span class="hint" style="font-size:13.5px">Certificates in the name of <b>${esc(l.tech || '–')}</b>${l.techLmi ? ' – LMI ' + esc(l.techLmi) + ', no understudy' : ''}${l.techSig ? ' (with their signature)' : ' – <span style="color:var(--bad)">no signature saved for this technician</span>'}, dated ${esc(niceDate(l.date))}. Not in the print run – download below.</span>
+        ${(l.paperType || 'LOAD TEST') === 'LOAD TEST' ? `<div class="field" style="margin-top:4px"><label for="ptJob">Previous test date for the whole job <span style="font-weight:400">(as on the paper – an item can have its own)</span></label><input id="ptJob" value="${esc(l.prevTest || '')}" placeholder="e.g. 14/05/2025 or May 2025"></div>` : ''}
         <div class="row" style="gap:8px;margin-top:4px"><span class="hint" style="align-self:center">Lifting machinery:</span>${[['INSPECTION', 'Inspection'], ['LOAD TEST', 'Load test']].map(([k, t]) => `<button type="button" class="btn ${(l.paperType || 'LOAD TEST') === k ? 'primary' : 'secondary'} small" data-ptype="${k}" style="width:auto;padding:0 14px">${t}</button>`).join('')}</div></section>` : ''}
       ${contCard(l)}
       ${(() => { const F = folds(); if (F.jd == null) F.jd = false;
@@ -732,6 +742,7 @@
           ${r.office && !r.status ? `<div class="from" style="background:#FFF3B0;color:var(--navyDeep)"><span>Loaded by the office – check it and mark <b>Safe</b> or <b>Unsafe</b></span></div>` : ''}
           ${r.note ? `<span class="hint"><b>Office note:</b> ${esc(r.note)}</span>` : ''}
           ${PAPER && isForklift(r) && !paperInsp(l) ? flPaperBox(r, i) : ''}
+          ${PAPER && !paperInsp(l) && (isForklift(r) || (isCertItem(r) && !isInspCert(r))) ? prevBox(l, r, i) : ''}
           ${!PAPER && isForklift(r) ? `<div class="flbar"><span>${FL} ${isStacker(r) ? 'Stacker' : 'Forklift'} – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${!PAPER && isManCage(r) ? `<div class="flbar"><span>🧺 Man cage – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-mcopen="${i}">Inspection</button></div></div>` : ''}
           ${!PAPER && isCrane(r) ? `<div class="flbar"><span>🏗 Crane / hoist – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-cropen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-cropen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
@@ -1163,6 +1174,7 @@
     const curLoc = () => (l.curLoc && l.curLoc !== '__none') ? l.curLoc : '';
     $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'', loc:curLoc() });
     const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'', loc:curLoc() || p.loc || '' }); };
+    { const pj = document.getElementById('ptJob'); if (pj) pj.oninput = () => { l.prevTest = pj.value; saveList(l); }; }
     app.querySelectorAll('[data-ptype]').forEach(b => b.onclick = () => { l.paperType = b.dataset.ptype; saveList(l); render(); toast(b.dataset.ptype === 'INSPECTION' ? 'Inspection job – lifting machinery gets inspection certificates' : 'Load test job – lifting machinery gets load test certificates'); });
     app.querySelectorAll('[data-loc]').forEach(b => b.onclick = () => { l.curLoc = b.dataset.loc; saveList(l); render(); });
     $('newLocBtn').onclick = () => askLocation(l, 'Add a location', v => { if (v){ l.curLoc = v; saveList(l, true); render(); toast(v + ' added – new items go here'); } });
@@ -1531,7 +1543,7 @@
       else { y += 18 * CERT_K; doc.text('UNDERSTUDY TO', L, y); doc.text('NAME: ' + U(ut.name), L + 44, y); doc.text('SIGNATURE', L + 112, y); dots(L + 137, R, y); sigImg(ut.sig, L + 138, y);
         if (ut.lmi){ doc.setFontSize(8.5); doc.text('LMI : ' + ut.lmi, L + 58, y + 4.5); doc.setFontSize(12.5); } }
       y += 15 * CERT_K; doc.text('TEST DATE', L, y); doc.text(dmy(r.at || l.date), L + 44, y);
-      y += 12 * CERT_K; doc.text('PREVIOUS TEST DATE:  ', L, y); doc.text('NEXT TEST DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(r.at || l.date, 12))), R, y, { align:'right' });
+      y += 12 * CERT_K; doc.text('PREVIOUS TEST DATE:  ' + U(prevTestOf(l, r)), L, y); doc.text('NEXT TEST DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(r.at || l.date, 12))), R, y, { align:'right' });
       y += 12 * CERT_K; doc.text('6 MONTHLY THOROUGH INSPECTION DATE:  ' + (unsafe ? 'WHEN REPAIRED' : monthYear(addMonths(r.at || l.date, 6))), L, y);
       y += 15 * CERT_K; doc.setFontSize(11);
       doc.text('THOROUGH INSPECTION', L, y); doc.text('DATE', L + 50, y); dots(L + 62, L + 84, y); doc.text('NAME', L + 87, y); dots(L + 100, L + 124, y); doc.text('SIGNATURE', L + 127, y); dots(L + 150, R, y);
@@ -1677,6 +1689,7 @@
       S.active = { paper:true, date:l.date, card:l.job, customer:l.customer, site:l.location };   // items marked here are dated on the paper job's date
       S.profile = { name:l.tech || '', signature:l.techSig || '', lmi:l.techLmi || '' }; S.view = 'list'; };
     const w = await BC.requireUser();
+    try { if (cloudOK()){ const d = await Cloud.getItem('paper-ut'); if (d && d.map){ const m = Object.assign({}, d.map, paperUts()); Object.keys(d.map).forEach(k => { const a = d.map[k], b = paperUts()[k]; m[k] = !b || (a && (a.at || 0) > (b.at || 0)) ? a : b; }); localStorage.setItem(PUTK, JSON.stringify(m)); } } } catch(e){}
     if (!S.lists[PAPER] && cloudOK()){ try { const d = await Cloud.getItem(docId(PAPER)); if (d && d.id){ delete d.kind; S.lists[d.id] = d; snapList(d); lsSave(); } } catch(e){} }
     const l = S.lists[PAPER];
     if (!l){ app.innerHTML = head('Paper job', 'Not found', backBtn('../admin/', 'Back to Admin')) + '<main><div class="empty">This paper job is not on this computer or in your account. Open it from Admin → Paper jobs.</div></main>'; return; }
