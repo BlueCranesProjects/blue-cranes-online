@@ -88,6 +88,7 @@ Everything for a person is under `users/{uid}/items/`:
 - **Previous test date** (load test paper jobs): one for the whole job at the top of the paper job, and optionally per item; printed on the load test certificates (forklift too).
 - **Understudy on paper jobs** is remembered (per technician, else the last one; `bco-paper-ut` and the admin's item `paper-ut`) and filled in on the next paper jobs until the office changes it (Edit / Change understudy).
 - Admin → Paper jobs: each paper job has the same downloads as a job: **⬇ Inventory** (census layout), **⬇ Excel**, **⬇ Certificates**, **⬇ Equipment for quote** and **⬇ All files (zip)** (`paperFiles`, through the hidden inventory page).
+- **Report number** on a paper job's machinery, forklift and man cage items (typed from the paper, e.g. CR7101.1): stored as the item's `report.no`, shown in the inventory's REPORT column and as SEE REPORT on its certificate (then no reason on the certificate).
 - Paper jobs are **not** in the print run, Schedule jobs or the exports – they are downloaded by hand.
 
 ## Downloads on a tablet (rule)
