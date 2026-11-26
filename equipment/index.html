@@ -625,7 +625,7 @@
     const val = []; val[34] = r.fat || '';
     return { type:'LOAD TEST', machine:isStacker(r) ? 'STACKER' : 'FORKLIFT', status:r.status, wr:{ insp:unsafe, load:unsafe }, val, res:[], note:[], photo:{},
       f:{ certNoText:certNoOf(l, i), customer:l.customer, site:l.location, location:r.loc || '', serial:r.serial || '', swl:String(r.swl || '').replace(/\s/g, ''), lc:r.flc || '', aserial:r.fas || '', aswl:r.faswl || '', alc:'',
-        make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), model:'', date:d, nextLoad:addMonths(d, 12), nextInsp:addMonths(d, 6), prevLoad:prevTestOf(l, r).toUpperCase(), engName:tech.name || l.tech || '', engLmi:tl, utName:u.name || '', utLmi:u.lmi || '', jobno:l.job },
+        make:/^unknown$/i.test(r.make || '') ? '' : (r.make || ''), model:'', date:d, nextLoad:addMonths(d, 12), nextInsp:addMonths(d, 6), prevLoad:prevTestOf(l, r).toUpperCase(), docno:r.report && r.report.no ? String(r.report.no).toUpperCase() : '', engName:tech.name || l.tech || '', engLmi:tl, utName:u.name || '', utLmi:u.lmi || '', jobno:l.job },
       sig:{ sigEng:tech.signature || null, sigUt:u.sig || null } }; }
   function activeJob(){
     try { const a = JSON.parse(localStorage.getItem('bco-active-job') || 'null'); if (!a || (!a.sched && !a.edit && a.date !== today())) return null;
@@ -743,6 +743,7 @@
           ${r.note ? `<span class="hint"><b>Office note:</b> ${esc(r.note)}</span>` : ''}
           ${PAPER && isForklift(r) && !paperInsp(l) ? flPaperBox(r, i) : ''}
           ${PAPER && !paperInsp(l) && (isForklift(r) || (isCertItem(r) && !isInspCert(r))) ? prevBox(l, r, i) : ''}
+          ${PAPER && (isForklift(r) || isManCage(r) || (isCertItem(r) && !isInspCert(r))) ? `<div class="field"><label for="rp${i}">Report number <span style="font-weight:400">(from the paper, if there is one – e.g. CR7101.1, F7101.2, MC7101.1)</span></label><input id="rp${i}" data-rep="${i}" value="${esc((r.report && r.report.no) || '')}" autocapitalize="characters" placeholder="Leave empty if there is no report"></div>` : ''}
           ${!PAPER && isForklift(r) ? `<div class="flbar"><span>${FL} ${isStacker(r) ? 'Stacker' : 'Forklift'} – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-flopen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-flopen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
           ${!PAPER && isManCage(r) ? `<div class="flbar"><span>🧺 Man cage – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-mcopen="${i}">Inspection</button></div></div>` : ''}
           ${!PAPER && isCrane(r) ? `<div class="flbar"><span>🏗 Crane / hoist – open a report</span><div class="row" style="gap:8px;flex-wrap:nowrap"><button type="button" class="flb" data-cropen="${i}" data-type="INSPECTION">Inspection</button><button type="button" class="flb" data-cropen="${i}" data-type="LOAD TEST">Load test</button></div></div>` : ''}
@@ -777,7 +778,7 @@
             ${r.photo ? `<img class="photo" id="ph${i}" data-pid="${esc(r.photo)}" alt="Photo of the defect on item ${i+1}">` : ''}
             <div class="row"><label class="btn secondary small" style="flex:1;cursor:pointer">📷 ${r.photo ? 'Retake photo' : 'Take photo'}<input type="file" accept="image/*" capture="environment" data-photo="${i}" style="display:none"></label><label class="btn secondary small" style="flex:1;cursor:pointer">🖼 From gallery<input type="file" accept="image/*" data-photo="${i}" style="display:none"></label>
               ${r.photo ? `<button type="button" class="btn secondary small" data-nophoto="${i}" style="color:var(--bad);border-color:var(--bad)">Remove photo</button>` : ''}</div>` : ''}
-          ${rep ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(certNoOf(l, i)) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
+          ${rep && !PAPER ? `<div class="repno"><span class="k">Report nr</span><span class="rn">${esc(rep.no)}${rep.cert ? ' · Cert ' + esc(certNoOf(l, i)) : ''}</span><span class="rt">${esc(rep.type)}</span></div>` : ''}
           </div>`; };
         // To do / Completed: an item is completed once it is marked Safe, or Unsafe with a reason
         const all0 = (l.rows || []).map((r, i) => [r, i]).filter(([r]) => show(r)); if (!all0.length) return cur ? `<div class="empty">No items in ${cur === '__none' ? 'No location' : esc(cur)}. <button type="button" class="btn secondary small" data-loc="" style="margin-top:8px">Show all ${(l.rows || []).length} items</button></div>` : '<div class="empty">No items yet. Tap <b>Add item</b> for each piece of equipment.</div>';
@@ -1174,6 +1175,8 @@
     const curLoc = () => (l.curLoc && l.curLoc !== '__none') ? l.curLoc : '';
     $('add').onclick = () => addRow({ id:rowId(), serial:'', desc:'', make:'', swl:'', status:'', loc:curLoc() });
     const cp = $('copy'); if (cp) cp.onclick = () => { const p = l.rows[l.rows.length - 1]; addRow({ id:rowId(), serial:'', desc:p.desc, make:p.make, swl:p.swl, status:'', loc:curLoc() || p.loc || '' }); };
+    app.querySelectorAll('[data-rep]').forEach(inp => inp.oninput = () => { const r = l.rows[Number(inp.dataset.rep)]; const v = inp.value.toUpperCase().trim();
+      if (v) r.report = Object.assign({}, r.report || {}, { no:v, type:(r.report && r.report.type) || (isForklift(r) ? 'Forklift report' : isManCage(r) ? 'Man cage report' : 'Crane / hoist report') }); else delete r.report; r.t = Date.now(); saveList(l); });
     { const pj = document.getElementById('ptJob'); if (pj) pj.oninput = () => { l.prevTest = pj.value; saveList(l); }; }
     app.querySelectorAll('[data-ptype]').forEach(b => b.onclick = () => { l.paperType = b.dataset.ptype; saveList(l); render(); toast(b.dataset.ptype === 'INSPECTION' ? 'Inspection job – lifting machinery gets inspection certificates' : 'Load test job – lifting machinery gets load test certificates'); });
     app.querySelectorAll('[data-loc]').forEach(b => b.onclick = () => { l.curLoc = b.dataset.loc; saveList(l); render(); });
@@ -1490,7 +1493,7 @@
     if (kind === 'h') row('DATE OF MANUFACTURE', U(r.dom));
     // same grid as the load test certificates: REMARKS is the last row, then the same gaps and columns below it
     // a man cage with its report: SEE REPORT … under the remarks, the same place as on the forklift and crane certificates
-    const mcNo = kind === 'mc' && r.report && r.report.no ? String(r.report.no).toUpperCase() : '';
+    const mcNo = (kind === 'mc' || kind === 'lm') && r.report && r.report.no ? String(r.report.no).toUpperCase() : '';
     if (mcNo){ doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN));
       doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF INSPECTION' : 'SAFE FOR USE AT TIME OF INSPECTION', VX, y); doc.setFontSize(13); doc.text('SEE REPORT ' + mcNo, VX, y + 6.5);
       doc.setTextColor(...INK); y += 7.9 * CERT_K + 6.5; }   // no reason on the certificate: the report says what is wrong
@@ -1534,7 +1537,7 @@
       if (refurbText(r)) rows.push(['REFURBISHED BY', refurbText(r)]);
       rows.forEach(([a, v]) => { doc.setFont('times', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(a, L, y); doc.text(doc.splitTextToSize(String(v || ''), R - VX)[0] || '', VX, y); y += 7.9 * CERT_K; });
       doc.text('REMARKS', L, y); doc.setTextColor(...(unsafe ? RED : GREEN)); doc.text(unsafe ? 'UNSAFE FOR USE AT TIME OF TEST' : 'SAFE FOR USE AT TIME OF TEST', VX, y);
-      const crNo = r.cr && r.report && r.report.no ? String(r.report.no) : '';
+      const crNo = (r.cr || l.paper) && r.report && r.report.no ? String(r.report.no).toUpperCase() : '';
       if (crNo){ doc.setFontSize(13); doc.text('SEE REPORT ' + crNo, VX, y + 6.5); }
       if (unsafe && r.reason && !crNo){   /* with a report, the reason stays on the report only */ doc.setFontSize(10.5); doc.text(doc.splitTextToSize(U(r.reason), R - VX).slice(0, 2), VX, y + (crNo ? 12 : 6)); }
       doc.setTextColor(...INK); y += 22 * CERT_K; doc.setFontSize(12.5);
