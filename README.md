@@ -83,6 +83,7 @@ Everything for a person is under `users/{uid}/items/`:
 - Certificates: the **technician's name and signature** (from their profile, refreshed when the job is opened) and the **paper job's date** (test date, next test and 6-monthly inspection dates worked out from it).
 - The understudy belongs only to that paper job – it is not remembered for the next job.
 - Stored in the admin's own account: kind `paper`, id `eq-paper-<job>-<code>`, and on the computer in `bco-paper` (kept apart from `bco-equipment`).
+- A paper job can start from the client's digital inventory (optional file on New paper job – the same reader as Import jobs), and **⬆ Import inventory** on a paper job adds a file's items later; items already on it (same item no) are left out. The items come in unmarked (office:true) – mark each Safe or Unsafe as on the paper.
 - Paper jobs are **not** in the print run, Schedule jobs or the exports – they are downloaded by hand.
 
 ## Downloads on a tablet (rule)
