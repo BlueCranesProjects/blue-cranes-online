@@ -266,7 +266,9 @@
         return; }
       if (!p || !p.name || !p.signature){ S.sig = p && p.signature || null; S.view = 'setup'; render(); return; }
       try { Cloud.saveUser({ email:String(u.email || '').toLowerCase(), name:p.name || '', seen:new Date().toISOString() }); } catch(e){}
-      if (!wantHome){ let to = NEXT; if (!/[?&]next=/.test(location.search)){ try { if (await Promise.race([Cloud.isAdmin(), new Promise(r => setTimeout(() => r(false), 4000))])) to = 'admin/'; } catch(e){} } location.replace(to); return; }
+      // admins (they are often technicians too) land on this home screen: the Admin tile on top, the technician tools below
+      if (!wantHome){ let to = NEXT, adm = false; if (!/[?&]next=/.test(location.search)){ try { adm = await Promise.race([Cloud.isAdmin(), new Promise(r => setTimeout(() => r(false), 4000))]); } catch(e){} }
+        if (!adm){ location.replace(to); return; } S.admin = true; }
       S.view = 'home'; render();
       try { S.admin = await Cloud.isAdmin(); if (S.admin) render(); } catch(e){}
     });
