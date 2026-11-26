@@ -99,7 +99,7 @@
   const b64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
   BC.sendMail = async (cfg, mail) => {
     if (!cfg || !cfg.url || !cfg.key) return { ok:false, error:'Email is not set up yet (Admin → Email)' };
-    if (!navigator.onLine) return { ok:false, error:'offline' };
+    // no navigator.onLine check: some browsers (VPN, private mode) say offline while the internet works – just try
     try {
       const files = []; for (const f of (mail.files || [])) files.push({ name:f.name, type:f.type || f.blob.type || 'application/pdf', data:await b64(f.blob) });
       const body = JSON.stringify({ key:cfg.key, to:mail.to, subject:mail.subject, text:mail.text, html:mail.html || '', fromName:cfg.fromName || 'Blue Cranes', replyTo:cfg.replyTo || '', files, test:!!mail.test });

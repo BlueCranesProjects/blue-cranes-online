@@ -978,7 +978,6 @@
   async function mailJob(l, say){
     const so = l && l.signoff; if (!so || !so.email || so.mail === 'sent') return 'skip';
     const cfg = await mailCfg(); if (!cfg || !cfg.url){ return 'nocfg'; }
-    if (!navigator.onLine) return 'offline';
     const files = await clientFiles(l, say); const m = mailText(l, files); say && say('Sending to ' + so.email + '…');
     const r = await BC.sendMail(cfg, Object.assign({ to:so.email, files }, m));
     if (r.ok){ so.mail = 'sent'; so.mailAt = new Date().toISOString(); delete so.mailErr; saveList(l, true); return 'sent'; }
@@ -986,7 +985,7 @@
   }
   // emails still waiting (no signal at sign-off): send them quietly when this page is open
   let mailRetrying = false;
-  async function retryMail(){ if (mailRetrying || !cloudOK() || !navigator.onLine) return; mailRetrying = true;
+  async function retryMail(){ if (mailRetrying || !cloudOK()) return; mailRetrying = true;
     try { for (const l of Object.values(S.lists || {})){ const so = l && l.signoff; if (!so || !so.email || so.mail !== 'waiting') continue;
         if (so.mailTry && Date.now() - Date.parse(so.mailTry) < 10 * 60000) continue;
         const r = await mailJob(l); if (r === 'sent'){ toast('✓ Reports emailed to ' + so.email); if (S.view === 'signoff' && S.cur === l) render(); } else if (r === 'nocfg' || r === 'offline') break; } }
