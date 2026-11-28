@@ -259,6 +259,12 @@
     jn.forEach(([k, j]) => { seen.add(k); const o = mo.get(k); jobs.push(Object.assign({}, o && (o.t || 0) > (j.t || 0) ? o : j, { jid:k })); });
     jo.forEach(([k, j]) => { if (!seen.has(k)) jobs.push(Object.assign({}, j, { jid:k })); });
     const live = jobs.filter(j => !(del[j.jid] && del[j.jid] >= (j.t || 0)));
+    // one job, two copies: finishing a job used to give it a new key (the arrival time lost its seconds), so the other copy came back
+    // as a second, still busy job. Same scheduled job (or same card + customer + arrival minute) on one day = one job: keep the finished / newest.
+    { const dk = j => j.sched ? 's_' + j.sched : (j.card || j.customer) && j.startedAt ? 'c_' + (j.card || '') + '|' + (j.customer || '') + '|' + String(j.startedAt).slice(0, 16) : null;
+      const best = new Map(); live.forEach(j => { const k = dk(j); if (!k) return; const b = best.get(k);
+        if (!b || (!!j.done !== !!b.done ? j.done : (j.t || 0) > (b.t || 0))) best.set(k, j); });
+      for (let i = live.length - 1; i >= 0; i--){ const j = live[i], k = dk(j); if (k && best.get(k) !== j){ del[j.jid] = Math.max(del[j.jid] || 0, j.t || 0, 1); live.splice(i, 1); } } }
     // keep the day in the order the jobs were started
     live.forEach((j, i) => j._o = i); live.sort((x, y) => (x.startedAt && y.startedAt ? String(x.startedAt).localeCompare(String(y.startedAt)) : 0) || x._o - y._o); live.forEach(j => delete j._o);
     out.jobs = live; if (Object.keys(del).length) out.del = del;

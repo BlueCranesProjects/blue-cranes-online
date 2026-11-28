@@ -1801,7 +1801,7 @@
         if (needOdo && odo < Number(sh.firstOdo)){ err.textContent = 'That reading is lower than this morning\'s first reading (' + fmtKm(sh.firstOdo) + ' km). Check the number.'; return; }
         const oIn = document.getElementById('orderIn'), sIn = document.getElementById('siteIn');
         const job = { card: jf.card.value.trim(), customer: jf.customer.value.trim(), contact: cIn ? cIn.value.trim() : '', order: oIn ? oIn.value.trim() : '', site: sIn ? sIn.value.trim() : '', odo: needOdo ? odo : '', hrs: state._hrs, notes: jf.notes.value.trim(), done: !!state._done };
-        if (state.jobIdx != null){ const was = sh.jobs[state.jobIdx]; if (was && was.startedAt) job.startedAt = was.startedAt; if (was && was.arrOdo != null) job.arrOdo = was.arrOdo;
+        if (state.jobIdx != null){ const was = sh.jobs[state.jobIdx]; if (was && was.jid) job.jid = was.jid; if (was && was.startedAt) job.startedAt = was.startedAt; if (was && was.arrOdo != null) job.arrOdo = was.arrOdo;
           if (was && was.sched){ Object.assign(job, { sched: was.sched, card: was.card || '', customer: was.customer || '', contact: was.contact || '' }); }
           if (was && was.done && job.done) job.doneAt = was.doneAt;
           sh.jobs[state.jobIdx] = job; }
